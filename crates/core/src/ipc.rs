@@ -46,13 +46,15 @@ pub enum Request {
     PhpRestart {
         version: String,
     },
+    /// Start the HTTPS listener now (after `phpev secure` created the CA).
+    EnableHttps,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "result", rename_all = "kebab-case")]
 pub enum Response {
     Ok { message: String },
-    Status(Status),
+    Status(Box<Status>),
     Error { message: String },
 }
 
@@ -75,6 +77,13 @@ pub struct RouterStatus {
     pub error: Option<String>,
     pub tld: String,
     pub port: u16,
+    /// HTTPS listener, once a site has been secured.
+    #[serde(default)]
+    pub https_listening: Vec<String>,
+    #[serde(default)]
+    pub https_error: Option<String>,
+    #[serde(default)]
+    pub https_port: u16,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

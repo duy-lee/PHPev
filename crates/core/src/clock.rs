@@ -12,6 +12,16 @@ pub fn today() -> String {
     format!("{y:04}-{m:02}-{d:02}")
 }
 
+/// Today's UTC date as (year, month, day).
+pub fn today_ymd() -> (i64, u32, u32) {
+    ymd_in_days(0)
+}
+
+/// The UTC date `days` from today (negative = in the past) as (year, month, day).
+pub fn ymd_in_days(days: i64) -> (i64, u32, u32) {
+    civil_from_days((now_secs() / 86_400) as i64 + days)
+}
+
 /// Current UTC time as `YYYY-MM-DD HH:MM:SS`.
 pub fn timestamp() -> String {
     let secs = now_secs();

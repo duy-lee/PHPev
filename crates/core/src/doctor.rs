@@ -60,6 +60,12 @@ pub fn run(layout: &Layout, config: &Config) -> (Vec<Check>, PathReport) {
     checks.push(vc_runtime_check());
     checks.push(defender_check(config));
     checks.push(cacert_check(layout));
+    if let Some(c) = ca_check(layout) {
+        checks.push(c);
+    }
+    if let Some(c) = hosts_check(config) {
+        checks.push(c);
+    }
     for (name, port) in [
         ("HTTP", config.ports.http),
         ("HTTPS", config.ports.https),
@@ -219,6 +225,59 @@ fn defender_check(config: &Config) -> Check {
         .detail("on-access scanning adds to the start-up time of every PHP process")
         .hint("phpev doctor --defender-exclude   (needs admin; skip if you use another antivirus)")
     }
+}
+
+/// Only once HTTPS has been used (the CA exists).
+fn ca_check(layout: &Layout) -> Option<Check> {
+    let der = crate::ca::stored_der(layout)?;
+    Some(match crate::ca::is_trusted(&der) {
+        Ok(true) => Check::new(Status::Ok, "PHPev CA is trusted by Windows (HTTPS)"),
+        Ok(false) => Check::new(
+            Status::Warn,
+            "PHPev CA exists but Windows does not trust it; browsers will warn on https",
+        )
+        .hint("phpev secure <site>"),
+        Err(e) => Check::new(
+            Status::Warn,
+            format!("Could not read the Windows certificate store: {e}"),
+        ),
+    })
+}
+
+/// With a TLD other than localhost, every site needs a hosts entry.
+fn hosts_check(config: &Config) -> Option<Check> {
+    if config.tld == "localhost" {
+        return None;
+    }
+    let root = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
+    let text =
+        std::fs::read_to_string(std::path::Path::new(&root).join(r"System32\drivers\etc\hosts")).unwrap_or_default();
+    let present: Vec<&str> = text
+        .lines()
+        .filter(|l| !l.trim_start().starts_with('#'))
+        .flat_map(|l| l.split_whitespace().skip(1))
+        .collect();
+    let missing: Vec<String> = crate::sites::all(config)
+        .iter()
+        .map(|s| s.host(&config.tld))
+        .filter(|h| !present.iter().any(|p| p.eq_ignore_ascii_case(h)))
+        .collect();
+    Some(if missing.is_empty() {
+        Check::new(Status::Ok, format!("Hosts file has every .{} site", config.tld))
+    } else {
+        let mut c = Check::new(
+            Status::Warn,
+            format!(
+                "{} site(s) missing from the hosts file (TLD .{})",
+                missing.len(),
+                config.tld
+            ),
+        );
+        for h in missing.iter().take(5) {
+            c = c.detail(h.clone());
+        }
+        c.hint("phpev hosts sync")
+    })
 }
 
 fn cacert_check(layout: &Layout) -> Check {

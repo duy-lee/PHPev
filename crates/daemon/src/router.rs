@@ -86,7 +86,7 @@ impl Router {
         }
     }
 
-    fn snapshot(&self) -> (Arc<Config>, Arc<Vec<Site>>) {
+    pub(crate) fn snapshot(&self) -> (Arc<Config>, Arc<Vec<Site>>) {
         // stat outside the lock; reload only when the file actually changed.
         let mtime = std::fs::metadata(self.layout.config_file())
             .and_then(|m| m.modified())
@@ -140,8 +140,15 @@ impl Router {
 }
 
 /// Binds 127.0.0.1 and ::1 (browsers try `*.localhost` on both); never
-/// 0.0.0.0, so no firewall prompt (§10). Returns the bound addresses.
-pub async fn listen(router: Arc<Router>, port: u16) -> io::Result<Vec<SocketAddr>> {
+/// 0.0.0.0, so no firewall prompt (§10). With `tls`, connections are HTTPS.
+/// Returns the bound addresses.
+pub async fn listen(
+    router: Arc<Router>,
+    port: u16,
+    tls: Option<Arc<rustls::ServerConfig>>,
+) -> io::Result<Vec<SocketAddr>> {
+    let acceptor = tls.map(tokio_rustls::TlsAcceptor::from);
+    let https = acceptor.is_some();
     let mut bound = Vec::new();
     let v4 = TcpListener::bind((Ipv4Addr::LOCALHOST, port)).await?;
     bound.push(v4.local_addr()?);
@@ -155,6 +162,7 @@ pub async fn listen(router: Arc<Router>, port: u16) -> io::Result<Vec<SocketAddr
     }
     for listener in listeners {
         let router = router.clone();
+        let acceptor = acceptor.clone();
         tokio::spawn(async move {
             loop {
                 let Ok((stream, remote)) = listener.accept().await else {
@@ -162,15 +170,27 @@ pub async fn listen(router: Arc<Router>, port: u16) -> io::Result<Vec<SocketAddr
                 };
                 let _ = stream.set_nodelay(true);
                 let router = router.clone();
+                let acceptor = acceptor.clone();
                 tokio::spawn(async move {
                     let service = service_fn(move |req| {
                         let router = router.clone();
-                        async move { Ok::<_, Infallible>(handle(&router, req, remote).await) }
+                        async move { Ok::<_, Infallible>(handle(&router, req, remote, https, port).await) }
                     });
-                    let _ = hyper::server::conn::http1::Builder::new()
-                        .keep_alive(true)
-                        .serve_connection(TokioIo::new(stream), service)
-                        .await;
+                    let mut http = hyper::server::conn::http1::Builder::new();
+                    match acceptor {
+                        // Handshake failures (unknown host, untrusted client) just drop the connection.
+                        Some(acceptor) => {
+                            if let Ok(tls) = acceptor.accept(stream).await {
+                                let _ = http.keep_alive(true).serve_connection(TokioIo::new(tls), service).await;
+                            }
+                        }
+                        None => {
+                            let _ = http
+                                .keep_alive(true)
+                                .serve_connection(TokioIo::new(stream), service)
+                                .await;
+                        }
+                    }
                 });
             }
         });
@@ -178,7 +198,7 @@ pub async fn listen(router: Arc<Router>, port: u16) -> io::Result<Vec<SocketAddr
     Ok(bound)
 }
 
-async fn handle(router: &Router, req: Request<Incoming>, remote: SocketAddr) -> Response<Body> {
+async fn handle(router: &Router, req: Request<Incoming>, remote: SocketAddr, https: bool, port: u16) -> Response<Body> {
     let host = request_host(&req);
     let (config, mut all) = router.snapshot();
     if host == "localhost" || host == "127.0.0.1" || host == "[::1]" {
@@ -192,6 +212,25 @@ async fn handle(router: &Router, req: Request<Incoming>, remote: SocketAddr) -> 
     let Some(site) = site else {
         return dashboard(StatusCode::NOT_FOUND, &all, &config, Some(&host));
     };
+
+    // Secured sites are HTTPS-only. 307, not 301: browsers cache 301 forever,
+    // which would break the site after `phpev unsecure`.
+    if site.secure && !https {
+        let https_port = if config.ports.https == 443 {
+            String::new()
+        } else {
+            format!(":{}", config.ports.https)
+        };
+        let target = format!(
+            "https://{host}{https_port}{}",
+            req.uri().path_and_query().map_or("/", |pq| pq.as_str())
+        );
+        return Response::builder()
+            .status(StatusCode::TEMPORARY_REDIRECT)
+            .header(header::LOCATION, target)
+            .body(empty())
+            .unwrap_or_else(|_| internal());
+    }
 
     let docroot = site.docroot();
     let Some(rel) = sanitize(req.uri().path()) else {
@@ -215,6 +254,8 @@ async fn handle(router: &Router, req: Request<Incoming>, remote: SocketAddr) -> 
                 path_info,
                 host: &host,
                 remote,
+                https,
+                server_port: port,
             };
             match router.pools.acquire(&router.layout, &version).await {
                 Ok(lease) => run_php(&router.pools, lease, req, ctx).await,
@@ -458,6 +499,8 @@ struct PhpRequest<'a> {
     path_info: String,
     host: &'a str,
     remote: SocketAddr,
+    https: bool,
+    server_port: u16,
 }
 
 async fn run_php(pools: &Arc<Pools>, mut lease: Lease, req: Request<Incoming>, ctx: PhpRequest<'_>) -> Response<Body> {
@@ -684,15 +727,8 @@ fn php_params(parts: &http::request::Parts, ctx: &PhpRequest<'_>, content_length
         .add("SERVER_PROTOCOL", format!("{:?}", parts.version))
         .add("SERVER_NAME", ctx.host)
         .add("SERVER_ADDR", "127.0.0.1")
-        .add(
-            "SERVER_PORT",
-            parts
-                .headers
-                .get(header::HOST)
-                .and_then(|h| h.to_str().ok())
-                .and_then(|h| h.rsplit_once(':'))
-                .map_or("80", |(_, p)| p),
-        )
+        .add("SERVER_PORT", ctx.server_port.to_string())
+        .add("REQUEST_SCHEME", if ctx.https { "https" } else { "http" })
         .add("REQUEST_METHOD", parts.method.as_str())
         .add("REQUEST_URI", request_uri)
         .add("QUERY_STRING", uri.query().unwrap_or(""))
@@ -705,6 +741,7 @@ fn php_params(parts: &http::request::Parts, ctx: &PhpRequest<'_>, content_length
         .add("REMOTE_PORT", ctx.remote.port().to_string())
         // php-cgi refuses to run without it (cgi.force_redirect).
         .add("REDIRECT_STATUS", "200")
+        .add("HTTPS", if ctx.https { "on" } else { "" })
         .add(
             "CONTENT_LENGTH",
             if content_length > 0 {
@@ -790,7 +827,8 @@ fn dashboard(status: StatusCode, sites: &[Site], config: &Config, unknown: Optio
     } else {
         html += "<table>";
         for s in sites {
-            let url = format!("http://{}", s.host(&config.tld));
+            let scheme = if s.secure { "https" } else { "http" };
+            let url = format!("{scheme}://{}", s.host(&config.tld));
             let kind = match s.kind {
                 sites::Kind::Linked => "linked",
                 sites::Kind::Parked => "parked",

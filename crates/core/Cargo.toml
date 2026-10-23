@@ -12,6 +12,7 @@ sha2.workspace = true
 native-tls.workspace = true
 ureq.workspace = true
 zip.workspace = true
+rcgen.workspace = true
 
 [target.'cfg(windows)'.dependencies.windows-sys]
 workspace = true

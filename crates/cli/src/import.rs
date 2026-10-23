@@ -111,6 +111,7 @@ pub fn import(opts: Options) -> io::Result<ExitCode> {
     step("Site");
     let name = site_name(&dir, opts.name.as_deref())?;
     link_site(&layout, &dir, &name, pin.clone(), excluded)?;
+    crate::sites::auto_hosts(&layout);
     let config = Config::load(&layout.config_file())?;
     let port_suffix = if config.ports.http == 80 {
         String::new()

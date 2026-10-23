@@ -62,6 +62,7 @@ pub fn park(dir: Option<PathBuf>) -> io::Result<ExitCode> {
     for s in found {
         println!("  http://{}  →  {}", s.host(&config.tld), s.path.display());
     }
+    auto_hosts(&layout);
     Ok(ExitCode::SUCCESS)
 }
 
@@ -78,6 +79,9 @@ pub fn unpark(dir: Option<PathBuf>) -> io::Result<ExitCode> {
         if removed { "Unparked" } else { "Was not parked:" },
         dir.display()
     );
+    if removed {
+        auto_hosts(&layout);
+    }
     Ok(ExitCode::SUCCESS)
 }
 
@@ -129,6 +133,7 @@ pub fn link(name: Option<String>, php_version: Option<String>) -> io::Result<Exi
         config.tld,
         path.display()
     );
+    auto_hosts(&layout);
     Ok(ExitCode::SUCCESS)
 }
 
@@ -143,7 +148,10 @@ pub fn unlink(name: Option<String>) -> io::Result<ExitCode> {
         pos.map(|i| c.sites.remove(i))
     })?;
     match removed {
-        Some(s) => println!("Unlinked {} ({})", s.name, s.path.display()),
+        Some(s) => {
+            println!("Unlinked {} ({})", s.name, s.path.display());
+            auto_hosts(&layout);
+        }
         None => println!(
             "No linked site {}",
             name.unwrap_or_else(|| format!("for {}", cwd.display()))
@@ -191,7 +199,33 @@ pub fn list() -> io::Result<ExitCode> {
 pub fn hosts_sync() -> io::Result<ExitCode> {
     let layout = Layout::resolve()?;
     let config = Config::load(&layout.config_file())?;
-    let names: Vec<String> = sites::all(&config).iter().map(|s| s.host(&config.tld)).collect();
+    write_hosts(&config, true)?;
+    Ok(ExitCode::SUCCESS)
+}
+
+/// With a TLD other than `localhost` the browser needs hosts entries, so site
+/// changes rewrite them right away (one UAC prompt; decided 2026-10-23). A
+/// declined prompt is a warning, not an error: the config change stands.
+pub(crate) fn auto_hosts(layout: &Layout) {
+    let Ok(config) = Config::load(&layout.config_file()) else {
+        return;
+    };
+    if config.tld == "localhost" {
+        return;
+    }
+    if let Err(e) = write_hosts(&config, true) {
+        println!("warning: hosts file not updated ({e}); run `phpev hosts sync` later");
+    }
+}
+
+/// Rewrites the PHPev block of the hosts file with every site (`include`) or
+/// removes it (`!include`).
+pub(crate) fn write_hosts(config: &Config, include: bool) -> io::Result<()> {
+    let names: Vec<String> = if include {
+        sites::all(config).iter().map(|s| s.host(&config.tld)).collect()
+    } else {
+        Vec::new()
+    };
     if let Some(bad) = names.iter().find(|h| !hosts::is_valid_host(h)) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -212,5 +246,5 @@ pub fn hosts_sync() -> io::Result<ExitCode> {
         )));
     }
     println!("Hosts file updated.");
-    Ok(ExitCode::SUCCESS)
+    Ok(())
 }

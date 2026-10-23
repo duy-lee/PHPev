@@ -120,7 +120,7 @@ pub fn stop() -> io::Result<ExitCode> {
 pub fn status() -> io::Result<ExitCode> {
     let autostart = registry::read_string(Hive::CurrentUser, RUN_KEY, RUN_VALUE)?.is_some();
     let status = match ipc::call(&Request::Status) {
-        Ok(Response::Status(s)) => s,
+        Ok(Response::Status(s)) => *s,
         Ok(_) => return Err(io::Error::other("unexpected reply")),
         Err(e) if e.kind() == io::ErrorKind::NotFound => {
             println!("PHPev daemon: not running  (start it with `phpev start`)");
@@ -137,6 +137,11 @@ pub fn status() -> io::Result<ExitCode> {
         mib(status.memory_kb * 1024)
     );
     let r = &status.router;
+    let print_https = || match (&r.https_error, r.https_listening.is_empty()) {
+        (Some(e), _) => println!("HTTPS:        NOT RUNNING — {e}"),
+        (None, false) => println!("HTTPS:        secured sites  ({})", r.https_listening.join(", ")),
+        (None, true) => println!("HTTPS:        off (enable with `phpev secure <site>`)"),
+    };
     match (&r.error, r.listening.is_empty()) {
         (Some(e), _) => println!("Router:       NOT RUNNING — {e}"),
         (None, false) => {
@@ -153,6 +158,7 @@ pub fn status() -> io::Result<ExitCode> {
         }
         (None, true) => println!("Router:       not started"),
     }
+    print_https();
     match &status.mariadb {
         Some(db) => println!(
             "MariaDB:      {} {}  127.0.0.1:{}  pid {}  RAM {}",

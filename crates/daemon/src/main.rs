@@ -13,6 +13,7 @@ mod pool;
 mod router;
 mod services;
 mod supervise;
+mod tls;
 
 use std::io;
 use std::process::ExitCode;
@@ -77,6 +78,8 @@ struct Daemon {
     db: Mutex<Option<Db>>,
     pools: Arc<Pools>,
     router: std::sync::Mutex<ipc::RouterStatus>,
+    /// The running router (HTTP); the HTTPS listener reuses it.
+    http_router: std::sync::Mutex<Option<Arc<Router>>>,
     shutdown: UnboundedSender<ShutdownRequest>,
 }
 
@@ -99,6 +102,7 @@ async fn run(layout: Layout) -> io::Result<()> {
         db: Mutex::new(None),
         pools: Arc::new(Pools::default()),
         router: std::sync::Mutex::new(ipc::RouterStatus::default()),
+        http_router: std::sync::Mutex::new(None),
         shutdown: shutdown_tx.clone(),
     });
     endsession::spawn(shutdown_tx);
@@ -165,7 +169,7 @@ impl Daemon {
     async fn handle(self: &Arc<Self>, req: Request) -> Response {
         let result = match req {
             Request::Ping => Ok("pong".to_owned()),
-            Request::Status => return Response::Status(self.status().await),
+            Request::Status => return Response::Status(Box::new(self.status().await)),
             Request::Shutdown => {
                 let _ = self.shutdown.send(None);
                 Ok("PHPev daemon is stopping".to_owned())
@@ -174,6 +178,7 @@ impl Daemon {
             Request::DbStop => self.db_stop().await.inspect(|_| self.remember_db(false)),
             Request::DbUse { major } => self.db_use(&major).await,
             Request::PhpWarm { version } => self.php_warm(version.as_deref()).await,
+            Request::EnableHttps => self.start_https().await,
             Request::PhpRestart { version } => {
                 let stopped = self.pools.stop_version(&version).await;
                 Ok(format!(
@@ -306,7 +311,8 @@ impl Daemon {
             Err(e) => status.error = Some(e.to_string()),
             Ok(()) => {
                 let router = Arc::new(Router::new(self.layout.clone(), self.pools.clone()));
-                match router::listen(router, port).await {
+                *self.http_router.lock().unwrap_or_else(|e| e.into_inner()) = Some(router.clone());
+                match router::listen(router, port, None).await {
                     Ok(addrs) => {
                         status.listening = addrs.iter().map(ToString::to_string).collect();
                         log_info!("router listening on {}", status.listening.join(", "));
@@ -319,6 +325,55 @@ impl Daemon {
             log_warn!("router not started: {e}");
         }
         *self.router.lock().unwrap_or_else(|e| e.into_inner()) = status;
+
+        // HTTPS only once the user has secured a site (the CA exists).
+        if phpev_core::ca::exists(&self.layout) {
+            if let Err(e) = self.start_https().await {
+                log_warn!("https not started: {e}");
+            }
+        }
+    }
+
+    /// Binds the HTTPS listener (idempotent). A busy port is reported in status.
+    async fn start_https(&self) -> io::Result<String> {
+        if let Some(addr) = self
+            .router
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .https_listening
+            .first()
+        {
+            return Ok(format!("HTTPS already listening on {addr}"));
+        }
+        let router = self
+            .http_router
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+            .ok_or_else(|| io::Error::other("the HTTP router is not running"))?;
+        let config = self.config()?;
+        let port = config.ports.https;
+        let result = async {
+            ensure_port_free(port, "HTTPS")?;
+            let ca = phpev_core::ca::Ca::load_or_create(&self.layout, &config.tld)?;
+            let tls = tls::server_config(router.clone(), ca)?;
+            router::listen(router, port, Some(tls)).await
+        }
+        .await;
+        let mut status = self.router.lock().unwrap_or_else(|e| e.into_inner());
+        status.https_port = port;
+        match result {
+            Ok(addrs) => {
+                status.https_listening = addrs.iter().map(ToString::to_string).collect();
+                status.https_error = None;
+                log_info!("https listening on {}", status.https_listening.join(", "));
+                Ok(format!("HTTPS listening on {}", status.https_listening.join(", ")))
+            }
+            Err(e) => {
+                status.https_error = Some(e.to_string());
+                Err(e)
+            }
+        }
     }
 
     /// Stops everything but keeps `state.json`, so the next start restores MariaDB.

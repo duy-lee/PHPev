@@ -19,6 +19,8 @@ pub struct Site {
     pub kind: Kind,
     /// PHP version pinned in config (linked sites only); `.php-version` still wins.
     pub php: Option<String>,
+    /// HTTPS enabled with `phpev secure` (linked sites only).
+    pub secure: bool,
 }
 
 impl Site {
@@ -87,6 +89,7 @@ pub fn all(config: &Config) -> Vec<Site> {
             path: s.path.clone(),
             kind: Kind::Linked,
             php: s.php.clone(),
+            secure: s.secure,
         })
         .collect();
     for dir in &config.parked {
@@ -97,6 +100,7 @@ pub fn all(config: &Config) -> Vec<Site> {
                     path,
                     kind: Kind::Parked,
                     php: None,
+                    secure: false,
                 });
             }
         }

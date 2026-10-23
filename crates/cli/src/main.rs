@@ -1,4 +1,5 @@
 mod daemon;
+mod https;
 mod import;
 mod progress;
 mod runtimes;
@@ -103,6 +104,17 @@ enum Command {
         #[arg(long)]
         defender_exclude: bool,
     },
+    /// Serve a site over HTTPS (default: the site of the current folder); trusts the PHPev CA on first use
+    Secure { name: Option<String> },
+    /// Turn HTTPS off for a site (default: the site of the current folder)
+    Unsecure { name: Option<String> },
+    /// Manage the local certificate authority used for HTTPS
+    Ca {
+        #[command(subcommand)]
+        command: https::CaCommand,
+    },
+    /// Show or change the TLD for sites (default: localhost)
+    Tld { tld: Option<String> },
     /// Manage the PHPev entries in the Windows hosts file
     Hosts {
         #[command(subcommand)]
@@ -212,6 +224,10 @@ fn main() -> ExitCode {
         Command::Link { name, php } => sites::link(name, php),
         Command::Unlink { name } => sites::unlink(name),
         Command::Sites => sites::list(),
+        Command::Secure { name } => https::secure(name),
+        Command::Unsecure { name } => https::unsecure(name),
+        Command::Ca { command } => https::ca(command),
+        Command::Tld { tld } => https::tld(tld),
         Command::Import {
             dir,
             name,
