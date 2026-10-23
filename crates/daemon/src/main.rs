@@ -11,7 +11,6 @@ mod fastcgi;
 mod http_util;
 mod job;
 mod jobs;
-mod launch;
 mod log;
 mod logs;
 mod metrics;
@@ -20,6 +19,7 @@ mod router;
 mod services;
 mod supervise;
 mod tls;
+mod tray;
 
 use std::io;
 use std::process::ExitCode;
@@ -116,6 +116,7 @@ async fn run(layout: Layout) -> io::Result<()> {
         shutdown: shutdown_tx.clone(),
         dashboard: std::sync::Mutex::new(Err("not started".into())),
     });
+    tray::init(daemon.clone(), tokio::runtime::Handle::current());
     endsession::spawn(shutdown_tx);
 
     if State::load(&daemon.layout).mariadb_running {
@@ -147,6 +148,7 @@ async fn run(layout: Layout) -> io::Result<()> {
                 tokio::spawn(serve(daemon.clone(), client));
             }
             Some(ack) = shutdown_rx.recv() => {
+                tray::remove();
                 daemon.stop_services().await;
                 log_info!("daemon stopped");
                 if let Some(ack) = ack {
@@ -197,6 +199,10 @@ impl Daemon {
                 .unwrap_or_else(|e| e.into_inner())
                 .clone()
                 .map_err(io::Error::other),
+            Request::SetTray { enabled } => {
+                tray::set_visible(enabled);
+                Ok(format!("tray icon {}", if enabled { "shown" } else { "hidden" }))
+            }
             Request::PhpRestart { version } => {
                 let stopped = self.pools.stop_version(&version).await;
                 Ok(format!(

@@ -4,6 +4,7 @@
 //! sends WM_QUERYENDSESSION / WM_ENDSESSION to top-level windows. A hidden
 //! window on its own thread receives them and blocks WM_ENDSESSION until the
 //! services are stopped (so MariaDB flushes instead of needing crash recovery).
+//! The same window carries the tray icon (tray.rs).
 
 use std::sync::mpsc as std_mpsc;
 use std::sync::OnceLock;
@@ -57,6 +58,7 @@ pub fn spawn(shutdown: UnboundedSender<ShutdownRequest>) {
             log_warn!("end-session window could not be created; services will not stop cleanly at log off");
             return;
         }
+        crate::tray::on_window_created(hwnd);
         let mut msg: MSG = std::mem::zeroed();
         while GetMessageW(&mut msg, std::ptr::null_mut(), 0, 0) > 0 {
             TranslateMessage(&msg);
@@ -69,6 +71,9 @@ pub fn spawn(shutdown: UnboundedSender<ShutdownRequest>) {
 }
 
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    if let Some(result) = crate::tray::handle(hwnd, msg, wparam, lparam) {
+        return result;
+    }
     match msg {
         WM_QUERYENDSESSION => 1,
         WM_ENDSESSION if wparam != 0 => {

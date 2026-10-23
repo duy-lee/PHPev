@@ -32,8 +32,9 @@ use tokio::sync::mpsc;
 use crate::http_util::{full, internal, query_param, text, Body, ChannelBody};
 use crate::jobs::Jobs;
 use crate::log::log_warn;
+use crate::logs;
 use crate::Daemon;
-use crate::{launch, logs};
+use phpev_core::launch;
 
 const COOKIE: &str = "phpev_session";
 /// Largest JSON body the API accepts.
@@ -226,8 +227,7 @@ fn asset(path: &str) -> Response<Body> {
             include_bytes!("../dashboard/vendor/htm-preact-standalone.mjs"),
             "text/javascript; charset=utf-8",
         ),
-        // Browsers ask for it on their own; no icon yet (M10 adds one with the tray).
-        "/favicon.ico" => return text(StatusCode::NO_CONTENT, ""),
+        "/favicon.ico" => (include_bytes!("../../../assets/phpev.ico"), "image/x-icon"),
         _ => return text(StatusCode::NOT_FOUND, "Not Found"),
     };
     Response::builder()
@@ -733,7 +733,7 @@ fn log_stream(path: PathBuf, lines: usize) -> Response<Body> {
     sse(rx)
 }
 
-fn site_url(layout: &phpev_core::layout::Layout, site: &sites::Site) -> io::Result<String> {
+pub(crate) fn site_url(layout: &phpev_core::layout::Layout, site: &sites::Site) -> io::Result<String> {
     let config = Config::load(&layout.config_file())?;
     let (scheme, port) = if site.secure {
         (

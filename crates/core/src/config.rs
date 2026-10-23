@@ -26,6 +26,13 @@ pub struct Config {
     /// cannot read Defender's exclusion list, so PHPev remembers it here.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub defender_excluded: bool,
+    /// Show the notification-area icon (DESIGN_SPEC §14.5; on unless turned off).
+    #[serde(skip_serializing_if = "is_true")]
+    pub tray: bool,
+}
+
+fn is_true(b: &bool) -> bool {
+    *b
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -62,6 +69,7 @@ impl Default for Config {
             parked: Vec::new(),
             sites: Vec::new(),
             defender_excluded: false,
+            tray: true,
         }
     }
 }

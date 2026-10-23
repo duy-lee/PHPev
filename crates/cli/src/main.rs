@@ -66,12 +66,21 @@ enum Command {
     Stop,
     /// Show what the background service is running
     Status,
-    /// Open the PHPev dashboard in the browser
-    Dashboard,
+    /// Open the PHPev dashboard in its own window
+    Dashboard {
+        /// Open it in a tab of the default browser instead
+        #[arg(long)]
+        browser: bool,
+    },
     /// Start the background service when you log in to Windows
     Autostart {
         #[arg(value_enum)]
-        mode: daemon::Autostart,
+        mode: daemon::Switch,
+    },
+    /// Show or hide the PHPev icon in the notification area
+    Tray {
+        #[arg(value_enum)]
+        mode: daemon::Switch,
     },
     /// Serve every sub-folder of DIR (default: current folder) as http://<folder>.localhost
     Park { dir: Option<PathBuf> },
@@ -220,7 +229,8 @@ fn main() -> ExitCode {
         Command::Start => daemon::start(),
         Command::Stop => daemon::stop(),
         Command::Status => daemon::status(),
-        Command::Dashboard => daemon::dashboard(),
+        Command::Dashboard { browser } => daemon::dashboard(browser),
+        Command::Tray { mode } => daemon::tray(mode),
         Command::Autostart { mode } => daemon::autostart(mode),
         Command::Park { dir } => sites::park(dir),
         Command::Unpark { dir } => sites::unpark(dir),

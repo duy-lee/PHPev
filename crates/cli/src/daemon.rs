@@ -11,8 +11,8 @@ use phpev_core::config;
 use phpev_core::ipc::{self, Request, Response};
 use phpev_core::layout::Layout;
 use phpev_core::mariadb;
-use phpev_core::registry::{self, Hive};
 use phpev_core::state::State;
+use phpev_core::{autostart, launch};
 
 use windows_sys::Win32::Foundation::{SetHandleInformation, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE};
 use windows_sys::Win32::System::Console::{GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE};
@@ -20,8 +20,6 @@ use windows_sys::Win32::System::Console::{GetStdHandle, STD_ERROR_HANDLE, STD_IN
 use crate::progress::mib;
 
 const DAEMON_EXE: &str = "phpev-daemon.exe";
-const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
-const RUN_VALUE: &str = "PHPev";
 
 const DETACHED_PROCESS: u32 = 0x0000_0008;
 const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
@@ -118,7 +116,7 @@ pub fn stop() -> io::Result<ExitCode> {
 }
 
 pub fn status() -> io::Result<ExitCode> {
-    let autostart = registry::read_string(Hive::CurrentUser, RUN_KEY, RUN_VALUE)?.is_some();
+    let autostart = autostart::is_enabled()?;
     let status = match ipc::call(&Request::Status) {
         Ok(Response::Status(s)) => *s,
         Ok(_) => return Err(io::Error::other("unexpected reply")),
@@ -254,41 +252,48 @@ pub fn php_warm(version: Option<String>) -> io::Result<ExitCode> {
 }
 
 #[derive(Clone, Copy, ValueEnum)]
-pub enum Autostart {
+pub enum Switch {
     On,
     Off,
 }
 
-pub fn autostart(mode: Autostart) -> io::Result<ExitCode> {
+pub fn autostart(mode: Switch) -> io::Result<ExitCode> {
+    let on = matches!(mode, Switch::On);
+    autostart::set(&Layout::resolve()?, on)?;
+    println!(
+        "{}",
+        if on {
+            "PHPev will start when you log in to Windows."
+        } else {
+            "PHPev will no longer start at log in."
+        }
+    );
+    Ok(ExitCode::SUCCESS)
+}
+
+/// `phpev tray on|off`: remembered in config.toml and applied to the running daemon.
+pub fn tray(mode: Switch) -> io::Result<ExitCode> {
+    let on = matches!(mode, Switch::On);
     let layout = Layout::resolve()?;
-    match mode {
-        Autostart::On => {
-            // Point at the installed copy, not wherever this phpev.exe was built.
-            let exe = layout.shims().join(DAEMON_EXE);
-            if !exe.is_file() {
-                return Err(io::Error::new(io::ErrorKind::NotFound, "run `phpev setup` first"));
-            }
-            registry::write_string(Hive::CurrentUser, RUN_KEY, RUN_VALUE, &format!("\"{}\"", exe.display()))?;
-            println!("PHPev will start when you log in to Windows.");
-        }
-        Autostart::Off => {
-            registry::delete_value(Hive::CurrentUser, RUN_KEY, RUN_VALUE)?;
-            println!("PHPev will no longer start at log in.");
-        }
+    config::update(&layout.config_file(), |c| c.tray = on)?;
+    if ipc::is_running() {
+        request(&Request::SetTray { enabled: on })?;
     }
+    println!("Tray icon {}.", if on { "on" } else { "off" });
     Ok(ExitCode::SUCCESS)
 }
 
 /// `phpev dashboard`: starts PHPev if needed and opens the dashboard with this
-/// run's login token (the browser then holds it as an HttpOnly cookie).
-pub fn dashboard() -> io::Result<ExitCode> {
+/// run's login token (the browser then holds it as an HttpOnly cookie), in its
+/// own app window (Edge) unless `browser` asks for a normal browser tab.
+pub fn dashboard(browser: bool) -> io::Result<ExitCode> {
     ensure_running()?;
     let url = request(&Request::DashboardUrl)?;
-    // url.dll hands the URL to the default browser without a shell parsing it.
-    let system = std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
-    Command::new(system.join(r"System32\rundll32.exe"))
-        .args(["url.dll,FileProtocolHandler", &url])
-        .spawn()?;
+    if browser {
+        launch::open_url(&url)?;
+    } else {
+        launch::open_app_window(&url)?;
+    }
     println!("Opening the dashboard: {}", url.split("/login").next().unwrap_or(&url));
     Ok(ExitCode::SUCCESS)
 }

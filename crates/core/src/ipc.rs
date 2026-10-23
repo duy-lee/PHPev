@@ -50,6 +50,10 @@ pub enum Request {
     EnableHttps,
     /// The dashboard login URL, including this daemon run's token.
     DashboardUrl,
+    /// Show or hide the tray icon (after `phpev tray on|off` saved it).
+    SetTray {
+        enabled: bool,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
