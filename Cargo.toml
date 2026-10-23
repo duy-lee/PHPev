@@ -1,0 +1,22 @@
+[workspace]
+resolver = "2"
+members = ["crates/core", "crates/cli", "crates/elevate", "crates/daemon", "crates/shim"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+phpev-core = { path = "crates/core" }
+clap = { version = "4", default-features = false, features = ["std", "derive", "help", "usage", "error-context"] }
+serde = { version = "1", features = ["derive"] }
+toml = { version = "0.8", default-features = false, features = ["parse", "display"] }
+windows-sys = "0.59"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true

@@ -1,0 +1,12 @@
+# Release target: MSVC with the C runtime linked statically, so end users
+# never need the VC++ redistributable for PHPev itself (DESIGN_SPEC §9.3).
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+# Temporary dev target for machines without VS Build Tools.
+# Needs a MinGW-w64 (MSVCRT) toolchain on PATH, e.g.
+#   winget install BrechtSanders.WinLibs.POSIX.MSVCRT
+# Build with: cargo build --target x86_64-pc-windows-gnu
+[target.x86_64-pc-windows-gnu]
+linker = "x86_64-w64-mingw32-gcc"
+rustflags = ["-C", "target-feature=+crt-static"]

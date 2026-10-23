@@ -1,0 +1,150 @@
+//! `config.toml` model and atomic persistence.
+//!
+//! Only the daemon writes this file at runtime (DESIGN_SPEC §10); `phpev setup`
+//! writes the initial file once, before any daemon exists.
+
+use std::io;
+use std::path::{Path, PathBuf};
+
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Config {
+    /// Default PHP version (e.g. `"8.4"`) when no project-specific one applies.
+    pub php: Option<String>,
+    /// Active MariaDB major version (e.g. `"11.4"`).
+    pub mariadb: Option<String>,
+    /// TLD used for parked/linked sites.
+    pub tld: String,
+    pub ports: Ports,
+    /// Directories whose sub-folders each become `<name>.<tld>`.
+    pub parked: Vec<PathBuf>,
+    /// Individually linked sites.
+    pub sites: Vec<Site>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Ports {
+    pub http: u16,
+    pub https: u16,
+    pub mariadb: u16,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Site {
+    pub name: String,
+    pub path: PathBuf,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub php: Option<String>,
+    #[serde(default)]
+    pub secure: bool,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            php: None,
+            mariadb: None,
+            tld: "localhost".into(),
+            ports: Ports::default(),
+            parked: Vec::new(),
+            sites: Vec::new(),
+        }
+    }
+}
+
+impl Default for Ports {
+    fn default() -> Self {
+        Self {
+            http: 80,
+            https: 443,
+            mariadb: 3306,
+        }
+    }
+}
+
+impl Config {
+    /// Loads the config; a missing file yields the defaults.
+    pub fn load(path: &Path) -> io::Result<Self> {
+        match std::fs::read_to_string(path) {
+            Ok(text) => toml::from_str(&text)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("{}: {e}", path.display()))),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(Self::default()),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Writes the config atomically: write `<file>.tmp`, then rename over the original.
+    pub fn save(&self, path: &Path) -> io::Result<()> {
+        let text = toml::to_string_pretty(self).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        write_atomic(path, text.as_bytes())
+    }
+}
+
+/// Replaces `path` with `data` so readers never observe a half-written file.
+pub fn write_atomic(path: &Path, data: &[u8]) -> io::Result<()> {
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(".tmp");
+    let tmp = PathBuf::from(tmp);
+    std::fs::write(&tmp, data)?;
+    // std::fs::rename uses MoveFileExW(MOVEFILE_REPLACE_EXISTING) on Windows.
+    std::fs::rename(&tmp, path).inspect_err(|_| {
+        let _ = std::fs::remove_file(&tmp);
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_file_gives_defaults() {
+        let cfg: Config = toml::from_str("").unwrap();
+        assert_eq!(cfg, Config::default());
+    }
+
+    #[test]
+    fn partial_ports_keep_other_defaults() {
+        let cfg: Config = toml::from_str("[ports]\nhttp = 8080\n").unwrap();
+        assert_eq!(
+            cfg.ports,
+            Ports {
+                http: 8080,
+                ..Ports::default()
+            }
+        );
+    }
+
+    #[test]
+    fn round_trip() {
+        let cfg = Config {
+            php: Some("8.4".into()),
+            sites: vec![Site {
+                name: "blog".into(),
+                path: r"C:\code\blog".into(),
+                php: None,
+                secure: true,
+            }],
+            ..Config::default()
+        };
+        let text = toml::to_string_pretty(&cfg).unwrap();
+        assert_eq!(toml::from_str::<Config>(&text).unwrap(), cfg);
+    }
+
+    #[test]
+    fn save_then_load() {
+        let dir = std::env::temp_dir().join(format!("phpev-cfg-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("config.toml");
+        let cfg = Config {
+            mariadb: Some("11.4".into()),
+            ..Config::default()
+        };
+        cfg.save(&file).unwrap();
+        cfg.save(&file).unwrap(); // overwriting an existing file must work too
+        assert_eq!(Config::load(&file).unwrap(), cfg);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+}

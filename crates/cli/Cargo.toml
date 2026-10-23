@@ -1,0 +1,13 @@
+[package]
+name = "phpev-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "phpev"
+path = "src/main.rs"
+
+[dependencies]
+phpev-core.workspace = true
+clap.workspace = true

@@ -1,0 +1,8 @@
+[package]
+name = "phpev-elevate"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+phpev-core.workspace = true
