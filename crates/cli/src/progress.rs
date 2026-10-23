@@ -57,3 +57,41 @@ impl Bar {
 pub fn mib(bytes: u64) -> String {
     format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
 }
+
+/// Renders `ops` progress on the terminal: notes as indented lines, downloads
+/// as a single-line bar per file.
+#[derive(Default)]
+pub struct Terminal {
+    bar: Option<(String, Bar)>,
+}
+
+impl Terminal {
+    fn end_bar(&mut self) {
+        if let Some((_, bar)) = self.bar.take() {
+            bar.finish();
+        }
+    }
+}
+
+impl phpev_core::ops::Report for Terminal {
+    fn info(&mut self, msg: &str) {
+        self.end_bar();
+        println!("  {msg}");
+    }
+
+    fn progress(&mut self, label: &str, done: u64, total: Option<u64>) {
+        if self.bar.as_ref().is_none_or(|(l, _)| l != label) {
+            self.end_bar();
+            self.bar = Some((label.to_owned(), Bar::new(label)));
+        }
+        if let Some((_, bar)) = self.bar.as_mut() {
+            bar.update(done, total);
+        }
+    }
+}
+
+impl Drop for Terminal {
+    fn drop(&mut self) {
+        self.end_bar();
+    }
+}

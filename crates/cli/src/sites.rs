@@ -4,10 +4,10 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use phpev_core::config::{self, Config, Site};
+use phpev_core::config::{self, Config};
 use phpev_core::layout::Layout;
 use phpev_core::sites::{self, Kind};
-use phpev_core::{elevate, hosts, php, shim, version};
+use phpev_core::{ops, php, shim, version};
 
 /// Absolute, normalized form of `dir` (default: the current directory).
 pub(crate) fn absolute(dir: Option<PathBuf>) -> io::Result<PathBuf> {
@@ -88,48 +88,18 @@ pub fn unpark(dir: Option<PathBuf>) -> io::Result<ExitCode> {
 pub fn link(name: Option<String>, php_version: Option<String>) -> io::Result<ExitCode> {
     let layout = Layout::resolve()?;
     let path = absolute(None)?;
-    let folder = path
-        .file_name()
-        .map(|f| f.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    let name = match name {
-        Some(n) => sites::normalize_name(&n).filter(|norm| *norm == n).ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!("`{n}` is not a valid site name (use a-z, 0-9, -)"),
-            )
-        })?,
-        None => sites::normalize_name(&folder).ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "cannot derive a site name from this folder; pass one: phpev link <name>",
-            )
-        })?,
-    };
     if let Some(v) = &php_version {
         let installed = php::installed(&layout);
         if version::best_match(v, installed.iter().map(String::as_str)).is_none() {
             println!("warning: PHP {v} is not installed yet (phpev php install {v})");
         }
     }
-    let replaced = config::update(&layout.config_file(), |c| {
-        let previous = c.sites.iter().find(|s| s.name == name).cloned();
-        c.sites.retain(|s| s.name != name);
-        // Re-linking the same folder keeps its HTTPS and Defender flags.
-        let same = previous.as_ref().filter(|p| same_path(&p.path, &path));
-        c.sites.push(Site {
-            name: name.clone(),
-            path: path.clone(),
-            php: php_version.clone(),
-            secure: same.is_some_and(|p| p.secure),
-            defender_excluded: same.is_some_and(|p| p.defender_excluded),
-        });
-        previous.is_some()
-    })?;
+    let linked = ops::link_site(&layout, &path, name.as_deref(), php_version)?;
     let config = Config::load(&layout.config_file())?;
     println!(
-        "{} http://{name}.{}  →  {}",
-        if replaced { "Re-linked" } else { "Linked" },
+        "{} http://{}.{}  →  {}",
+        if linked.replaced { "Re-linked" } else { "Linked" },
+        linked.name,
         config.tld,
         path.display()
     );
@@ -221,30 +191,8 @@ pub(crate) fn auto_hosts(layout: &Layout) {
 /// Rewrites the PHPev block of the hosts file with every site (`include`) or
 /// removes it (`!include`).
 pub(crate) fn write_hosts(config: &Config, include: bool) -> io::Result<()> {
-    let names: Vec<String> = if include {
-        sites::all(config).iter().map(|s| s.host(&config.tld)).collect()
-    } else {
-        Vec::new()
-    };
-    if let Some(bad) = names.iter().find(|h| !hosts::is_valid_host(h)) {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("invalid hostname {bad} (check `tld` in config.toml)"),
-        ));
-    }
-    println!(
-        "Asking for administrator rights to update the hosts file ({} sites)…",
-        names.len()
-    );
-    let mut args = vec![elevate::CMD_HOSTS_SYNC];
-    args.extend(names.iter().map(String::as_str));
-    let code = elevate::run_elevated(&elevate::helper_path()?, &args)?;
-    if code != 0 {
-        return Err(io::Error::other(format!(
-            "{} failed with exit code {code}",
-            elevate::HELPER_EXE
-        )));
-    }
-    println!("Hosts file updated.");
+    println!("Asking for administrator rights to update the hosts file…");
+    let n = ops::write_hosts(config, include)?;
+    println!("Hosts file updated ({n} sites).");
     Ok(())
 }

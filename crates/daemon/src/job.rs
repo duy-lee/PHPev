@@ -11,7 +11,7 @@ use std::mem;
 use windows_sys::Win32::Foundation::HANDLE;
 use windows_sys::Win32::System::JobObjects::{
     AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation, SetInformationJobObject,
-    JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_BREAKAWAY_OK, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
 };
 use windows_sys::Win32::System::Threading::GetCurrentProcess;
 
@@ -24,7 +24,10 @@ pub fn enter_kill_on_close_job() -> io::Result<()> {
             return Err(io::Error::last_os_error());
         }
         let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = mem::zeroed();
-        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        // BREAKAWAY_OK: windows the user asked for (Explorer, Terminal, browser)
+        // are started outside the job (CREATE_BREAKAWAY_FROM_JOB) and must not
+        // close when PHPev stops. Supervised children still inherit the job.
+        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_BREAKAWAY_OK;
         if SetInformationJobObject(
             job,
             JobObjectExtendedLimitInformation,

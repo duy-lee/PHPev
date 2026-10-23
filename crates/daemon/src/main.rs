@@ -5,9 +5,13 @@
 
 #![windows_subsystem = "windows"]
 
+mod dashboard;
 mod endsession;
 mod fastcgi;
+mod http_util;
 mod job;
+mod jobs;
+mod launch;
 mod log;
 mod pool;
 mod router;
@@ -72,15 +76,17 @@ fn main() -> ExitCode {
     }
 }
 
-struct Daemon {
-    layout: Layout,
+pub(crate) struct Daemon {
+    pub(crate) layout: Layout,
     started: Instant,
     db: Mutex<Option<Db>>,
-    pools: Arc<Pools>,
+    pub(crate) pools: Arc<Pools>,
     router: std::sync::Mutex<ipc::RouterStatus>,
     /// The running router (HTTP); the HTTPS listener reuses it.
     http_router: std::sync::Mutex<Option<Arc<Router>>>,
     shutdown: UnboundedSender<ShutdownRequest>,
+    /// Dashboard login URL (with the per-start token), or why it is not running.
+    dashboard: std::sync::Mutex<Result<String, String>>,
 }
 
 async fn run(layout: Layout) -> io::Result<()> {
@@ -104,6 +110,7 @@ async fn run(layout: Layout) -> io::Result<()> {
         router: std::sync::Mutex::new(ipc::RouterStatus::default()),
         http_router: std::sync::Mutex::new(None),
         shutdown: shutdown_tx.clone(),
+        dashboard: std::sync::Mutex::new(Err("not started".into())),
     });
     endsession::spawn(shutdown_tx);
 
@@ -114,6 +121,7 @@ async fn run(layout: Layout) -> io::Result<()> {
     }
 
     daemon.start_router().await;
+    daemon.clone().start_dashboard().await;
 
     let reaper = daemon.clone();
     tokio::spawn(async move {
@@ -179,6 +187,12 @@ impl Daemon {
             Request::DbUse { major } => self.db_use(&major).await,
             Request::PhpWarm { version } => self.php_warm(version.as_deref()).await,
             Request::EnableHttps => self.start_https().await,
+            Request::DashboardUrl => self
+                .dashboard
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone()
+                .map_err(io::Error::other),
             Request::PhpRestart { version } => {
                 let stopped = self.pools.stop_version(&version).await;
                 Ok(format!(
@@ -196,7 +210,7 @@ impl Daemon {
         Config::load(&self.layout.config_file())
     }
 
-    fn remember_db(&self, running: bool) {
+    pub(crate) fn remember_db(&self, running: bool) {
         let mut state = State::load(&self.layout);
         state.mariadb_running = running;
         if let Err(e) = state.save(&self.layout) {
@@ -204,7 +218,7 @@ impl Daemon {
         }
     }
 
-    async fn db_start(&self) -> io::Result<String> {
+    pub(crate) async fn db_start(&self) -> io::Result<String> {
         let config = self.config()?;
         let major = config.mariadb.ok_or_else(|| {
             io::Error::new(
@@ -238,7 +252,7 @@ impl Daemon {
         ))
     }
 
-    async fn db_stop(&self) -> io::Result<String> {
+    pub(crate) async fn db_stop(&self) -> io::Result<String> {
         match self.db.lock().await.take() {
             Some(db) => {
                 let v = db.version.clone();
@@ -250,7 +264,7 @@ impl Daemon {
     }
 
     /// The config already names the new major (written by the CLI); restart if running.
-    async fn db_use(&self, major: &str) -> io::Result<String> {
+    pub(crate) async fn db_use(&self, major: &str) -> io::Result<String> {
         let version = mariadb::installed_for_major(&self.layout, major).ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::NotFound,
@@ -285,7 +299,7 @@ impl Daemon {
         Ok(format!("php-cgi pool for PHP {found}: {n} workers"))
     }
 
-    async fn status(&self) -> ipc::Status {
+    pub(crate) async fn status(&self) -> ipc::Status {
         let pid = std::process::id();
         ipc::Status {
             pid,
@@ -294,6 +308,11 @@ impl Daemon {
             mariadb: self.db.lock().await.as_ref().map(Db::status),
             php_pools: self.pools.status().await,
             router: self.router.lock().unwrap_or_else(|e| e.into_inner()).clone(),
+            dashboard: match &*self.dashboard.lock().unwrap_or_else(|e| e.into_inner()) {
+                // The address only; the login token stays out of status output.
+                Ok(url) => Ok(url.split("/login").next().unwrap_or_default().to_owned()),
+                Err(e) => Err(e.clone()),
+            },
         }
     }
 
@@ -335,7 +354,7 @@ impl Daemon {
     }
 
     /// Binds the HTTPS listener (idempotent). A busy port is reported in status.
-    async fn start_https(&self) -> io::Result<String> {
+    pub(crate) async fn start_https(&self) -> io::Result<String> {
         if let Some(addr) = self
             .router
             .lock()
@@ -374,6 +393,22 @@ impl Daemon {
                 Err(e)
             }
         }
+    }
+
+    /// Serves the dashboard on 127.0.0.1 (§14). A busy port is reported, not fatal.
+    async fn start_dashboard(self: Arc<Self>) {
+        let port = self.config().map(|c| c.ports.dashboard).unwrap_or(7600);
+        let result = async {
+            ensure_port_free(port, "the dashboard")?;
+            let token = dashboard::new_token()?;
+            dashboard::listen(self.clone(), port, token).await
+        }
+        .await;
+        match &result {
+            Ok(_) => log_info!("dashboard on http://127.0.0.1:{port}"),
+            Err(e) => log_warn!("dashboard not started: {e}"),
+        }
+        *self.dashboard.lock().unwrap_or_else(|e| e.into_inner()) = result.map_err(|e| e.to_string());
     }
 
     /// Stops everything but keeps `state.json`, so the next start restores MariaDB.

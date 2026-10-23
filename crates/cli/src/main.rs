@@ -66,6 +66,8 @@ enum Command {
     Stop,
     /// Show what the background service is running
     Status,
+    /// Open the PHPev dashboard in the browser
+    Dashboard,
     /// Start the background service when you log in to Windows
     Autostart {
         #[arg(value_enum)]
@@ -218,6 +220,7 @@ fn main() -> ExitCode {
         Command::Start => daemon::start(),
         Command::Stop => daemon::stop(),
         Command::Status => daemon::status(),
+        Command::Dashboard => daemon::dashboard(),
         Command::Autostart { mode } => daemon::autostart(mode),
         Command::Park { dir } => sites::park(dir),
         Command::Unpark { dir } => sites::unpark(dir),

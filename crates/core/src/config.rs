@@ -34,6 +34,8 @@ pub struct Ports {
     pub http: u16,
     pub https: u16,
     pub mariadb: u16,
+    /// Dashboard on 127.0.0.1 (DESIGN_SPEC §14.2).
+    pub dashboard: u16,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -70,6 +72,7 @@ impl Default for Ports {
             http: 80,
             https: 443,
             mariadb: 3306,
+            dashboard: 7600,
         }
     }
 }

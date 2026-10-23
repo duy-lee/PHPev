@@ -6,17 +6,13 @@ use std::convert::Infallible;
 use std::io;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::{Path, PathBuf};
-use std::pin::Pin;
 use std::sync::{Arc, Mutex};
-use std::task::{Context, Poll};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use bytes::Bytes;
 use http::header::{self, HeaderName, HeaderValue};
 use http::{Request, Response, StatusCode};
-use http_body::Frame;
-use http_body_util::combinators::BoxBody;
-use http_body_util::{BodyExt, Full};
+use http_body_util::BodyExt;
 use hyper::body::Incoming;
 use hyper::service::service_fn;
 use hyper_util::rt::TokioIo;
@@ -29,10 +25,9 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 
 use crate::fastcgi::{self, Event, Params};
+use crate::http_util::{empty, escape, full, internal, text, Body, ChannelBody};
 use crate::log::log_warn;
 use crate::pool::{Lease, Pools};
-
-pub type Body = BoxBody<Bytes, io::Error>;
 
 /// Files up to this size are read in one go; larger ones are streamed.
 const INLINE_FILE_MAX: u64 = 1 << 20;
@@ -770,47 +765,7 @@ fn php_params(parts: &http::request::Parts, ctx: &PhpRequest<'_>, content_length
     p
 }
 
-// ---------------------------------------------------------------- responses
-
-struct ChannelBody(mpsc::Receiver<Bytes>);
-
-impl http_body::Body for ChannelBody {
-    type Data = Bytes;
-    type Error = io::Error;
-
-    fn poll_frame(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Result<Frame<Bytes>, io::Error>>> {
-        self.0.poll_recv(cx).map(|chunk| chunk.map(|b| Ok(Frame::data(b))))
-    }
-}
-
-fn full(data: impl Into<Bytes>) -> Body {
-    Full::new(data.into()).map_err(|never| match never {}).boxed()
-}
-
-fn empty() -> Body {
-    full(Bytes::new())
-}
-
-fn internal() -> Response<Body> {
-    let mut r = Response::new(empty());
-    *r.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
-    r
-}
-
-fn text(status: StatusCode, msg: &str) -> Response<Body> {
-    Response::builder()
-        .status(status)
-        .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
-        .body(full(msg.to_owned()))
-        .unwrap_or_else(|_| internal())
-}
-
-fn escape(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-}
+// ---------------------------------------------------------------- dashboard of sites
 
 /// Site list at http://localhost, and the 404 page for unknown hosts.
 fn dashboard(status: StatusCode, sites: &[Site], config: &Config, unknown: Option<&str>) -> Response<Body> {

@@ -48,6 +48,8 @@ pub enum Request {
     },
     /// Start the HTTPS listener now (after `phpev secure` created the CA).
     EnableHttps,
+    /// The dashboard login URL, including this daemon run's token.
+    DashboardUrl,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -58,7 +60,7 @@ pub enum Response {
     Error { message: String },
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Status {
     pub pid: u32,
     pub uptime_secs: u64,
@@ -67,6 +69,13 @@ pub struct Status {
     pub php_pools: Vec<Pool>,
     #[serde(default)]
     pub router: RouterStatus,
+    /// Dashboard address (without the login token), or why it is not running.
+    #[serde(default = "dashboard_unknown")]
+    pub dashboard: Result<String, String>,
+}
+
+fn dashboard_unknown() -> Result<String, String> {
+    Err("unknown".into())
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

@@ -5,13 +5,14 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use clap::Subcommand;
-use phpev_core::ca::{self, Ca};
-use phpev_core::config::{self, Config, Site};
+use phpev_core::ca;
+use phpev_core::config::{self, Config};
 use phpev_core::ipc::{self, Request};
 use phpev_core::layout::Layout;
-use phpev_core::sites;
+use phpev_core::{ops, sites};
 
 use crate::daemon;
+use crate::progress::Terminal;
 use crate::sites::{absolute, auto_hosts, write_hosts};
 
 #[derive(Subcommand)]
@@ -47,46 +48,11 @@ fn same(a: &Path, b: &Path) -> bool {
     a.to_string_lossy().eq_ignore_ascii_case(&b.to_string_lossy())
 }
 
-/// Creates the CA if needed and makes Windows and PHP trust it.
-fn ensure_trusted_ca(layout: &Layout, tld: &str) -> io::Result<Ca> {
-    let ca = Ca::load_or_create(layout, tld)?;
-    if !ca::is_trusted(ca.der())? {
-        println!(
-            "Windows will now ask you to trust \"PHPev Local Development CA\".\n  \
-             It can only sign *.localhost, *.test, *.local{} — never real websites.",
-            if ["localhost", "test", "local"].contains(&tld) {
-                String::new()
-            } else {
-                format!(" and *.{tld}")
-            }
-        );
-        ca::trust(ca.der())?;
-        println!("CA trusted (CurrentUser\\Root).");
-    }
-    // PHP (curl/openssl) does not use the Windows store: add it to cacert.pem.
-    ca::update_php_bundle(layout, Some(ca.pem()))?;
-    Ok(ca)
-}
-
 pub fn secure(name: Option<String>) -> io::Result<ExitCode> {
     let layout = Layout::resolve()?;
     let config = Config::load(&layout.config_file())?;
     let site = find_site(&config, name.as_deref())?;
-    ensure_trusted_ca(&layout, &config.tld)?;
-
-    // A parked site gets a link entry to carry the flag.
-    config::update(&layout.config_file(), |c| {
-        match c.sites.iter_mut().find(|s| s.name == site.name) {
-            Some(s) => s.secure = true,
-            None => c.sites.push(Site {
-                name: site.name.clone(),
-                path: site.path.clone(),
-                php: None,
-                secure: true,
-                defender_excluded: false,
-            }),
-        }
-    })?;
+    ops::set_site_secure(&layout, &site.name, true, &mut Terminal::default())?;
 
     if ipc::is_running() {
         match daemon::request(&Request::EnableHttps) {
@@ -114,13 +80,9 @@ pub fn unsecure(name: Option<String>) -> io::Result<ExitCode> {
     let layout = Layout::resolve()?;
     let config = Config::load(&layout.config_file())?;
     let site = find_site(&config, name.as_deref())?;
-    let changed = config::update(&layout.config_file(), |c| {
-        c.sites
-            .iter_mut()
-            .find(|s| s.name == site.name)
-            .map(|s| std::mem::replace(&mut s.secure, false))
-    })?;
-    if changed == Some(true) {
+    let was = config.sites.iter().any(|s| s.name == site.name && s.secure);
+    ops::set_site_secure(&layout, &site.name, false, &mut Terminal::default())?;
+    if was {
         println!("HTTPS off for http://{}", site.host(&config.tld));
     } else {
         println!("{} was not secured", site.host(&config.tld));
@@ -217,7 +179,7 @@ pub fn tld(new: Option<String>) -> io::Result<ExitCode> {
     }
     if ca::exists(&layout) && updated.sites.iter().any(|s| s.secure) {
         // A non-built-in TLD needs a CA certificate permitting it.
-        ensure_trusted_ca(&layout, &new)?;
+        ops::ensure_trusted_ca(&layout, &new, &mut Terminal::default())?;
         println!("Restart PHPev so HTTPS uses the new names: phpev stop && phpev start");
     }
     Ok(ExitCode::SUCCESS)

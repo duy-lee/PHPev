@@ -8,14 +8,15 @@ use crate::layout::{ascii_short_path, HomeSource, Layout, PathRisk, FALLBACK_HOM
 use crate::ports;
 use crate::registry::{self, Hive};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Status {
     Ok,
     Warn,
     Fail,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Check {
     pub status: Status,
     pub title: String,
@@ -71,7 +72,7 @@ pub fn run(layout: &Layout, config: &Config) -> (Vec<Check>, PathReport) {
         ("HTTPS", config.ports.https),
         ("MariaDB", config.ports.mariadb),
     ] {
-        checks.push(port_check(name, port));
+        checks.push(port_check(layout, name, port));
     }
     (checks, report)
 }
@@ -292,9 +293,13 @@ fn cacert_check(layout: &Layout) -> Check {
     }
 }
 
-fn port_check(name: &str, port: u16) -> Check {
+fn port_check(layout: &Layout, name: &str, port: u16) -> Check {
     match ports::listeners_on(port) {
         Ok(found) if found.is_empty() => Check::new(Status::Ok, format!("Port {port} ({name}) is free")),
+        // PHPev's own daemon or MariaDB holding the port is the expected state.
+        Ok(found) if found.iter().all(|l| is_phpev_process(layout, l.pid)) => {
+            Check::new(Status::Ok, format!("Port {port} ({name}) is served by PHPev"))
+        }
         Ok(found) => {
             let mut c = Check::new(Status::Warn, format!("Port {port} ({name}) is in use"));
             let mut seen = Vec::new();
@@ -312,4 +317,10 @@ fn port_check(name: &str, port: u16) -> Check {
         }
         Err(e) => Check::new(Status::Warn, format!("Could not inspect port {port}: {e}")),
     }
+}
+
+/// True if `pid` runs an executable from the PHPev home (daemon, MariaDB, php-cgi).
+fn is_phpev_process(layout: &Layout, pid: u32) -> bool {
+    let root = layout.root().to_string_lossy().to_ascii_lowercase();
+    crate::procinfo::exe_path(pid).is_some_and(|exe| exe.to_string_lossy().to_ascii_lowercase().starts_with(&root))
 }

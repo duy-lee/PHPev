@@ -1,5 +1,6 @@
 //! Shared building blocks for the PHPev binaries (CLI, daemon, shims, elevate helper).
 
+pub mod api;
 pub mod ca;
 pub mod clock;
 pub mod composer;
@@ -15,6 +16,7 @@ pub mod ipc;
 pub mod layout;
 pub mod mariadb;
 pub mod net;
+pub mod ops;
 pub mod php;
 pub mod ports;
 pub mod procinfo;

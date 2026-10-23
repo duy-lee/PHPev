@@ -239,24 +239,50 @@ pub fn has_extension_dll(layout: &Layout, version: &str, ext: &str) -> bool {
         .is_file()
 }
 
+/// True for an active `extension=<ext>` line (also `php_<ext>.dll`, quoted).
+fn is_extension_line(line: &str, ext: &str) -> bool {
+    let l = line.trim();
+    !l.starts_with(';')
+        && l.split_once('=').is_some_and(|(k, v)| {
+            k.trim() == "extension"
+                && v.trim()
+                    .trim_matches('"')
+                    .trim_start_matches("php_")
+                    .trim_end_matches(".dll")
+                    .eq_ignore_ascii_case(ext)
+        })
+}
+
+/// Comments out every `extension=<ext>` line in the version's php.ini.
+/// Returns false if it was not enabled there.
+pub fn disable_extension(layout: &Layout, version: &str, ext: &str) -> io::Result<bool> {
+    let ini = version_dir(layout, version).join("php.ini");
+    let text = std::fs::read_to_string(&ini)?;
+    if !text.lines().any(|l| is_extension_line(l, ext)) {
+        return Ok(false);
+    }
+    let mut out: String = text
+        .lines()
+        .map(|l| {
+            if is_extension_line(l, ext) {
+                format!(";{l}")
+            } else {
+                l.to_owned()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    out.push('\n');
+    std::fs::write(ini, out)?;
+    Ok(true)
+}
+
 /// Appends `extension=<ext>` to the version's php.ini (it applies to every
 /// project using that version). Returns false if it was already enabled.
 pub fn enable_extension(layout: &Layout, version: &str, ext: &str) -> io::Result<bool> {
     let ini = version_dir(layout, version).join("php.ini");
     let text = std::fs::read_to_string(&ini)?;
-    let already = text.lines().any(|l| {
-        let l = l.trim();
-        !l.starts_with(';')
-            && l.split_once('=').is_some_and(|(k, v)| {
-                k.trim() == "extension"
-                    && v.trim()
-                        .trim_matches('"')
-                        .trim_start_matches("php_")
-                        .trim_end_matches(".dll")
-                        == ext
-            })
-    });
-    if already {
+    if text.lines().any(|l| is_extension_line(l, ext)) {
         return Ok(false);
     }
     let mut text = text;
@@ -454,6 +480,32 @@ mod tests {
         assert!(!ini.contains("zend_extension=opcache"));
         assert!(ini.contains("extension_dir=\"C:\\p\\ext\""));
         assert!(ini.contains("curl.cainfo=\"C:\\c.pem\""));
+    }
+
+    #[test]
+    fn extension_toggle_round_trip() {
+        let root = std::env::temp_dir().join(format!("phpev-ext-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let layout = Layout::at(root.clone(), crate::layout::HomeSource::ProcessEnv);
+        let dir = version_dir(&layout, "8.4.1");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("php.ini"),
+            "[PHP]
+extension=intl
+",
+        )
+        .unwrap();
+
+        assert!(enable_extension(&layout, "8.4.1", "soap").unwrap());
+        assert!(!enable_extension(&layout, "8.4.1", "soap").unwrap());
+        assert!(disable_extension(&layout, "8.4.1", "soap").unwrap());
+        assert!(!disable_extension(&layout, "8.4.1", "soap").unwrap());
+        assert!(enable_extension(&layout, "8.4.1", "soap").unwrap());
+        let ini = std::fs::read_to_string(dir.join("php.ini")).unwrap();
+        assert!(ini.contains(";extension=soap") && ini.lines().filter(|l| is_extension_line(l, "soap")).count() == 1);
+        assert!(ini.contains("extension=intl"));
+        std::fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]

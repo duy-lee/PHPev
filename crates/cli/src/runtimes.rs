@@ -4,13 +4,12 @@ use std::io;
 use std::process::ExitCode;
 use std::time::Instant;
 
-use phpev_core::config::{self, Config};
-use phpev_core::extract::Stats;
+use phpev_core::config::Config;
 use phpev_core::layout::Layout;
 use phpev_core::net::Http;
-use phpev_core::{clock, composer, mariadb, php, shim, version};
+use phpev_core::{clock, composer, mariadb, ops, php, shim, version};
 
-use crate::progress::{mib, Bar};
+use crate::progress::{Bar, Terminal};
 
 /// Loads the layout, creating its directories if `phpev setup` has not run yet.
 fn layout() -> io::Result<Layout> {
@@ -24,15 +23,6 @@ fn with_bar<T>(label: &str, f: impl FnOnce(&mut dyn FnMut(u64, Option<u64>)) -> 
     let result = f(&mut |done, total| bar.update(done, total));
     bar.finish();
     result
-}
-
-fn report_extract(stats: &Stats) {
-    println!(
-        "  unpacked {} files ({}), skipped {} not needed",
-        stats.files,
-        mib(stats.bytes),
-        stats.skipped
-    );
 }
 
 // ---------------------------------------------------------------- PHP
@@ -72,52 +62,17 @@ pub fn php_list(available: bool) -> io::Result<ExitCode> {
 pub fn php_install(wanted: &str) -> io::Result<ExitCode> {
     let started = Instant::now();
     let layout = layout()?;
-    let http = Http::new()?;
-    let releases = php::available(&http)?;
-    let release = php::resolve(&releases, wanted)?;
-    println!("PHP {} ({}, NTS x64)", release.version, release.toolset);
-
-    if !php::vc_runtime_ok(&release.toolset) {
-        println!("  Visual C++ runtime missing or too old — installing it (Windows will ask for permission)…");
-        with_bar("vc_redist.x64.exe", |p| php::install_vc_runtime(&http, &layout, p))?;
-    }
-    with_bar("cacert.pem", |p| php::ensure_cacert(&http, &layout, p))?;
-
-    match with_bar(&release.zip, |p| php::install(&http, &layout, release, p))? {
-        Some(stats) => report_extract(&stats),
-        None => println!("  already installed"),
-    }
-    if php::write_php_ini(&layout, &release.version)? {
-        println!("  wrote php.ini");
-    }
-
-    let modules = php::verify(&layout, &release.version)?;
-    println!("  verified: {} extensions loaded", modules.len());
-
-    let became_default = config::update(&layout.config_file(), |c| {
-        c.php.is_none().then(|| c.php = Some(release.line.clone())).is_some()
-    })?;
-    if became_default {
-        println!("  set as default PHP ({})", release.line);
-    }
+    let version = ops::install_php(&Http::new()?, &layout, wanted, &mut Terminal::default())?;
     println!(
         "Done in {:.1}s → {}",
         started.elapsed().as_secs_f64(),
-        php::version_dir(&layout, &release.version).display()
+        php::version_dir(&layout, &version).display()
     );
     Ok(ExitCode::SUCCESS)
 }
 
 pub fn php_use(wanted: &str) -> io::Result<ExitCode> {
-    let layout = Layout::resolve()?;
-    let installed = php::installed(&layout);
-    let Some(found) = version::best_match(wanted, installed.iter().map(String::as_str)) else {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!("PHP {wanted} is not installed — run: phpev php install {wanted}"),
-        ));
-    };
-    config::update(&layout.config_file(), |c| c.php = Some(wanted.to_owned()))?;
+    let found = ops::set_default_php(&Layout::resolve()?, wanted)?;
     println!("Default PHP is now {wanted} (currently {found}).");
     Ok(ExitCode::SUCCESS)
 }
@@ -189,56 +144,11 @@ pub fn db_list(available: bool) -> io::Result<ExitCode> {
 pub fn db_install(wanted: &str) -> io::Result<ExitCode> {
     let started = Instant::now();
     let layout = layout()?;
-    let http = Http::new()?;
-    let major = mariadb::major_of(wanted);
-    let majors = mariadb::majors(&http)?;
-    let Some(info) = majors.iter().find(|m| m.release_id == major) else {
-        let ids: Vec<&str> = majors.iter().map(|m| m.release_id.as_str()).collect();
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!(
-                "MariaDB {major} is not a stable release (available: {})",
-                ids.join(", ")
-            ),
-        ));
-    };
-    if info.is_eol(&clock::today()) {
-        println!(
-            "warning: MariaDB {major} reached end of life on {}; it gets no security fixes.",
-            info.release_eol_date.as_deref().unwrap_or("?")
-        );
-    }
-    let release = mariadb::latest(&http, &major)?;
-    if wanted != major && wanted != release.version {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!("only the latest {major} release ({}) can be installed", release.version),
-        ));
-    }
-    println!("MariaDB {}", release.version);
-
-    let label = format!("mariadb-{}-winx64.zip", release.version);
-    match with_bar(&label, |p| mariadb::install(&http, &layout, &release, p))? {
-        Some(stats) => report_extract(&stats),
-        None => println!("  already installed"),
-    }
-    if mariadb::init_data_dir(&layout, &release.version)? {
-        println!(
-            "  initialized data directory {}",
-            mariadb::data_dir(&layout, &major).display()
-        );
-    }
-
-    let became_active = config::update(&layout.config_file(), |c| {
-        c.mariadb.is_none().then(|| c.mariadb = Some(major.clone())).is_some()
-    })?;
-    if became_active {
-        println!("  set as active MariaDB ({major})");
-    }
+    let version = ops::install_mariadb(&Http::new()?, &layout, wanted, &mut Terminal::default())?;
     println!(
         "Done in {:.1}s → {}",
         started.elapsed().as_secs_f64(),
-        mariadb::version_dir(&layout, &release.version).display()
+        mariadb::version_dir(&layout, &version).display()
     );
     Ok(ExitCode::SUCCESS)
 }

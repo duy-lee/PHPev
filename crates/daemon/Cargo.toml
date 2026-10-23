@@ -7,6 +7,7 @@ license.workspace = true
 [dependencies]
 phpev-core.workspace = true
 serde_json.workspace = true
+serde.workspace = true
 tokio = { version = "1", default-features = false, features = ["rt", "rt-multi-thread", "net", "process", "time", "sync", "macros", "io-util", "fs"] }
 hyper = { version = "1", default-features = false, features = ["server", "http1"] }
 hyper-util = { version = "0.1", default-features = false, features = ["tokio"] }
@@ -22,6 +23,7 @@ workspace = true
 features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
+    "Win32_Security_Cryptography",
     "Win32_Security",
     "Win32_System_JobObjects",
     "Win32_System_LibraryLoader",

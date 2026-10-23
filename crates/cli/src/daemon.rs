@@ -159,6 +159,10 @@ pub fn status() -> io::Result<ExitCode> {
         (None, true) => println!("Router:       not started"),
     }
     print_https();
+    match &status.dashboard {
+        Ok(addr) => println!("Dashboard:    {addr}  (open with `phpev dashboard`)"),
+        Err(e) => println!("Dashboard:    NOT RUNNING — {e}"),
+    }
     match &status.mariadb {
         Some(db) => println!(
             "MariaDB:      {} {}  127.0.0.1:{}  pid {}  RAM {}",
@@ -272,5 +276,19 @@ pub fn autostart(mode: Autostart) -> io::Result<ExitCode> {
             println!("PHPev will no longer start at log in.");
         }
     }
+    Ok(ExitCode::SUCCESS)
+}
+
+/// `phpev dashboard`: starts PHPev if needed and opens the dashboard with this
+/// run's login token (the browser then holds it as an HttpOnly cookie).
+pub fn dashboard() -> io::Result<ExitCode> {
+    ensure_running()?;
+    let url = request(&Request::DashboardUrl)?;
+    // url.dll hands the URL to the default browser without a shell parsing it.
+    let system = std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
+    Command::new(system.join(r"System32\rundll32.exe"))
+        .args(["url.dll,FileProtocolHandler", &url])
+        .spawn()?;
+    println!("Opening the dashboard: {}", url.split("/login").next().unwrap_or(&url));
     Ok(ExitCode::SUCCESS)
 }
