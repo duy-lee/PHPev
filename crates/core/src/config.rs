@@ -22,6 +22,10 @@ pub struct Config {
     pub parked: Vec<PathBuf>,
     /// Individually linked sites.
     pub sites: Vec<Site>,
+    /// Set once `phpev doctor --defender-exclude` succeeded. Non-admin users
+    /// cannot read Defender's exclusion list, so PHPev remembers it here.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub defender_excluded: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -40,6 +44,10 @@ pub struct Site {
     pub php: Option<String>,
     #[serde(default)]
     pub secure: bool,
+    /// A Microsoft Defender exclusion was added for this folder by
+    /// `phpev import` (non-admin users cannot read the exclusion list).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub defender_excluded: bool,
 }
 
 impl Default for Config {
@@ -51,6 +59,7 @@ impl Default for Config {
             ports: Ports::default(),
             parked: Vec::new(),
             sites: Vec::new(),
+            defender_excluded: false,
         }
     }
 }
@@ -76,11 +85,26 @@ impl Config {
         }
     }
 
-    /// Writes the config atomically: write `<file>.tmp`, then rename over the original.
+    /// Writes the config atomically (write `<file>.tmp`, then rename over the
+    /// original) and refreshes the shims' cache next to it.
     pub fn save(&self, path: &Path) -> io::Result<()> {
         let text = toml::to_string_pretty(self).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-        write_atomic(path, text.as_bytes())
+        write_atomic(path, text.as_bytes())?;
+        crate::shim::write_cache(path, self)
     }
+}
+
+/// Name of the cross-process lock every config.toml writer holds.
+const LOCK_NAME: &str = "PHPev.Config";
+
+/// Load → modify → save under the cross-process config lock, so the daemon and
+/// a CLI running while the daemon is down never overwrite each other (§10).
+pub fn update<T>(path: &Path, f: impl FnOnce(&mut Config) -> T) -> io::Result<T> {
+    let _guard = crate::winsync::lock(LOCK_NAME, std::time::Duration::from_secs(10))?;
+    let mut config = Config::load(path)?;
+    let out = f(&mut config);
+    config.save(path)?;
+    Ok(out)
 }
 
 /// Replaces `path` with `data` so readers never observe a half-written file.
@@ -126,6 +150,7 @@ mod tests {
                 path: r"C:\code\blog".into(),
                 php: None,
                 secure: true,
+                defender_excluded: false,
             }],
             ..Config::default()
         };

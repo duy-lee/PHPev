@@ -58,6 +58,7 @@ pub fn run(layout: &Layout, config: &Config) -> (Vec<Check>, PathReport) {
     let (path_checks, report) = path_checks(layout);
     checks.extend(path_checks);
     checks.push(vc_runtime_check());
+    checks.push(defender_check(config));
     checks.push(cacert_check(layout));
     for (name, port) in [
         ("HTTP", config.ports.http),
@@ -204,6 +205,19 @@ fn vc_runtime_check() -> Check {
         ),
         _ => Check::new(Status::Warn, "VC++ 2015-2022 x64 runtime not found (needed by PHP)")
             .hint("phpev will install it together with the first PHP version"),
+    }
+}
+
+fn defender_check(config: &Config) -> Check {
+    if config.defender_excluded {
+        Check::new(Status::Ok, "Microsoft Defender exclusion added for the PHPev home")
+    } else {
+        Check::new(
+            Status::Warn,
+            "No Microsoft Defender exclusion for the PHPev home (every php/composer call is scanned)",
+        )
+        .detail("on-access scanning adds to the start-up time of every PHP process")
+        .hint("phpev doctor --defender-exclude   (needs admin; skip if you use another antivirus)")
     }
 }
 

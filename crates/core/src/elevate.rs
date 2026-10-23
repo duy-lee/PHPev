@@ -16,6 +16,13 @@ pub const HELPER_EXE: &str = "phpev-elevate.exe";
 /// Subcommand understood by the helper: put a directory first on the system PATH.
 pub const CMD_SYSTEM_PATH_PREPEND: &str = "system-path-prepend";
 
+/// Subcommand understood by the helper: add a Microsoft Defender path exclusion.
+pub const CMD_DEFENDER_EXCLUDE: &str = "defender-exclude";
+
+/// Subcommand understood by the helper: rewrite the PHPev block of the hosts
+/// file with the given hostnames (none = remove the block).
+pub const CMD_HOSTS_SYNC: &str = "hosts-sync";
+
 /// The helper ships next to the calling executable.
 pub fn helper_path() -> io::Result<PathBuf> {
     let exe = std::env::current_exe()?;

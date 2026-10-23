@@ -5,8 +5,8 @@ use std::ptr;
 
 use windows_sys::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS, WIN32_ERROR};
 use windows_sys::Win32::System::Registry::{
-    RegGetValueW, RegSetKeyValueW, HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, REG_EXPAND_SZ, RRF_NOEXPAND,
-    RRF_RT_REG_DWORD, RRF_RT_REG_EXPAND_SZ, RRF_RT_REG_SZ,
+    RegDeleteKeyValueW, RegGetValueW, RegSetKeyValueW, HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, REG_EXPAND_SZ,
+    REG_SZ, REG_VALUE_TYPE, RRF_NOEXPAND, RRF_RT_REG_DWORD, RRF_RT_REG_EXPAND_SZ, RRF_RT_REG_SZ,
 };
 
 use crate::wide::{from_wide, to_wide};
@@ -100,6 +100,15 @@ pub fn read_dword(hive: Hive, subkey: &str, value: &str) -> io::Result<Option<u3
 
 /// Writes a `REG_EXPAND_SZ` value, creating the key if needed.
 pub fn write_expand_string(hive: Hive, subkey: &str, value: &str, data: &str) -> io::Result<()> {
+    write_wide(hive, subkey, value, REG_EXPAND_SZ, data)
+}
+
+/// Writes a `REG_SZ` value, creating the key if needed.
+pub fn write_string(hive: Hive, subkey: &str, value: &str, data: &str) -> io::Result<()> {
+    write_wide(hive, subkey, value, REG_SZ, data)
+}
+
+fn write_wide(hive: Hive, subkey: &str, value: &str, kind: REG_VALUE_TYPE, data: &str) -> io::Result<()> {
     let hkey = hive.handle();
     let subkey = to_wide(subkey);
     let value = to_wide(value);
@@ -109,10 +118,18 @@ pub fn write_expand_string(hive: Hive, subkey: &str, value: &str, data: &str) ->
             hkey,
             subkey.as_ptr(),
             value.as_ptr(),
-            REG_EXPAND_SZ,
+            kind,
             data.as_ptr().cast(),
             (data.len() * 2) as u32,
         )
     };
+    check(rc).map(|_| ())
+}
+
+/// Deletes a value; a missing value is not an error.
+pub fn delete_value(hive: Hive, subkey: &str, value: &str) -> io::Result<()> {
+    let subkey = to_wide(subkey);
+    let value = to_wide(value);
+    let rc = unsafe { RegDeleteKeyValueW(hive.handle(), subkey.as_ptr(), value.as_ptr()) };
     check(rc).map(|_| ())
 }
