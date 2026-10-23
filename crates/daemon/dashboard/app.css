@@ -76,3 +76,11 @@ input[type=text] { min-width: 320px; }
 progress { width: 100%; }
 
 .ext-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px 12px; margin-top: 8px; }
+
+/* M9 */
+.charts { grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); }
+.hist { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; }
+.hist-row { display: grid; grid-template-columns: 90px 1fr 60px; gap: 10px; align-items: center; margin: 3px 0; }
+.hist-row .bar { display: block; height: 10px; background: var(--accent); border-radius: 3px; min-width: 1px; }
+.logview { max-height: calc(100vh - 220px); min-height: 300px; }
+.u-legend { color: var(--text); font-size: 12px; }

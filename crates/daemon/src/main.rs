@@ -13,6 +13,8 @@ mod job;
 mod jobs;
 mod launch;
 mod log;
+mod logs;
+mod metrics;
 mod pool;
 mod router;
 mod services;
@@ -81,6 +83,7 @@ pub(crate) struct Daemon {
     started: Instant,
     db: Mutex<Option<Db>>,
     pub(crate) pools: Arc<Pools>,
+    pub(crate) metrics: Arc<metrics::Metrics>,
     router: std::sync::Mutex<ipc::RouterStatus>,
     /// The running router (HTTP); the HTTPS listener reuses it.
     http_router: std::sync::Mutex<Option<Arc<Router>>>,
@@ -107,6 +110,7 @@ async fn run(layout: Layout) -> io::Result<()> {
         started: Instant::now(),
         db: Mutex::new(None),
         pools: Arc::new(Pools::default()),
+        metrics: Arc::new(metrics::Metrics::default()),
         router: std::sync::Mutex::new(ipc::RouterStatus::default()),
         http_router: std::sync::Mutex::new(None),
         shutdown: shutdown_tx.clone(),
@@ -329,7 +333,11 @@ impl Daemon {
         match ensure_port_free(port, "the HTTP router") {
             Err(e) => status.error = Some(e.to_string()),
             Ok(()) => {
-                let router = Arc::new(Router::new(self.layout.clone(), self.pools.clone()));
+                let router = Arc::new(Router::new(
+                    self.layout.clone(),
+                    self.pools.clone(),
+                    self.metrics.clone(),
+                ));
                 *self.http_router.lock().unwrap_or_else(|e| e.into_inner()) = Some(router.clone());
                 match router::listen(router, port, None).await {
                     Ok(addrs) => {

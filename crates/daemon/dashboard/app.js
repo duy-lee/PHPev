@@ -1,7 +1,7 @@
 // PHPev dashboard (DESIGN_SPEC §14). Presentation only: every action is an
 // API v1 call, so another UI (Slint, TUI) can replace this file without
 // touching the daemon. Strings come from /i18n/<lang>.json.
-import { html, render, useState, useEffect, useCallback } from '/vendor/htm-preact-standalone.mjs';
+import { html, render, useState, useEffect, useCallback, useRef } from '/vendor/htm-preact-standalone.mjs';
 
 // ------------------------------------------------------------------ i18n
 
@@ -239,12 +239,183 @@ function Services({ startJob }) {
     </div>`;
 }
 
+
+// ------------------------------------------------------------------ M9: performance
+
+const HISTORY = 60; // seconds of process history kept in the browser
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const PALETTE = ['--accent', '--ok', '--warn', '--fail', '--muted'];
+const fmtMs = (v) => (v == null ? '—' : v < 10 ? `${v.toFixed(1)} ms` : `${Math.round(v)} ms`);
+
+// A uPlot line chart that follows `data` ([x, ...series]) and resizes with its box.
+function Chart({ title, labels, data }) {
+  const box = useRef(null);
+  const plot = useRef(null);
+  const key = labels.join('|');
+  const [failure, setFailure] = useState(null);
+  useEffect(() => {
+    const opts = {
+      width: box.current.clientWidth,
+      height: 180,
+      scales: { x: { time: false } },
+      legend: { show: true },
+      axes: [{ stroke: css('--muted'), grid: { stroke: css('--border') } }, { stroke: css('--muted'), grid: { stroke: css('--border') } }],
+      series: [{ label: 's' }, ...labels.map((label, i) => ({ label, stroke: css(PALETTE[i % PALETTE.length]), width: 2, spanGaps: false }))],
+    };
+    try {
+      plot.current = new uPlot(opts, data, box.current);
+      setFailure(null);
+    } catch (e) {
+      setFailure(String(e));
+      return;
+    }
+    const onResize = () => plot.current?.setSize({ width: box.current.clientWidth, height: 180 });
+    addEventListener('resize', onResize);
+    return () => {
+      removeEventListener('resize', onResize);
+      plot.current?.destroy();
+      plot.current = null;
+    };
+  }, [key]);
+  useEffect(() => {
+    plot.current?.setData(data);
+  }, [data]);
+  return html`<div class="card"><h3>${title}</h3>${failure && html`<span class="badge fail">${failure}</span>`}<div ref=${box}></div></div>`;
+}
+
+function Performance() {
+  const [host, setHost] = useState('');
+  const [withStatic, setWithStatic] = useState(false);
+  const [live, setLive] = useState(null);
+  const [procHistory, setProcHistory] = useState([]); // [{t, groups: {name: {cpu, kb}}}]
+  const [visible, setVisible] = useState(document.visibilityState === 'visible');
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    const onVis = () => setVisible(document.visibilityState === 'visible');
+    document.addEventListener('visibilitychange', onVis);
+    const clock = setInterval(() => setNow(Date.now()), 500);
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      clearInterval(clock);
+    };
+  }, []);
+
+  // One stream while the tab is visible; closing it stops all sampling in the daemon.
+  useEffect(() => {
+    if (!visible) return;
+    const source = new EventSource(`/api/v1/metrics/stream?host=${encodeURIComponent(host)}&static=${withStatic ? 1 : 0}`);
+    source.onmessage = (e) => {
+      const m = JSON.parse(e.data);
+      setLive(m);
+      const groups = {};
+      for (const p of m.processes) {
+        const g = (groups[p.name] ??= { cpu: 0, kb: 0 });
+        g.cpu += p.cpu_percent;
+        g.kb += p.memory_kb ?? 0;
+      }
+      setProcHistory((h) => [...h.slice(-(HISTORY - 1)), { t: m.requests.generated_ms, groups }]);
+    };
+    return () => source.close();
+  }, [host, withStatic, visible]);
+
+  if (!live) return html`<h1>${t('perf.title')}</h1><p>${t('common.loading')}</p>`;
+  const r = live.requests;
+  const x = r.per_second.map((_, i) => i - r.per_second.length + 1);
+  const ago = Math.max(0, (now - r.generated_ms) / 1000).toFixed(1) + ' s';
+  const names = [...new Set(procHistory.flatMap((h) => Object.keys(h.groups)))].sort();
+  const px = procHistory.map((_, i) => i - procHistory.length + 1);
+  const maxCount = Math.max(1, ...r.histogram.map(([, c]) => c));
+
+  return html`
+    <h1>${t('perf.title')}</h1>
+    <div class="row">
+      <select value=${host} onChange=${(e) => { setHost(e.target.value); setProcHistory([]); }}>
+        <option value="">${t('perf.all_sites')}</option>
+        ${r.hosts.map((h) => html`<option value=${h}>${h}</option>`)}
+      </select>
+      <label><input type="checkbox" checked=${withStatic} onChange=${(e) => setWithStatic(e.target.checked)} /> ${t('perf.include_static')}</label>
+      <span class="muted">${visible ? t('perf.live', { ago }) : t('perf.paused')}</span>
+    </div>
+    <p>${t('perf.summary', { window: r.window_secs, total: r.total, p50: fmtMs(r.p50_ms), p95: fmtMs(r.p95_ms), p99: fmtMs(r.p99_ms) })}<br />
+      <span class="muted">${t('perf.status', { s2: r.status.s2xx, s3: r.status.s3xx, s4: r.status.s4xx, s5: r.status.s5xx })}</span></p>
+    <div class="cards charts">
+      <${Chart} title=${t('perf.rps')} labels=${['req/s']} data=${[x, r.per_second]} />
+      <${Chart} title=${t('perf.latency')} labels=${[t('perf.p50'), t('perf.p95')]} data=${[x, r.p50_per_second, r.p95_per_second]} />
+      ${names.length > 0 && html`<${Chart} title=${t('perf.cpu')} labels=${names}
+        data=${[px, ...names.map((n) => procHistory.map((h) => h.groups[n]?.cpu ?? null))]} />`}
+    </div>
+    <h2>${t('perf.histogram')}</h2>
+    <div class="hist">${r.histogram.map(([label, count]) => html`<div class="hist-row">
+      <span class="mono">${label}</span><span class="bar" style=${`width:${(count / maxCount) * 100}%`}></span><span>${count}</span></div>`)}</div>
+    <h2>${t('perf.slowest')}</h2>
+    ${r.slowest.length === 0 ? html`<p class="muted">${t('perf.none', { window: r.window_secs })}</p>` : html`<table>
+      <tr><th>${t('perf.route')}</th><th>${t('perf.count')}</th><th>${t('perf.avg')}</th><th>p95</th><th>${t('perf.max')}</th></tr>
+      ${r.slowest.map((s) => html`<tr><td class="mono">${s.method} ${s.host}${s.route}</td><td>${s.count}</td><td>${fmtMs(s.avg_ms)}</td><td>${fmtMs(s.p95_ms)}</td><td>${fmtMs(s.max_ms)}</td></tr>`)}
+    </table>
+    <p class="muted">${t('perf.slowest_note', { n: 2000 })}</p>`}
+    <h2>${t('perf.processes')}</h2>
+    <table><tr><th></th><th>pid</th><th>${t('perf.cpu')}</th><th>${t('perf.ram')}</th></tr>
+      ${live.processes.map((p) => html`<tr><td>${p.name}</td><td class="mono">${p.pid}</td><td>${p.cpu_percent.toFixed(1)}%</td><td>${mb(p.memory_kb)}</td></tr>`)}
+    </table>`;
+}
+
+// ------------------------------------------------------------------ M9: logs
+
+const MAX_LOG_LINES = 5000;
+
+function Logs() {
+  const [{ data: sources, error }] = useApi('/logs');
+  const [source, setSource] = useState('daemon');
+  const [lines, setLines] = useState([]);
+  const [follow, setFollow] = useState(true);
+  const [filter, setFilter] = useState('');
+  const box = useRef(null);
+
+  useEffect(() => {
+    setLines([]);
+    const es = new EventSource(`/api/v1/logs/stream?source=${encodeURIComponent(source)}&lines=500`);
+    es.onmessage = (e) => {
+      const chunk = JSON.parse(e.data);
+      setLines((old) => {
+        const next = chunk.reset ? [...old, t('logs.rotated'), ...chunk.lines] : [...old, ...chunk.lines];
+        return next.length > MAX_LOG_LINES ? next.slice(-MAX_LOG_LINES) : next;
+      });
+    };
+    return () => es.close();
+  }, [source]);
+
+  // `sources` too: lines can arrive before the log box exists.
+  useEffect(() => {
+    if (follow && box.current) box.current.scrollTop = box.current.scrollHeight;
+  }, [lines, follow, filter, sources]);
+
+  if (!sources) return error ? html`<p>${t('common.error', { message: error })}</p>` : html`<p>${t('common.loading')}</p>`;
+  const needle = filter.toLowerCase();
+  const shown = needle ? lines.filter((l) => l.toLowerCase().includes(needle)) : lines;
+  const current = sources.find((s) => s.id === source);
+  return html`
+    <h1>${t('logs.title')}</h1>
+    <div class="row">
+      <select value=${source} onChange=${(e) => setSource(e.target.value)}>
+        ${sources.map((s) => html`<option value=${s.id}>${s.label}</option>`)}
+      </select>
+      <input type="text" placeholder=${t('logs.filter')} value=${filter} onInput=${(e) => setFilter(e.target.value)} style="min-width:220px" />
+      <label><input type="checkbox" checked=${follow} onChange=${(e) => setFollow(e.target.checked)} /> ${t('logs.follow')}</label>
+      <span class="muted">${t('logs.lines', { count: shown.length })}</span>
+    </div>
+    <p class="muted mono">${current?.path}</p>
+    <div class="log logview mono" ref=${box}>${shown.length ? shown.join('\n') : t('logs.empty')}</div>`;
+}
+
 // Page registry: a new feature = one entry here + its API endpoints.
 const PAGES = [
   { id: 'overview', label: 'nav.overview', view: Overview },
   { id: 'sites', label: 'nav.sites', view: Sites },
   { id: 'php', label: 'nav.php', view: Php },
   { id: 'services', label: 'nav.services', view: Services },
+  { id: 'performance', label: 'nav.performance', view: Performance },
+  { id: 'logs', label: 'nav.logs', view: Logs },
 ];
 
 function App() {

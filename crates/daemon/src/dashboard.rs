@@ -5,12 +5,13 @@
 //! Strict cookie; state-changing requests need a matching Origin and a JSON
 //! content type; strict CSP and no framing. No shell or code execution.
 
+use std::collections::HashMap;
 use std::convert::Infallible;
 use std::io;
 use std::net::Ipv4Addr;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use bytes::Bytes;
 use http::header::{self, HeaderValue};
@@ -28,11 +29,11 @@ use serde::Serialize;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
 
-use crate::http_util::{full, internal, text, Body, ChannelBody};
+use crate::http_util::{full, internal, query_param, text, Body, ChannelBody};
 use crate::jobs::Jobs;
-use crate::launch;
 use crate::log::log_warn;
 use crate::Daemon;
+use crate::{launch, logs};
 
 const COOKIE: &str = "phpev_session";
 /// Largest JSON body the API accepts.
@@ -213,10 +214,20 @@ fn asset(path: &str) -> Response<Body> {
         "/app.js" => (include_bytes!("../dashboard/app.js"), "text/javascript; charset=utf-8"),
         "/app.css" => (include_bytes!("../dashboard/app.css"), "text/css; charset=utf-8"),
         "/i18n/en.json" => (include_bytes!("../dashboard/i18n/en.json"), "application/json"),
+        "/vendor/uPlot.iife.min.js" => (
+            include_bytes!("../dashboard/vendor/uPlot.iife.min.js"),
+            "text/javascript; charset=utf-8",
+        ),
+        "/vendor/uPlot.min.css" => (
+            include_bytes!("../dashboard/vendor/uPlot.min.css"),
+            "text/css; charset=utf-8",
+        ),
         "/vendor/htm-preact-standalone.mjs" => (
             include_bytes!("../dashboard/vendor/htm-preact-standalone.mjs"),
             "text/javascript; charset=utf-8",
         ),
+        // Browsers ask for it on their own; no icon yet (M10 adds one with the tray).
+        "/favicon.ico" => return text(StatusCode::NO_CONTENT, ""),
         _ => return text(StatusCode::NOT_FOUND, "Not Found"),
     };
     Response::builder()
@@ -515,6 +526,39 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             message(d.daemon.db_use(&mariadb::major_of(&r.version)).await?)
         }
 
+        // ---- performance (M9)
+        (Method::GET, ["metrics", "requests"]) => {
+            let uri = req.uri();
+            let window = query_param(uri, "window")
+                .and_then(|w| w.parse().ok())
+                .unwrap_or(60u32)
+                .clamp(10, 600);
+            let host = query_param(uri, "host").filter(|h| !h.is_empty());
+            let include_static = query_param(uri, "static").as_deref() == Some("1");
+            ok(&d.daemon.metrics.stats(window, host.as_deref(), include_static))
+        }
+        (Method::GET, ["metrics", "stream"]) => {
+            let host = query_param(req.uri(), "host").filter(|h| !h.is_empty());
+            let include_static = query_param(req.uri(), "static").as_deref() == Some("1");
+            Ok(metrics_stream(d.daemon.clone(), host, include_static))
+        }
+
+        // ---- logs (M9)
+        (Method::GET, ["logs"]) => {
+            let l = layout.clone();
+            ok(&blocking(move || logs::sources(&l)).await?)
+        }
+        (Method::GET, ["logs", "stream"]) => {
+            let source = query_param(req.uri(), "source").unwrap_or_default();
+            let lines = query_param(req.uri(), "lines")
+                .and_then(|n| n.parse().ok())
+                .unwrap_or(200usize)
+                .min(2000);
+            let l = layout.clone();
+            let path = blocking(move || logs::resolve(&l, &source)).await?;
+            Ok(log_stream(path, lines))
+        }
+
         // ---- jobs
         (Method::GET, ["jobs", id]) => {
             let job = find_job(d, id)?;
@@ -552,11 +596,141 @@ fn job_stream(job: Arc<crate::jobs::Job>) -> Result<Response<Body>, ApiError> {
             }
         }
     });
-    Ok(Response::builder()
+    Ok(sse(rx))
+}
+
+fn sse(rx: mpsc::Receiver<Bytes>) -> Response<Body> {
+    Response::builder()
         .header(header::CONTENT_TYPE, "text/event-stream")
         .header(header::CACHE_CONTROL, "no-store")
         .body(ChannelBody(rx).boxed())
-        .unwrap_or_else(|_| internal()))
+        .unwrap_or_else(|_| internal())
+}
+
+fn event<T: Serialize>(value: &T) -> Option<Bytes> {
+    serde_json::to_string(value)
+        .ok()
+        .map(|json| Bytes::from(format!("data: {json}\n\n")))
+}
+
+/// Live performance: request stats and per-process CPU/RAM every second, only
+/// while a client is connected (§14.4).
+fn metrics_stream(daemon: Arc<Daemon>, host: Option<String>, include_static: bool) -> Response<Body> {
+    let (tx, rx) = mpsc::channel::<Bytes>(4);
+    tokio::spawn(async move {
+        let mut cpu = CpuSampler::default();
+        let mut tick = tokio::time::interval(Duration::from_secs(1));
+        loop {
+            tick.tick().await;
+            let requests = daemon.metrics.stats(60, host.as_deref(), include_static);
+            let processes = cpu.sample(&daemon).await;
+            let Some(ev) = event(&LiveMetrics { requests, processes }) else {
+                return;
+            };
+            if tx.send(ev).await.is_err() {
+                return; // client went away
+            }
+        }
+    });
+    sse(rx)
+}
+
+/// CPU share per process from the change in its CPU time between samples.
+#[derive(Default)]
+struct CpuSampler {
+    previous: HashMap<u32, (u64, Instant)>,
+}
+
+impl CpuSampler {
+    async fn sample(&mut self, daemon: &Daemon) -> Vec<ProcessSample> {
+        let status = daemon.status().await;
+        let mut procs: Vec<(String, u32)> = vec![("daemon".into(), status.pid)];
+        if let Some(pid) = status.mariadb.as_ref().and_then(|m| m.pid) {
+            procs.push(("mariadb".into(), pid));
+        }
+        for pool in &status.php_pools {
+            for w in &pool.workers {
+                procs.push((format!("php-cgi {}", pool.version), w.pid));
+            }
+        }
+        let now = Instant::now();
+        let mut seen = HashMap::new();
+        let out = procs
+            .into_iter()
+            .map(|(name, pid)| {
+                let ticks = phpev_core::procinfo::cpu_time(pid);
+                let cpu_percent = match (ticks, self.previous.get(&pid)) {
+                    (Some(t), Some((pt, pi))) => {
+                        // CPU time is in 100 ns units; 100% = one full core.
+                        let wall = now.duration_since(*pi).as_nanos() as f64 / 100.0;
+                        if wall > 0.0 {
+                            (t.saturating_sub(*pt) as f64 / wall * 100.0).max(0.0)
+                        } else {
+                            0.0
+                        }
+                    }
+                    _ => 0.0,
+                };
+                if let Some(t) = ticks {
+                    seen.insert(pid, (t, now));
+                }
+                ProcessSample {
+                    name,
+                    pid,
+                    cpu_percent,
+                    memory_kb: phpev_core::procinfo::memory_kb(pid),
+                }
+            })
+            .collect();
+        self.previous = seen;
+        out
+    }
+}
+
+/// Tails a log: the last `lines`, then new lines every 500 ms.
+fn log_stream(path: PathBuf, lines: usize) -> Response<Body> {
+    let (tx, rx) = mpsc::channel::<Bytes>(8);
+    tokio::spawn(async move {
+        let p = path.clone();
+        let Ok(Ok((first, mut offset))) = tokio::task::spawn_blocking(move || logs::tail(&p, lines)).await else {
+            return;
+        };
+        let Some(ev) = event(&LogChunk {
+            lines: first,
+            reset: false,
+        }) else {
+            return;
+        };
+        if tx.send(ev).await.is_err() {
+            return;
+        }
+        let mut idle = 0u32;
+        loop {
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            let p = path.clone();
+            let Ok(Ok((new, next, reset))) = tokio::task::spawn_blocking(move || logs::read_new(&p, offset)).await
+            else {
+                return;
+            };
+            offset = next;
+            if new.is_empty() && !reset {
+                // A comment every ~15 s detects closed connections.
+                idle += 1;
+                if idle.is_multiple_of(30) && tx.send(Bytes::from_static(b": keep-alive\n\n")).await.is_err() {
+                    return;
+                }
+                continue;
+            }
+            idle = 0;
+            let Some(ev) = event(&LogChunk { lines: new, reset }) else {
+                return;
+            };
+            if tx.send(ev).await.is_err() {
+                return;
+            }
+        }
+    });
+    sse(rx)
 }
 
 fn site_url(layout: &phpev_core::layout::Layout, site: &sites::Site) -> io::Result<String> {

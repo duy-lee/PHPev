@@ -1,23 +1,45 @@
-//! Per-process facts for `phpev status`.
+//! Per-process facts for `phpev status` and the dashboard.
 
 use std::mem;
 
-use windows_sys::Win32::Foundation::CloseHandle;
-use windows_sys::Win32::System::ProcessStatus::{K32GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS};
-use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+use windows_sys::Win32::Foundation::{CloseHandle, FILETIME};
+use windows_sys::Win32::System::ProcessStatus::{K32GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS_EX2};
+use windows_sys::Win32::System::Threading::{GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
 
-/// Working set (resident memory) of `pid` in KiB, if the process is accessible.
+/// Private working set of `pid` in KiB — the "Memory" column of Task Manager
+/// and the RAM metric PHPev reports (decided 2026-10-23). Shared DLL pages are
+/// not counted.
 pub fn memory_kb(pid: u32) -> Option<u64> {
     unsafe {
         let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
         if handle.is_null() {
             return None;
         }
-        let mut counters: PROCESS_MEMORY_COUNTERS = mem::zeroed();
-        counters.cb = mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32;
-        let ok = K32GetProcessMemoryInfo(handle, &mut counters, counters.cb);
+        let mut counters: PROCESS_MEMORY_COUNTERS_EX2 = mem::zeroed();
+        counters.cb = mem::size_of::<PROCESS_MEMORY_COUNTERS_EX2>() as u32;
+        let ok = K32GetProcessMemoryInfo(
+            handle,
+            (&mut counters as *mut PROCESS_MEMORY_COUNTERS_EX2).cast(),
+            counters.cb,
+        );
         CloseHandle(handle);
-        (ok != 0).then_some(counters.WorkingSetSize as u64 / 1024)
+        (ok != 0).then_some(counters.PrivateWorkingSetSize as u64 / 1024)
+    }
+}
+
+/// Total CPU time (kernel + user) used by `pid` so far, in 100 ns units.
+pub fn cpu_time(pid: u32) -> Option<u64> {
+    let ticks = |t: FILETIME| (u64::from(t.dwHighDateTime) << 32) | u64::from(t.dwLowDateTime);
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if handle.is_null() {
+            return None;
+        }
+        let (mut created, mut exited, mut kernel, mut user): (FILETIME, FILETIME, FILETIME, FILETIME) =
+            (mem::zeroed(), mem::zeroed(), mem::zeroed(), mem::zeroed());
+        let ok = GetProcessTimes(handle, &mut created, &mut exited, &mut kernel, &mut user);
+        CloseHandle(handle);
+        (ok != 0).then(|| ticks(kernel) + ticks(user))
     }
 }
 
@@ -42,6 +64,17 @@ mod tests {
     #[test]
     fn own_exe_path_is_found() {
         assert_eq!(super::exe_path(std::process::id()), std::env::current_exe().ok());
+    }
+
+    #[test]
+    fn own_cpu_time_grows() {
+        let before = super::cpu_time(std::process::id()).unwrap();
+        let mut x = 0u64;
+        for i in 0..20_000_000u64 {
+            x = x.wrapping_add(i * i);
+        }
+        assert!(x > 0);
+        assert!(super::cpu_time(std::process::id()).unwrap() > before);
     }
 
     #[test]

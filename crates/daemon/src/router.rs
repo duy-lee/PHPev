@@ -27,7 +27,12 @@ use tokio::sync::mpsc;
 use crate::fastcgi::{self, Event, Params};
 use crate::http_util::{empty, escape, full, internal, text, Body, ChannelBody};
 use crate::log::log_warn;
+use crate::metrics::{self, Metrics, Record};
 use crate::pool::{Lease, Pools};
+
+/// Response marker (never sent): the request ran PHP, for metrics.
+#[derive(Clone, Copy)]
+struct ServedByPhp;
 
 /// Files up to this size are read in one go; larger ones are streamed.
 const INLINE_FILE_MAX: u64 = 1 << 20;
@@ -41,6 +46,7 @@ const STREAM_AFTER_PAUSE: Duration = Duration::from_millis(20);
 pub struct Router {
     layout: Layout,
     pools: Arc<Pools>,
+    metrics: Arc<Metrics>,
     cache: Mutex<SiteCache>,
     /// Site folder → (installed PHP version, when resolved). Resolving reads
     /// `.php-version` files and `bin\php`; doing it per request would put
@@ -63,7 +69,7 @@ struct SiteCache {
 }
 
 impl Router {
-    pub fn new(layout: Layout, pools: Arc<Pools>) -> Self {
+    pub fn new(layout: Layout, pools: Arc<Pools>, metrics: Arc<Metrics>) -> Self {
         let config = Config::load(&layout.config_file()).unwrap_or_default();
         let sites = sites::all(&config);
         let mtime = std::fs::metadata(layout.config_file()).and_then(|m| m.modified()).ok();
@@ -76,6 +82,7 @@ impl Router {
         Self {
             layout,
             pools,
+            metrics,
             cache: Mutex::new(cache),
             versions: Mutex::new(HashMap::new()),
         }
@@ -169,7 +176,24 @@ pub async fn listen(
                 tokio::spawn(async move {
                     let service = service_fn(move |req| {
                         let router = router.clone();
-                        async move { Ok::<_, Infallible>(handle(&router, req, remote, https, port).await) }
+                        async move {
+                            // Captured before `req` moves into the handler; the query is never kept.
+                            let started = Instant::now();
+                            let host = request_host(&req);
+                            let method = metrics::method_name(req.method());
+                            let path = req.uri().path().to_owned();
+                            let res = handle(&router, req, remote, https, port).await;
+                            router.metrics.record(Record {
+                                at_ms: metrics::now_ms(),
+                                host,
+                                method,
+                                path,
+                                status: res.status().as_u16(),
+                                micros: started.elapsed().as_micros().min(u128::from(u32::MAX)) as u32,
+                                php: res.extensions().get::<ServedByPhp>().is_some(),
+                            });
+                            Ok::<_, Infallible>(res)
+                        }
                     });
                     let mut http = hyper::server::conn::http1::Builder::new();
                     match acceptor {
@@ -253,7 +277,11 @@ async fn handle(router: &Router, req: Request<Incoming>, remote: SocketAddr, htt
                 server_port: port,
             };
             match router.pools.acquire(&router.layout, &version).await {
-                Ok(lease) => run_php(&router.pools, lease, req, ctx).await,
+                Ok(lease) => {
+                    let mut res = run_php(&router.pools, lease, req, ctx).await;
+                    res.extensions_mut().insert(ServedByPhp);
+                    res
+                }
                 Err(e) if e.kind() == io::ErrorKind::TimedOut => {
                     text(StatusCode::SERVICE_UNAVAILABLE, &format!("PHPev: {e}"))
                 }
