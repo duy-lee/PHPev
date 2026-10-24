@@ -121,7 +121,7 @@ on Windows) is used for the dashboard window when available; otherwise your defa
    phpev doctor
    ```
 
-> If your Windows user name contains non-ASCII characters (for example `Lê Văn Duy`), PHP cannot
+> If your Windows user name contains non-ASCII characters (for example `Mê Ga Lô Đôn`), PHP cannot
 > load its `php.ini` from that path. `setup` detects this and suggests `C:\PHPev` as the home;
 > you can also choose one yourself with `phpev setup --home D:\PHPev`.
 

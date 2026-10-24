@@ -120,7 +120,7 @@ không có Edge thì mở bằng trình duyệt mặc định.
    phpev doctor
    ```
 
-> Nếu tên user Windows có dấu (ví dụ `Lê Văn Duy`), PHP không nạp được `php.ini` từ đường dẫn đó.
+> Nếu tên user Windows có dấu (ví dụ `Mê Ga Lô Đôn`), PHP không nạp được `php.ini` từ đường dẫn đó.
 > `setup` sẽ phát hiện và đề xuất dùng `C:\PHPev` làm home; bạn cũng có thể tự chọn bằng
 > `phpev setup --home D:\PHPev`.
 
