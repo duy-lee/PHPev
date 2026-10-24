@@ -80,7 +80,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $flags = @('--draft', '--title', "PHPev $env:VERSION", '--notes-file', 'dist/notes.md')
+          $flags = @('--draft', '--title', $env:GITHUB_REF_NAME, '--notes-file', 'dist/notes.md')
           # 0.x versions and versions like 1.0.0-rc.1 are marked as pre-releases.
           if ($env:VERSION -match '^0\.' -or $env:VERSION -match '-') { $flags += '--prerelease' }
           gh release create $env:GITHUB_REF_NAME @flags "dist/phpev-$env:VERSION-setup.exe" "dist/phpev-$env:VERSION-windows-x64.zip" dist/SHA256SUMS.txt
