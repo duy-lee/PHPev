@@ -2,6 +2,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/phpev-logo-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="assets/phpev-logo-light.svg">
   <img src="assets/phpev-logo-light.svg" alt="PHPev" width="420">
 </picture>
 
