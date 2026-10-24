@@ -4,6 +4,22 @@ All notable changes to PHPev are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/). Until 1.0, minor versions may contain breaking changes.
 
+## [Unreleased]
+
+### Added
+
+- **PHP 7.0 – 7.3**: `phpev php install 7.1` installs the final release of each end-of-life line
+  from the windows.php.net archive (SHA-256 pinned in PHPev, since the archive publishes none),
+  with a `php.ini` in the format these versions understand.
+- **`phpev php add <folder>`** and **Add a PHP you already have** on the dashboard (with the
+  Windows folder picker): copy a 64-bit PHP build you already have into PHPev, with a generated
+  `php.ini` (the original is kept as `php.ini.orig`).
+- **Composer 2.2 LTS for PHP before 7.2.5**: Composer 2.3+ refuses to run on such versions, so
+  PHPev also installs 2.2 LTS when one is present, and the `composer` shim picks it automatically.
+- **Removing versions**: `phpev php remove <version>` and `phpev db remove <version>`, and a
+  **Remove** button on the dashboard. The default PHP and the active MariaDB cannot be removed;
+  removing MariaDB keeps its databases unless you choose to delete them.
+
 ## [0.1.0] - 2026-10-24
 
 The first public pre-release. Windows 10 (1809+) and 11, x64.

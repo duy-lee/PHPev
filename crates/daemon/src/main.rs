@@ -9,6 +9,7 @@ mod appwindow;
 mod dashboard;
 mod endsession;
 mod fastcgi;
+mod folderpick;
 mod http_util;
 mod job;
 mod jobs;

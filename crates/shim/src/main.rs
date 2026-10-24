@@ -7,7 +7,7 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
-use phpev_core::{php, shim};
+use phpev_core::{composer, php, shim};
 use windows_sys::Win32::Foundation::BOOL;
 use windows_sys::Win32::System::Console::SetConsoleCtrlHandler;
 
@@ -56,9 +56,16 @@ fn run() -> Result<i32, String> {
 
     match tool.as_str() {
         "composer" => {
-            let phar: PathBuf = home.join(r"bin\composer\composer.phar");
+            let phar: PathBuf = composer::phar_for(&home.join(r"bin\composer"), &resolved.version);
             if !phar.is_file() {
-                return Err("Composer is not installed. Run: phpev composer install".into());
+                return Err(if composer::needs_lts(&resolved.version) {
+                    format!(
+                        "PHP {} needs Composer 2.2 LTS (newer Composer needs PHP 7.2.5+), which is not installed. Run: phpev composer install",
+                        resolved.version
+                    )
+                } else {
+                    "Composer is not installed. Run: phpev composer install".into()
+                });
             }
             cmd.arg(phar);
         }

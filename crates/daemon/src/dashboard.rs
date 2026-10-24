@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::convert::Infallible;
 use std::io;
 use std::net::Ipv4Addr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -403,12 +403,15 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
                     default: config.php.clone(),
                     installed: installed
                         .iter()
-                        .map(|v| PhpVersionInfo {
-                            version: v.clone(),
-                            default: default_version.as_deref() == Some(v.as_str()),
-                            workers: pools.iter().find(|p| &p.version == v).map_or(0, |p| p.workers.len()),
+                        .map(|v| {
+                            Ok(PhpVersionInfo {
+                                version: v.clone(),
+                                default: default_version.as_deref() == Some(v.as_str()),
+                                workers: pools.iter().find(|p| &p.version == v).map_or(0, |p| p.workers.len()),
+                                pinned_by: ops::sites_pinned_to(&l, v)?,
+                            })
                         })
-                        .collect(),
+                        .collect::<io::Result<_>>()?,
                 })
             })
             .await?)
@@ -421,6 +424,7 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
                     .into_iter()
                     .map(|r| AvailablePhp {
                         installed: installed.contains(&r.version),
+                        archived: r.archived,
                         line: r.line,
                         version: r.version,
                     })
@@ -436,6 +440,25 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
                 Ok(format!("PHP {v} installed"))
             });
             ok(&JobStarted { job })
+        }
+        (Method::POST, ["php", "add"]) => {
+            let r: PathRequest = body(req).await?;
+            let l = layout.clone();
+            let job = d.jobs.start("Add PHP from a folder".to_owned(), move |rep| {
+                let v = ops::add_php(&Http::new()?, &l, Path::new(r.path.trim()), rep)?;
+                Ok(format!("PHP {v} added"))
+            });
+            ok(&JobStarted { job })
+        }
+        (Method::POST, ["php", "pick-folder"]) => {
+            let path = blocking(|| {
+                crate::folderpick::pick_folder(
+                    "Choose the PHP folder (the one with php.exe)",
+                    crate::appwindow::window(),
+                )
+            })
+            .await?;
+            ok(&PickedFolder { path })
         }
         (Method::PUT, ["php", "default"]) => {
             let r: VersionRequest = body(req).await?;
@@ -457,6 +480,15 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
                 "{ext} {} for PHP {v}",
                 if r.enabled { "enabled" } else { "disabled" }
             ))
+        }
+        (Method::DELETE, ["php", v]) => {
+            let (l, v2) = (layout.clone(), v.to_string());
+            blocking(move || ops::check_remove_php(&l, &v2)).await?;
+            // Running php-cgi workers keep the files in use.
+            d.daemon.pools.stop_version(v).await;
+            let (l, v2) = (layout.clone(), v.to_string());
+            blocking(move || ops::remove_php(&l, &v2, &mut ops::Quiet)).await?;
+            message(format!("PHP {v} removed"))
         }
         (Method::POST, ["php", v, "restart"]) => {
             let n = d.daemon.pools.stop_version(v).await;
@@ -510,6 +542,12 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
                 Ok(format!("MariaDB {v} installed"))
             });
             ok(&JobStarted { job })
+        }
+        (Method::DELETE, ["mariadb", v]) => {
+            let r: RemoveMariaDbRequest = body(req).await?;
+            let (l, v2) = (layout.clone(), v.to_string());
+            let removed = blocking(move || ops::remove_mariadb(&l, &v2, r.delete_data, &mut ops::Quiet)).await?;
+            message(format!("MariaDB {removed} removed"))
         }
         (Method::POST, ["mariadb", "start"]) => {
             let msg = d.daemon.db_start().await?;

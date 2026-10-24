@@ -19,7 +19,7 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 /// duplicated `mysql*` aliases) is left out. `mariadb-install-db` launches the
 /// server as `mysqld.exe` (a 13 KB stub, like `mariadbd.exe`, around server.dll)
 /// and `mariadb-upgrade` runs `mariadb-check`.
-const KEEP_EXES: &[&str] = &[
+pub(crate) const KEEP_EXES: &[&str] = &[
     "mariadbd.exe",
     "mysqld.exe",
     "mariadb-install-db.exe",
