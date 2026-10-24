@@ -4,7 +4,17 @@ All notable changes to PHPev are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/). Until 1.0, minor versions may contain breaking changes.
 
-## [Unreleased]
+## [0.1.1] - 2026-10-25
+
+### Install
+
+Download `phpev-0.1.1-setup.exe` below and run it. It installs over 0.1.0; your PHP versions,
+databases and settings stay in the PHPev home and are not touched.
+
+Or use the zip: download `phpev-0.1.1-windows-x64.zip`, right-click it → **Properties** →
+**Unblock**, extract it, run `.\phpev.exe setup` in that folder, then open a new terminal.
+
+The files are not code-signed yet, so Windows may warn about them (**More info → Run anyway**).
 
 ### Added
 
@@ -72,4 +82,5 @@ See the [README](https://github.com/duy-lee/PHPev#readme) for the full guide.
 - Only MariaDB is supported (no MySQL); no Xdebug toggle, Node.js, Redis or mail catcher yet.
 - Tested mainly on Windows 11. Please report problems on other setups.
 
+[0.1.1]: https://github.com/duy-lee/PHPev/releases/tag/v0.1.1
 [0.1.0]: https://github.com/duy-lee/PHPev/releases/tag/v0.1.0

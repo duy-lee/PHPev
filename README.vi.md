@@ -565,7 +565,7 @@ Cấu trúc project:
 | `crates/elevate` | `phpev-elevate.exe` | Các thao tác cần quyền admin |
 
 Trình cài đặt được build từ `installer/phpev.iss` bằng [Inno Setup](https://jrsoftware.org/isinfo.php)
-6 trở lên, sau khi build release: `ISCC.exe /DAppVersion=0.1.0 installer\phpev.iss` (file ra nằm trong `dist\`).
+6 trở lên, sau khi build release: `ISCC.exe /DAppVersion=0.1.1 installer\phpev.iss` (file ra nằm trong `dist\`).
 
 Kiểm tra trước mỗi commit:
 

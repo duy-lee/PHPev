@@ -580,7 +580,7 @@ Project layout:
 | `crates/elevate` | `phpev-elevate.exe` | Admin-only operations |
 
 The installer is built from `installer/phpev.iss` with [Inno Setup](https://jrsoftware.org/isinfo.php)
-6 or later, after a release build: `ISCC.exe /DAppVersion=0.1.0 installer\phpev.iss` (output in `dist\`).
+6 or later, after a release build: `ISCC.exe /DAppVersion=0.1.1 installer\phpev.iss` (output in `dist\`).
 
 Checks run before every commit:
 
