@@ -15,6 +15,7 @@ small set of native executables with no admin rights needed for day-to-day use.
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 ![Platform: Windows 10/11 x64](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20x64-0078D6.svg)
 ![Written in Rust](https://img.shields.io/badge/written%20in-Rust-orange.svg)
+[![CI](https://github.com/duy-lee/PHPev/actions/workflows/ci.yml/badge.svg)](https://github.com/duy-lee/PHPev/actions/workflows/ci.yml)
 ![Status: pre-release](https://img.shields.io/badge/status-pre--release-yellow.svg)
 
 English · [Tiếng Việt](README.vi.md)
@@ -103,9 +104,10 @@ on Windows) is used for the dashboard window when available; otherwise your defa
 
 ## Installation
 
-> **Pre-release:** PHPev has not published binaries yet. Until the first release appears on the
-> [Releases page](https://github.com/duy-lee/PHPev/releases), [build it from source](#building-from-source).
-> The steps below are the same either way.
+> **Not code-signed yet.** Windows may show *"Windows protected your PC"* for files from the
+> release. Right-click the downloaded zip → **Properties** → tick **Unblock** before extracting, or
+> choose **More info → Run anyway**. You can check the download against `SHA256SUMS.txt` from the
+> same release with `Get-FileHash phpev-<version>-windows-x64.zip`.
 
 1. Download `phpev-<version>-windows-x64.zip` from
    [Releases](https://github.com/duy-lee/PHPev/releases) and extract it anywhere (for example
@@ -346,6 +348,7 @@ down cleanly when Windows logs off or shuts down.
 | `phpev ca status\|uninstall` | Manage the local certificate authority |
 | `phpev tld [TLD]` | Show or change the TLD (default `localhost`) |
 | `phpev hosts sync` | Write all sites into the Windows hosts file |
+| `phpev uninstall [--purge] [--yes]` | Remove PHPev from this computer |
 
 Run `phpev <command> --help` for every option.
 
@@ -489,15 +492,18 @@ Look at `%USERPROFILE%\.phpev\logs\daemon.log` or the dashboard's Logs page, the
 ## Uninstalling
 
 ```powershell
-phpev autostart off
-phpev ca uninstall     # only if you used HTTPS
-phpev stop
+phpev uninstall           # keeps your databases and config.toml
+phpev uninstall --purge   # deletes them too
 ```
 
-Then remove `%USERPROFILE%\.phpev\shims` from your user PATH (*Settings → System → About →
-Advanced system settings → Environment Variables*). If you used `phpev hosts sync` or another TLD,
-run `phpev tld localhost` first to remove PHPev's hosts entries. Finally delete
-`%USERPROFILE%\.phpev`. **This also deletes your MariaDB databases.** Back them up first if needed.
+`uninstall` shows what it will do and asks before changing anything. It stops PHPev and MariaDB,
+turns off start at log in, removes the PHPev certificate authority and PHPev's entry in your PATH,
+and deletes the PHPev home. If PHPev changed admin-level settings (hosts file entries, the system
+PATH, Microsoft Defender exclusions for the home or your projects), it removes them after a single
+UAC prompt. Your project folders are never touched.
+
+Without `--purge`, the databases (`data\`) and `config.toml` stay in `%USERPROFILE%\.phpev`, so
+installing PHPev again picks them up. `--purge` asks you to type `delete` before removing them.
 
 ## Building from source
 
@@ -545,7 +551,8 @@ cargo test
 
 Phase 1 (everything above) is complete. Planned next:
 
-- [ ] Continuous integration and published release binaries
+- [x] Continuous integration and release builds
+- [ ] Code-signed releases, `winget` and Scoop packages
 - [ ] Xdebug on/off per PHP version
 - [ ] Optional nginx or Apache backend per site (for `.htaccess` and nginx rewrite rules)
 - [ ] More services: mail catcher, Redis, queue workers, Node.js version management

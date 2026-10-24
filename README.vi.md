@@ -15,6 +15,7 @@ Cài PHP, Composer và MariaDB trong vài giây, đổi version theo từng proj
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#giấy-phép)
 ![Platform: Windows 10/11 x64](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20x64-0078D6.svg)
 ![Written in Rust](https://img.shields.io/badge/written%20in-Rust-orange.svg)
+[![CI](https://github.com/duy-lee/PHPev/actions/workflows/ci.yml/badge.svg)](https://github.com/duy-lee/PHPev/actions/workflows/ci.yml)
 ![Status: pre-release](https://img.shields.io/badge/status-pre--release-yellow.svg)
 
 [English](README.md) · Tiếng Việt
@@ -103,9 +104,10 @@ không có Edge thì mở bằng trình duyệt mặc định.
 
 ## Cài đặt
 
-> **Bản chưa phát hành:** PHPev chưa có file build sẵn. Cho tới khi bản đầu tiên xuất hiện ở
-> [trang Releases](https://github.com/duy-lee/PHPev/releases), hãy [build từ mã nguồn](#build-từ-mã-nguồn).
-> Các bước dưới đây giống nhau cho cả hai cách.
+> **Chưa ký số (code signing).** Windows có thể hiện *"Windows protected your PC"* với file tải về.
+> Chuột phải file zip → **Properties** → tick **Unblock** trước khi giải nén, hoặc chọn
+> **More info → Run anyway**. Có thể đối chiếu file tải về với `SHA256SUMS.txt` của cùng bản phát
+> hành bằng `Get-FileHash phpev-<version>-windows-x64.zip`.
 
 1. Tải `phpev-<version>-windows-x64.zip` từ [Releases](https://github.com/duy-lee/PHPev/releases)
    và giải nén ở đâu cũng được (ví dụ thư mục Downloads).
@@ -336,6 +338,7 @@ vụ bị kill; MariaDB được tắt êm khi Windows log off hoặc shutdown.
 | `phpev ca status\|uninstall` | Quản lý CA nội bộ |
 | `phpev tld [TLD]` | Xem hoặc đổi TLD (mặc định `localhost`) |
 | `phpev hosts sync` | Ghi mọi site vào file hosts của Windows |
+| `phpev uninstall [--purge] [--yes]` | Gỡ PHPev khỏi máy |
 
 Chạy `phpev <lệnh> --help` để xem đầy đủ tùy chọn.
 
@@ -475,15 +478,18 @@ Xem `%USERPROFILE%\.phpev\logs\daemon.log` hoặc trang Logs của dashboard, r�
 ## Gỡ cài đặt
 
 ```powershell
-phpev autostart off
-phpev ca uninstall     # chỉ khi đã dùng HTTPS
-phpev stop
+phpev uninstall           # giữ lại database và config.toml
+phpev uninstall --purge   # xoá cả hai
 ```
 
-Sau đó gỡ `%USERPROFILE%\.phpev\shims` khỏi PATH của user (*Settings → System → About → Advanced
-system settings → Environment Variables*). Nếu đã dùng `phpev hosts sync` hoặc TLD khác, hãy chạy
-`phpev tld localhost` trước để gỡ các dòng hosts của PHPev. Cuối cùng xóa thư mục
-`%USERPROFILE%\.phpev`. **Thao tác này cũng xóa database MariaDB của bạn**, hãy sao lưu trước nếu cần.
+`uninstall` liệt kê những gì sẽ làm và hỏi trước khi thay đổi. Lệnh này dừng PHPev và MariaDB, tắt
+tự chạy khi đăng nhập, gỡ CA của PHPev và mục PHPev trong PATH, rồi xoá thư mục home của PHPev. Nếu
+PHPev đã thay đổi cấu hình cần quyền admin (dòng trong file hosts, System PATH, exclusion Microsoft
+Defender cho home hoặc các project), nó gỡ hết sau **một** lần UAC. Thư mục project của bạn không
+bao giờ bị đụng tới.
+
+Không có `--purge` thì database (`data\`) và `config.toml` được giữ lại trong `%USERPROFILE%\.phpev`,
+cài lại PHPev sẽ dùng lại được. `--purge` bắt bạn gõ `delete` trước khi xoá chúng.
 
 ## Build từ mã nguồn
 
@@ -530,7 +536,8 @@ cargo test
 
 Phase 1 (mọi thứ ở trên) đã hoàn tất. Dự kiến tiếp theo:
 
-- [ ] CI và phát hành file build sẵn
+- [x] CI và build bản phát hành
+- [ ] Ký số bản phát hành, gói `winget` và Scoop
 - [ ] Bật/tắt Xdebug theo version PHP
 - [ ] Backend nginx hoặc Apache tùy chọn cho từng site (cho `.htaccess` và rewrite rule kiểu nginx)
 - [ ] Thêm dịch vụ: mail catcher, Redis, queue worker, quản lý version Node.js
