@@ -201,9 +201,13 @@ impl Daemon {
                 .unwrap_or_else(|e| e.into_inner())
                 .clone()
                 .map_err(io::Error::other),
-            Request::OpenDashboard { browser } => appwindow::open_dashboard(self, browser).map(|()| {
-                let port = self.config().map(|c| c.ports.dashboard).unwrap_or(7600);
-                format!("Opening the dashboard: http://127.0.0.1:{port}")
+            Request::OpenDashboard { browser } => appwindow::open_dashboard(self, browser).map(|opened| match opened {
+                appwindow::Opened::Launched => {
+                    let port = self.config().map(|c| c.ports.dashboard).unwrap_or(7600);
+                    format!("Opening the dashboard: http://127.0.0.1:{port}")
+                }
+                appwindow::Opened::Focused => "The dashboard is already open; brought it to the front.".to_owned(),
+                appwindow::Opened::Starting => "The dashboard is opening.".to_owned(),
             }),
             Request::SetTray { enabled } => {
                 tray::set_visible(enabled);
