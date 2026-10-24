@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 995 258" role="img" aria-label="PHPev horizontal logo for dark backgrounds">
+  <title>PHPev horizontal logo for dark backgrounds</title>
+
+<defs>
+  <linearGradient id="body" x1=".11" y1=".06" x2=".83" y2=".95" objectBoundingBox="true">
+    <stop offset="0" stop-color="#46bbff"/><stop offset=".53" stop-color="#348cff"/><stop offset="1" stop-color="#326dfa"/>
+  </linearGradient>
+  <linearGradient id="ear" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#8cc6ff"/><stop offset=".57" stop-color="#748fff"/><stop offset="1" stop-color="#5363f2"/>
+  </linearGradient>
+  <linearGradient id="fold" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#2346df"/><stop offset="1" stop-color="#365ef6"/>
+  </linearGradient>
+  <linearGradient id="shoulder" x1=".03" y1=".85" x2="1" y2=".1">
+    <stop offset="0" stop-color="#3ecaff"/><stop offset=".55" stop-color="#348eff"/><stop offset="1" stop-color="#426af9"/>
+  </linearGradient>
+  <linearGradient id="leg" x1=".08" y1=".1" x2="1" y2=".96">
+    <stop offset="0" stop-color="#48aeff"/><stop offset=".6" stop-color="#4385ff"/><stop offset="1" stop-color="#4a56f3"/>
+  </linearGradient>
+  <linearGradient id="sparkle" x1=".06" y1=".1" x2=".88" y2=".9">
+    <stop offset="0" stop-color="#35ddf2"/><stop offset=".45" stop-color="#45acff"/><stop offset=".78" stop-color="#7068ff"/><stop offset="1" stop-color="#a15ef5"/>
+  </linearGradient>
+  <linearGradient id="word" x1="0" y1="0" x2="1" y2=".9">
+    <stop offset="0" stop-color="#4dccff"/><stop offset=".55" stop-color="#348eff"/><stop offset="1" stop-color="#7454f5"/>
+  </linearGradient>
+  <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#101c37"/><stop offset="1" stop-color="#080f23"/>
+  </linearGradient>
+</defs>
+  
+    <mask id="elephant-cut" maskUnits="userSpaceOnUse" x="350" y="360" width="530" height="440">
+      <rect x="350" y="360" width="530" height="440" fill="white"/>
+      <path d="M485 444 C548 432 582 468 609 526 C635 584 621 623 596 635 C580 643 564 637 548 625 C577 634 596 617 597 582 C601 534 556 457 485 444 Z" fill="black"/>
+      <circle cx="656.5" cy="467.5" r="20.7" fill="black"/>
+    </mask>
+    
+  <g transform="translate(-105 -55) scale(.37)">
+  
+  <!-- Four-point sparkle -->
+  <path fill="url(#sparkle)" d="M829 220 C834 220 837 247 850 268 C865 291 892 303 918 309 C925 311 925 316 918 319 C875 328 846 353 835 400 C833 407 826 407 823 400 C812 356 791 331 740 318 C734 316 734 311 740 309 C794 296 813 269 824 224 C825 222 827 220 829 220 Z"/>
+
+  
+  <g mask="url(#elephant-cut)">
+  <path fill="url(#body)" d="M443 447 C505 401 570 372 613 375 C669 374 697 400 724 451 C742 485 754 500 773 497 C804 494 816 459 810 431 Q809 425 815 425 L846 425 Q850 426 851 431 C867 493 839 549 780 577 C762 586 742 589 721 594 C683 601 654 623 628 657 C594 700 572 747 554 790 L419 790 C399 751 398 703 409 666 C421 620 453 575 454 532 C454 502 445 467 443 447 Z"/>
+
+  </g>
+  <!-- Back ear, fold, shoulder, separated right leg -->
+
+  <path fill="url(#ear)" d="M449 445 C403 464 374 499 369 549 C360 603 376 653 405 687 C418 652 444 633 477 626 C515 616 545 634 564 630 C590 627 602 598 595 567 C584 515 546 454 495 445 C480 443 465 443 449 445 Z"/>
+
+  <!-- Deep-indigo rolled edge of the ear -->
+  <path fill="url(#fold)" d="M405 685 C419 647 452 626 493 624 C530 623 555 640 575 629 C531 651 487 675 451 712 C432 733 417 758 420 790 C407 761 402 717 405 685 Z"/>
+
+  <!-- Forward shoulder and lower-left leg -->
+  <path fill="url(#shoulder)" d="M420 790 C412 777 424 742 451 713 C482 680 527 654 575 636 C590 630 604 626 623 631 C591 671 568 727 554 790 Z"/>
+
+  <!-- Right leg, separated by natural negative space -->
+  <path fill="url(#leg)" d="M680 638 C724 657 752 708 757 772 Q759 784 758 790 L620 790 C621 729 643 675 680 638 Z"/>
+
+  
+  </g>
+  <g aria-label="PHPev">
+    <path d="M188 1493H827Q1112 1493 1264.5 1366.5Q1417 1240 1417 1006Q1417 771 1264.5 644.5Q1112 518 827 518H573V0H188ZM573 1214V797H786Q898 797 959.0 851.5Q1020 906 1020 1006Q1020 1106 959.0 1160.0Q898 1214 786 1214Z" transform="translate(288.00 195.00) scale(0.0898438 -0.0898438)" fill="#f7f9ff"/>
+    <path d="M188 1493H573V924H1141V1493H1526V0H1141V633H573V0H188Z" transform="translate(416.86 195.00) scale(0.0898438 -0.0898438)" fill="#f7f9ff"/>
+    <path d="M188 1493H827Q1112 1493 1264.5 1366.5Q1417 1240 1417 1006Q1417 771 1264.5 644.5Q1112 518 827 518H573V0H188ZM573 1214V797H786Q898 797 959.0 851.5Q1020 906 1020 1006Q1020 1106 959.0 1160.0Q898 1214 786 1214Z" transform="translate(564.85 195.00) scale(0.0898438 -0.0898438)" fill="#f7f9ff"/>
+    <path d="M1290 563V461H453Q466 335 544.0 272.0Q622 209 762 209Q875 209 993.5 242.5Q1112 276 1237 344V68Q1110 20 983.0 -4.5Q856 -29 729 -29Q425 -29 256.5 125.5Q88 280 88 559Q88 833 253.5 990.0Q419 1147 709 1147Q973 1147 1131.5 988.0Q1290 829 1290 563ZM922 682Q922 784 862.5 846.5Q803 909 707 909Q603 909 538.0 850.5Q473 792 457 682Z" transform="translate(692.70 195.00) scale(0.0898438 -0.0898438)" fill="url(#word)"/>
+    <path d="M31 1120H389L668 346L946 1120H1305L864 0H471Z" transform="translate(809.50 195.00) scale(0.0898438 -0.0898438)" fill="url(#word)"/>
+  </g>
+</svg>

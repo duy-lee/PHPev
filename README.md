@@ -1,6 +1,9 @@
 <div align="center">
 
-# PHPev
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/phpev-logo-dark.svg">
+  <img src="assets/phpev-logo-light.svg" alt="PHPev" width="420">
+</picture>
 
 **A fast, lightweight, open-source local PHP & Laravel environment for Windows.**
 

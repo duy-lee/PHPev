@@ -145,23 +145,25 @@ fn add(hwnd: HWND) {
     }
 }
 
-/// The embedded icon (resource 1, see build.rs) at the small-icon size.
+/// The embedded tray icon (resource 2, see build.rs; the app icon 1 as a
+/// fallback) at the small-icon size.
 fn icon() -> HICON {
     unsafe {
         let module = GetModuleHandleW(std::ptr::null());
-        let icon = LoadImageW(
-            module,
-            1 as _,
-            IMAGE_ICON,
-            GetSystemMetrics(SM_CXSMICON),
-            GetSystemMetrics(SM_CYSMICON),
-            LR_DEFAULTCOLOR,
-        );
-        if icon.is_null() {
-            LoadIconW(std::ptr::null_mut(), IDI_APPLICATION)
-        } else {
-            icon
+        for id in [2usize, 1] {
+            let icon = LoadImageW(
+                module,
+                id as _,
+                IMAGE_ICON,
+                GetSystemMetrics(SM_CXSMICON),
+                GetSystemMetrics(SM_CYSMICON),
+                LR_DEFAULTCOLOR,
+            );
+            if !icon.is_null() {
+                return icon;
+            }
         }
+        LoadIconW(std::ptr::null_mut(), IDI_APPLICATION)
     }
 }
 

@@ -227,7 +227,7 @@ fn asset(path: &str) -> Response<Body> {
             include_bytes!("../dashboard/vendor/htm-preact-standalone.mjs"),
             "text/javascript; charset=utf-8",
         ),
-        "/favicon.ico" => (include_bytes!("../../../assets/phpev.ico"), "image/x-icon"),
+        "/favicon.ico" => (include_bytes!("../../../assets/web/favicon.ico"), "image/x-icon"),
         _ => return text(StatusCode::NOT_FOUND, "Not Found"),
     };
     Response::builder()

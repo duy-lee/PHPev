@@ -1,6 +1,9 @@
 <div align="center">
 
-# PHPev
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/phpev-logo-dark.svg">
+  <img src="assets/phpev-logo-light.svg" alt="PHPev" width="420">
+</picture>
 
 **Môi trường PHP & Laravel local cho Windows: nhanh, nhẹ, mã nguồn mở.**
 
