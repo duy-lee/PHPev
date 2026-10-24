@@ -7,7 +7,7 @@ mod sites;
 mod uninstall;
 
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
@@ -132,14 +132,17 @@ enum Command {
         #[command(subcommand)]
         command: HostsCommand,
     },
-    /// Remove PHPev from this computer (keeps your databases and config.toml unless --purge)
+    /// Remove PHPev from this computer (asks whether to keep your databases and config.toml)
     Uninstall {
         /// Also delete the databases and config.toml
         #[arg(long)]
         purge: bool,
-        /// Do not ask for confirmation
+        /// Do not ask for confirmation (keeps the databases unless --purge)
         #[arg(short, long)]
         yes: bool,
+        /// Run by the uninstaller of setup.exe
+        #[arg(long, hide = true)]
+        installer: bool,
     },
 }
 
@@ -267,7 +270,7 @@ fn main() -> ExitCode {
         Command::Hosts {
             command: HostsCommand::Sync,
         } => sites::hosts_sync(),
-        Command::Uninstall { purge, yes } => uninstall::uninstall(purge, yes),
+        Command::Uninstall { purge, yes, installer } => uninstall::uninstall(purge, yes, installer),
     };
     match result {
         Ok(code) => code,
@@ -288,6 +291,7 @@ fn setup(home: Option<PathBuf>) -> io::Result<ExitCode> {
                     "--home must be an absolute path",
                 ));
             }
+            check_new_home(&dir)?;
             env_path::set_raw(Scope::User, HOME_ENV, &dir.to_string_lossy())?;
             Layout::at(dir, HomeSource::UserEnv)
         }
@@ -331,6 +335,35 @@ fn setup(home: Option<PathBuf>) -> io::Result<ExitCode> {
         println!("\nUser PATH updated. Open a new terminal for it to take effect.");
     }
     Ok(exit_code(worst))
+}
+
+/// A home must be a folder of its own: `phpev uninstall` deletes what is in it.
+/// Accepts a new or empty folder, or an existing PHPev home.
+fn check_new_home(dir: &Path) -> io::Result<()> {
+    if dir.parent().is_none() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "{} is a whole drive; use a folder such as {FALLBACK_HOME}",
+                dir.display()
+            ),
+        ));
+    }
+    let empty = match std::fs::read_dir(dir) {
+        Ok(mut entries) => entries.next().is_none(),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => true,
+        Err(e) => return Err(e),
+    };
+    if !empty && !dir.join("config.toml").is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "{} already contains other files; use a new or empty folder for the PHPev home",
+                dir.display()
+            ),
+        ));
+    }
+    Ok(())
 }
 
 /// Moves the shims to the front of the user PATH, dropping the previous home's

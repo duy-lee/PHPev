@@ -104,13 +104,29 @@ không có Edge thì mở bằng trình duyệt mặc định.
 
 ## Cài đặt
 
-> **Chưa ký số (code signing).** Windows có thể hiện *"Windows protected your PC"* với file tải về.
-> Chuột phải file zip → **Properties** → tick **Unblock** trước khi giải nén, hoặc chọn
-> **More info → Run anyway**. Có thể đối chiếu file tải về với `SHA256SUMS.txt` của cùng bản phát
-> hành bằng `Get-FileHash phpev-<version>-windows-x64.zip`.
+> **Chưa ký số (code signing).** Windows có thể hiện *"Windows protected your PC"* với file tải về:
+> chọn **More info → Run anyway**. Có thể đối chiếu file tải về với `SHA256SUMS.txt` của cùng bản
+> phát hành bằng `Get-FileHash <file>`.
 
-1. Tải `phpev-<version>-windows-x64.zip` từ [Releases](https://github.com/duy-lee/PHPev/releases)
-   và giải nén ở đâu cũng được (ví dụ thư mục Downloads).
+### Bằng trình cài đặt (khuyên dùng)
+
+1. Tải `phpev-<version>-setup.exe` từ [Releases](https://github.com/duy-lee/PHPev/releases) và
+   chạy nó.
+2. Chọn **Install for me only** (không cần quyền admin) hoặc **Install for all users**.
+3. Chọn thư mục chương trình và **thư mục dữ liệu PHPev**, nơi chứa PHP, MariaDB, database và cấu
+   hình (mặc định `%USERPROFILE%\.phpev`; nên dùng đường dẫn không có dấu cách và không dấu tiếng
+   Việt). Tick **Start PHPev when I sign in to Windows** nếu muốn PHPev tự chạy khi đăng nhập.
+
+Sau đó PHPev có trong Start menu (bấm vào sẽ mở dashboard) và trong **Settings → Apps**. Mở terminal
+mới và kiểm tra bằng `phpev doctor`.
+
+Với **Install for all users**, mỗi user Windows có thư mục dữ liệu PHPev riêng, được tạo lần đầu họ
+mở PHPev từ Start menu.
+
+### Bằng file zip
+
+1. Tải `phpev-<version>-windows-x64.zip`, chuột phải → **Properties** → tick **Unblock**, rồi giải
+   nén ở đâu cũng được (ví dụ thư mục Downloads).
 2. Mở terminal trong thư mục đó và chạy:
 
    ```powershell
@@ -128,7 +144,7 @@ không có Edge thì mở bằng trình duyệt mặc định.
 
 > Nếu tên user Windows có dấu (ví dụ `Mê Ga Lô Đôn`), PHP không nạp được `php.ini` từ đường dẫn đó.
 > `setup` sẽ phát hiện và đề xuất dùng `C:\PHPev` làm home; bạn cũng có thể tự chọn bằng
-> `phpev setup --home D:\PHPev`.
+> `phpev setup --home D:\PHPev` (thư mục mới hoặc đang trống).
 
 ## Bắt đầu nhanh
 
@@ -338,7 +354,7 @@ vụ bị kill; MariaDB được tắt êm khi Windows log off hoặc shutdown.
 | `phpev ca status\|uninstall` | Quản lý CA nội bộ |
 | `phpev tld [TLD]` | Xem hoặc đổi TLD (mặc định `localhost`) |
 | `phpev hosts sync` | Ghi mọi site vào file hosts của Windows |
-| `phpev uninstall [--purge] [--yes]` | Gỡ PHPev khỏi máy |
+| `phpev uninstall [--purge] [--yes]` | Gỡ PHPev khỏi máy (hỏi có giữ database không) |
 
 Chạy `phpev <lệnh> --help` để xem đầy đủ tùy chọn.
 
@@ -477,19 +493,26 @@ Xem `%USERPROFILE%\.phpev\logs\daemon.log` hoặc trang Logs của dashboard, r�
 
 ## Gỡ cài đặt
 
+Cài bằng `setup.exe`: gỡ **PHPev** trong **Settings → Apps** (hoặc chạy `phpev uninstall`, lệnh này
+mở đúng trình gỡ đó). Trình gỡ sẽ hỏi có xoá luôn database và cấu hình không; mặc định là giữ lại.
+
+Cài bằng file zip:
+
 ```powershell
-phpev uninstall           # giữ lại database và config.toml
+phpev uninstall           # hỏi có xoá database và config.toml không (mặc định: giữ)
 phpev uninstall --purge   # xoá cả hai
+phpev uninstall --yes     # không hỏi gì; giữ lại cả hai
 ```
 
 `uninstall` liệt kê những gì sẽ làm và hỏi trước khi thay đổi. Lệnh này dừng PHPev và MariaDB, tắt
-tự chạy khi đăng nhập, gỡ CA của PHPev và mục PHPev trong PATH, rồi xoá thư mục home của PHPev. Nếu
+tự chạy khi đăng nhập, gỡ CA của PHPev và mục PHPev trong PATH, rồi xoá những gì PHPev đã tạo trong
+thư mục home. Nếu
 PHPev đã thay đổi cấu hình cần quyền admin (dòng trong file hosts, System PATH, exclusion Microsoft
 Defender cho home hoặc các project), nó gỡ hết sau **một** lần UAC. Thư mục project của bạn không
 bao giờ bị đụng tới.
 
-Không có `--purge` thì database (`data\`) và `config.toml` được giữ lại trong `%USERPROFILE%\.phpev`,
-cài lại PHPev sẽ dùng lại được. `--purge` bắt bạn gõ `delete` trước khi xoá chúng.
+Database (`data\`) và `config.toml` nếu được giữ lại sẽ nằm nguyên trong thư mục home, cài lại PHPev
+sẽ dùng lại được. Muốn xoá chúng thì phải gõ `delete` để xác nhận.
 
 ## Build từ mã nguồn
 
@@ -524,6 +547,9 @@ Cấu trúc project:
 | `crates/shim` | `phpev-shim.exe` | Được cài thành `php.exe` và `composer.exe` |
 | `crates/elevate` | `phpev-elevate.exe` | Các thao tác cần quyền admin |
 
+Trình cài đặt được build từ `installer/phpev.iss` bằng [Inno Setup](https://jrsoftware.org/isinfo.php)
+6 trở lên, sau khi build release: `ISCC.exe /DAppVersion=0.1.0 installer\phpev.iss` (file ra nằm trong `dist\`).
+
 Kiểm tra trước mỗi commit:
 
 ```powershell
@@ -537,6 +563,7 @@ cargo test
 Phase 1 (mọi thứ ở trên) đã hoàn tất. Dự kiến tiếp theo:
 
 - [x] CI và build bản phát hành
+- [x] Trình cài đặt Windows (`setup.exe`), có trong Settings → Apps
 - [ ] Ký số bản phát hành, gói `winget` và Scoop
 - [ ] Bật/tắt Xdebug theo version PHP
 - [ ] Backend nginx hoặc Apache tùy chọn cho từng site (cho `.htaccess` và rewrite rule kiểu nginx)

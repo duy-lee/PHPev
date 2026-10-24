@@ -1,8 +1,12 @@
 //! `phpev uninstall`: undo everything PHPev changed on this computer.
 //!
-//! Keeps the databases (`data\`) and `config.toml` unless `--purge`, so a slip
-//! of the keyboard cannot lose data. Admin-level changes (hosts file, system
-//! PATH, Defender exclusions) are undone together behind one UAC prompt.
+//! Asks whether to delete the databases (`data\`) and `config.toml` too; they
+//! are kept by default (and with `--yes`) unless `--purge`, so a slip of the
+//! keyboard cannot lose data. Admin-level changes (hosts file, system PATH,
+//! Defender exclusions) are undone together behind one UAC prompt.
+//!
+//! An installation made by `setup.exe` is handed over to its uninstaller,
+//! which asks the same question and then runs `phpev uninstall --installer`.
 
 use std::io::{self, BufRead, IsTerminal, Write};
 use std::os::windows::process::CommandExt;
@@ -13,17 +17,27 @@ use phpev_core::config::Config;
 use phpev_core::elevate::{self, CMD_UNINSTALL_CLEANUP};
 use phpev_core::env_path::{self, Scope};
 use phpev_core::layout::Layout;
-use phpev_core::{autostart, ca, hosts, ipc, HOME_ENV};
+use phpev_core::{autostart, ca, hosts, installer, ipc, HOME_ENV};
 
 use crate::daemon;
+use crate::progress::mib;
 
-/// What stays in the home without `--purge`.
-const KEPT: &[&str] = &["data", "config.toml"];
+/// What PHPev puts in its home and removes again. Only these are deleted, so a
+/// home pointed at a folder with other files never loses them.
+const OWNED: &[&str] = &["shims", "bin", "cache", "certs", "logs", "shims.cache", "state.json"];
+/// The user's data: deleted only with `--purge` or when the user says so.
+const DATA: &[&str] = &["data", "config.toml"];
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const DETACHED_PROCESS: u32 = 0x0000_0008;
 
-pub fn uninstall(purge: bool, yes: bool) -> io::Result<ExitCode> {
+pub fn uninstall(mut purge: bool, yes: bool, from_installer: bool) -> io::Result<ExitCode> {
+    if !from_installer {
+        if let Some(setup) = installer::installed() {
+            return hand_over(&setup, purge || yes);
+        }
+    }
+
     let layout = Layout::resolve()?;
     let root = layout.root().to_path_buf();
     let shims = layout.shims();
@@ -46,6 +60,7 @@ pub fn uninstall(purge: bool, yes: bool) -> io::Result<ExitCode> {
     );
     let needs_admin = hosts_block || system_path || !defender.is_empty();
     let ca_der = ca::stored_der(&layout);
+    let has_data = DATA.iter().any(|name| root.join(name).exists());
 
     println!("This removes PHPev from this computer:");
     println!("  - stops PHPev, MariaDB and the PHP workers");
@@ -68,9 +83,14 @@ pub fn uninstall(purge: bool, yes: bool) -> io::Result<ExitCode> {
     }
     if purge {
         println!("  - deletes {} entirely, INCLUDING YOUR DATABASES", root.display());
-    } else {
+    } else if yes || !has_data {
         println!(
             "  - deletes {} except your databases (data\\) and config.toml (--purge deletes them too)",
+            root.display()
+        );
+    } else {
+        println!(
+            "  - deletes {}; you choose next whether your databases (data\\) and config.toml go too",
             root.display()
         );
     }
@@ -83,6 +103,16 @@ pub fn uninstall(purge: bool, yes: bool) -> io::Result<ExitCode> {
         if !ask("Uninstall PHPev? [y/N] ", &["y", "yes"])? {
             println!("Nothing was changed.");
             return Ok(ExitCode::SUCCESS);
+        }
+        if !purge && has_data {
+            let size: u64 = DATA.iter().map(|name| size_of(&root.join(name))).sum();
+            purge = ask(
+                &format!(
+                    "Also delete your databases and settings ({} in data\\ and config.toml)? [y/N] ",
+                    mib(size)
+                ),
+                &["y", "yes"],
+            )?;
         }
         if purge
             && !ask(
@@ -200,7 +230,34 @@ pub fn uninstall(purge: bool, yes: bool) -> io::Result<ExitCode> {
     })
 }
 
-/// Deletes the home (everything, or all but `KEPT`). The running `phpev.exe`
+/// Hands over to the uninstaller of `setup.exe` (Settings → Apps), which also
+/// removes the program folder and Start menu entry.
+fn hand_over(setup: &installer::Installed, had_flags: bool) -> io::Result<ExitCode> {
+    println!("PHPev was installed with its setup program; opening its uninstaller (as in Settings → Apps).");
+    if setup.all_users {
+        println!("It was installed for all users, so this removes the program for everyone on this computer.");
+    }
+    if had_flags {
+        println!("--yes and --purge do not apply here: the uninstaller asks whether to keep your databases.");
+    }
+    setup.start_uninstaller()?;
+    Ok(ExitCode::SUCCESS)
+}
+
+/// Bytes in a file or directory tree (0 if missing).
+fn size_of(path: &Path) -> u64 {
+    let Ok(meta) = std::fs::symlink_metadata(path) else {
+        return 0;
+    };
+    if !meta.is_dir() {
+        return meta.len();
+    }
+    std::fs::read_dir(path)
+        .map(|entries| entries.flatten().map(|e| size_of(&e.path())).sum())
+        .unwrap_or(0)
+}
+
+/// Deletes what PHPev owns in the home, and the data too with `purge`. The running `phpev.exe`
 /// usually lives in it and cannot be deleted while running, so it is moved to
 /// the temp folder first and deleted from there once this process has exited.
 fn delete_files(root: &Path, purge: bool, problems: &mut Vec<String>) {
@@ -216,7 +273,8 @@ fn delete_files(root: &Path, purge: bool, problems: &mut Vec<String>) {
     let Ok(entries) = std::fs::read_dir(root) else { return };
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
-        if !purge && KEPT.iter().any(|k| k.eq_ignore_ascii_case(&name)) {
+        let listed = |list: &[&str]| list.iter().any(|k| k.eq_ignore_ascii_case(&name));
+        if !(listed(OWNED) || purge && listed(DATA)) {
             continue;
         }
         let path = entry.path();
@@ -232,6 +290,7 @@ fn delete_files(root: &Path, purge: bool, problems: &mut Vec<String>) {
             ));
         }
     }
+    // Fails, keeping the folder, while anything PHPev did not create is left in it.
     if purge {
         let _ = std::fs::remove_dir(root);
     }

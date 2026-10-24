@@ -1,7 +1,7 @@
 name: Release
 
-# Pushing a tag such as v0.1.0 builds the release zip and creates a DRAFT
-# GitHub Release with it; publishing the draft is done by hand.
+# Pushing a tag such as v0.1.0 builds the installer and the zip and creates a
+# DRAFT GitHub Release with them; publishing the draft is done by hand.
 on:
   push:
     tags: ['v*']
@@ -51,8 +51,17 @@ jobs:
           }
           Copy-Item README.md, LICENSE-MIT, LICENSE-APACHE, CHANGELOG.md $dir
           Compress-Archive -Path "$dir/*" -DestinationPath "dist/$name.zip"
-          $hash = (Get-FileHash "dist/$name.zip" -Algorithm SHA256).Hash.ToLower()
-          "$hash  $name.zip" | Out-File -Encoding ascii dist/SHA256SUMS.txt
+
+      - name: Installer
+        shell: pwsh
+        run: ./.github/scripts/build-installer.ps1 -Version $env:VERSION
+
+      - name: Checksums
+        shell: pwsh
+        run: |
+          $files = "phpev-$env:VERSION-setup.exe", "phpev-$env:VERSION-windows-x64.zip"
+          $files | ForEach-Object { "$((Get-FileHash "dist/$_" -Algorithm SHA256).Hash.ToLower())  $_" } |
+            Out-File -Encoding ascii dist/SHA256SUMS.txt
           Get-Content dist/SHA256SUMS.txt
 
       - name: Release notes from CHANGELOG.md
@@ -74,4 +83,4 @@ jobs:
           $flags = @('--draft', '--title', "PHPev $env:VERSION", '--notes-file', 'dist/notes.md')
           # 0.x versions and versions like 1.0.0-rc.1 are marked as pre-releases.
           if ($env:VERSION -match '^0\.' -or $env:VERSION -match '-') { $flags += '--prerelease' }
-          gh release create $env:GITHUB_REF_NAME @flags "dist/phpev-$env:VERSION-windows-x64.zip" dist/SHA256SUMS.txt
+          gh release create $env:GITHUB_REF_NAME @flags "dist/phpev-$env:VERSION-setup.exe" "dist/phpev-$env:VERSION-windows-x64.zip" dist/SHA256SUMS.txt

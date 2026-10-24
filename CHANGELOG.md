@@ -10,9 +10,14 @@ The first public pre-release. Windows 10 (1809+) and 11, x64.
 
 ### Install
 
-1. Download `phpev-0.1.0-windows-x64.zip` below, right-click it → **Properties** → **Unblock**, and
-   extract it. (The executables are not code-signed yet, so Windows may warn about them.)
-2. In that folder run `.\phpev.exe setup`, then open a new terminal and run `phpev doctor`.
+Download `phpev-0.1.0-setup.exe` below and run it (for you only, without admin rights, or for all
+users). PHPev then appears in the Start menu and in Settings → Apps.
+
+Or use the zip: download `phpev-0.1.0-windows-x64.zip`, right-click it → **Properties** →
+**Unblock**, extract it, run `.\phpev.exe setup` in that folder, then open a new terminal and run
+`phpev doctor`.
+
+The files are not code-signed yet, so Windows may warn about them (**More info → Run anyway**).
 
 See the [README](https://github.com/duy-lee/PHPev#readme) for the full guide.
 
@@ -38,8 +43,10 @@ See the [README](https://github.com/duy-lee/PHPev#readme) for the full guide.
 - **Tray icon** with the dashboard, sites, MariaDB start/stop, start with Windows and exit.
 - **`phpev doctor`** checks PATH order, ports, the Visual C++ runtime, the CA and more, and fixes
   what it can.
-- **`phpev uninstall`** removes everything PHPev changed (one UAC prompt for admin-level changes),
-  keeping the databases unless `--purge`.
+- **Installer** (`setup.exe`): install for the current user or for all users, choose the program
+  and data folders, optional start at sign-in; Start menu entry and uninstall from Settings → Apps.
+- **`phpev uninstall`** removes everything PHPev changed (one UAC prompt for admin-level changes)
+  and asks whether to delete the databases too (kept by default).
 
 ### Known limitations
 

@@ -13,6 +13,7 @@ pub mod env_path;
 pub mod envfile;
 pub mod extract;
 pub mod hosts;
+pub mod installer;
 pub mod ipc;
 pub mod launch;
 pub mod layout;

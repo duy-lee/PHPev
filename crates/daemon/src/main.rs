@@ -12,6 +12,7 @@ mod fastcgi;
 mod http_util;
 mod job;
 mod jobs;
+mod launcher;
 mod log;
 mod logs;
 mod metrics;
@@ -45,6 +46,9 @@ use crate::services::Db;
 
 fn main() -> ExitCode {
     tray::set_dpi_aware();
+    if std::env::args().nth(1).as_deref() == Some(launcher::ARG) {
+        return launcher::open_dashboard();
+    }
     let Ok(layout) = Layout::resolve() else {
         return ExitCode::FAILURE;
     };

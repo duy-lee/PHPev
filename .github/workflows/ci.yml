@@ -47,3 +47,16 @@ jobs:
       - name: Check the executables
         shell: pwsh
         run: ./.github/scripts/check-binaries.ps1 target/release
+
+      - name: Installer
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path Cargo.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
+          ./.github/scripts/build-installer.ps1 -Version $version
+
+      - name: Upload the installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: phpev-setup
+          path: dist/*-setup.exe
+          retention-days: 14

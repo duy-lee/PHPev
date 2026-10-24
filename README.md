@@ -105,13 +105,28 @@ on Windows) is used for the dashboard window when available; otherwise your defa
 ## Installation
 
 > **Not code-signed yet.** Windows may show *"Windows protected your PC"* for files from the
-> release. Right-click the downloaded zip → **Properties** → tick **Unblock** before extracting, or
-> choose **More info → Run anyway**. You can check the download against `SHA256SUMS.txt` from the
-> same release with `Get-FileHash phpev-<version>-windows-x64.zip`.
+> release: choose **More info → Run anyway**. You can check a download against `SHA256SUMS.txt`
+> from the same release with `Get-FileHash <file>`.
 
-1. Download `phpev-<version>-windows-x64.zip` from
-   [Releases](https://github.com/duy-lee/PHPev/releases) and extract it anywhere (for example
-   your Downloads folder).
+### With the installer (recommended)
+
+1. Download `phpev-<version>-setup.exe` from [Releases](https://github.com/duy-lee/PHPev/releases)
+   and run it.
+2. Choose **Install for me only** (no admin rights needed) or **Install for all users**.
+3. Pick the program folder and the **PHPev data folder**, where PHP, MariaDB, your databases and
+   settings live (default `%USERPROFILE%\.phpev`; use a path without spaces or accented
+   characters). Tick **Start PHPev when I sign in to Windows** if you like.
+
+PHPev then shows up in the Start menu (it opens the dashboard) and in **Settings → Apps**. Open a
+new terminal and check everything with `phpev doctor`.
+
+With **Install for all users**, every Windows user gets their own PHPev data folder, created the
+first time they open PHPev from the Start menu.
+
+### With the zip
+
+1. Download `phpev-<version>-windows-x64.zip`, right-click it → **Properties** → tick
+   **Unblock**, and extract it anywhere (for example your Downloads folder).
 2. Open a terminal in that folder and run:
 
    ```powershell
@@ -129,7 +144,7 @@ on Windows) is used for the dashboard window when available; otherwise your defa
 
 > If your Windows user name contains non-ASCII characters (for example `Mê Ga Lô Đôn`), PHP cannot
 > load its `php.ini` from that path. `setup` detects this and suggests `C:\PHPev` as the home;
-> you can also choose one yourself with `phpev setup --home D:\PHPev`.
+> you can also choose one yourself with `phpev setup --home D:\PHPev` (a new or empty folder).
 
 ## Quick start
 
@@ -348,7 +363,7 @@ down cleanly when Windows logs off or shuts down.
 | `phpev ca status\|uninstall` | Manage the local certificate authority |
 | `phpev tld [TLD]` | Show or change the TLD (default `localhost`) |
 | `phpev hosts sync` | Write all sites into the Windows hosts file |
-| `phpev uninstall [--purge] [--yes]` | Remove PHPev from this computer |
+| `phpev uninstall [--purge] [--yes]` | Remove PHPev from this computer (asks whether to keep your databases) |
 
 Run `phpev <command> --help` for every option.
 
@@ -491,19 +506,26 @@ Look at `%USERPROFILE%\.phpev\logs\daemon.log` or the dashboard's Logs page, the
 
 ## Uninstalling
 
+Installed with `setup.exe`: uninstall **PHPev** in **Settings → Apps** (or run `phpev uninstall`,
+which opens the same uninstaller). It asks whether to delete your databases and settings too;
+the default is to keep them.
+
+Installed from the zip:
+
 ```powershell
-phpev uninstall           # keeps your databases and config.toml
+phpev uninstall           # asks whether to delete your databases and config.toml (default: keep)
 phpev uninstall --purge   # deletes them too
+phpev uninstall --yes     # no questions; keeps them
 ```
 
 `uninstall` shows what it will do and asks before changing anything. It stops PHPev and MariaDB,
 turns off start at log in, removes the PHPev certificate authority and PHPev's entry in your PATH,
-and deletes the PHPev home. If PHPev changed admin-level settings (hosts file entries, the system
-PATH, Microsoft Defender exclusions for the home or your projects), it removes them after a single
-UAC prompt. Your project folders are never touched.
+and deletes what PHPev put in its home. If PHPev changed admin-level settings (hosts file entries,
+the system PATH, Microsoft Defender exclusions for the home or your projects), it removes them after
+a single UAC prompt. Your project folders are never touched.
 
-Without `--purge`, the databases (`data\`) and `config.toml` stay in `%USERPROFILE%\.phpev`, so
-installing PHPev again picks them up. `--purge` asks you to type `delete` before removing them.
+Kept databases (`data\`) and `config.toml` stay in the PHPev home, so installing PHPev again picks
+them up. Deleting them asks you to type `delete` first.
 
 ## Building from source
 
@@ -539,6 +561,9 @@ Project layout:
 | `crates/shim` | `phpev-shim.exe` | Installed as `php.exe` and `composer.exe` |
 | `crates/elevate` | `phpev-elevate.exe` | Admin-only operations |
 
+The installer is built from `installer/phpev.iss` with [Inno Setup](https://jrsoftware.org/isinfo.php)
+6 or later, after a release build: `ISCC.exe /DAppVersion=0.1.0 installer\phpev.iss` (output in `dist\`).
+
 Checks run before every commit:
 
 ```powershell
@@ -552,6 +577,7 @@ cargo test
 Phase 1 (everything above) is complete. Planned next:
 
 - [x] Continuous integration and release builds
+- [x] Windows installer (`setup.exe`), listed in Settings → Apps
 - [ ] Code-signed releases, `winget` and Scoop packages
 - [ ] Xdebug on/off per PHP version
 - [ ] Optional nginx or Apache backend per site (for `.htaccess` and nginx rewrite rules)
