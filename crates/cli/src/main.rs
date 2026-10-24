@@ -4,6 +4,7 @@ mod import;
 mod progress;
 mod runtimes;
 mod sites;
+mod uninstall;
 
 use std::io;
 use std::path::PathBuf;
@@ -131,6 +132,15 @@ enum Command {
         #[command(subcommand)]
         command: HostsCommand,
     },
+    /// Remove PHPev from this computer (keeps your databases and config.toml unless --purge)
+    Uninstall {
+        /// Also delete the databases and config.toml
+        #[arg(long)]
+        purge: bool,
+        /// Do not ask for confirmation
+        #[arg(short, long)]
+        yes: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -257,6 +267,7 @@ fn main() -> ExitCode {
         Command::Hosts {
             command: HostsCommand::Sync,
         } => sites::hosts_sync(),
+        Command::Uninstall { purge, yes } => uninstall::uninstall(purge, yes),
     };
     match result {
         Ok(code) => code,

@@ -19,6 +19,13 @@ pub const CMD_SYSTEM_PATH_PREPEND: &str = "system-path-prepend";
 /// Subcommand understood by the helper: add a Microsoft Defender path exclusion.
 pub const CMD_DEFENDER_EXCLUDE: &str = "defender-exclude";
 
+/// Subcommand understood by the helper: undo PHPev's admin-level changes in one
+/// UAC prompt for `phpev uninstall`. Arguments, any combination:
+/// `--hosts` (remove the PHPev hosts block), `--system-path <dir>` (remove
+/// `<dir>` from the system PATH), `--defender <dir>` (remove a Defender path
+/// exclusion; repeatable).
+pub const CMD_UNINSTALL_CLEANUP: &str = "uninstall-cleanup";
+
 /// Subcommand understood by the helper: rewrite the PHPev block of the hosts
 /// file with the given hostnames (none = remove the block).
 pub const CMD_HOSTS_SYNC: &str = "hosts-sync";

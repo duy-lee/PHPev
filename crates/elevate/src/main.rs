@@ -7,7 +7,7 @@ use std::os::windows::process::CommandExt;
 use std::path::Path;
 use std::process::{Command, ExitCode};
 
-use phpev_core::elevate::{CMD_DEFENDER_EXCLUDE, CMD_HOSTS_SYNC, CMD_SYSTEM_PATH_PREPEND};
+use phpev_core::elevate::{CMD_DEFENDER_EXCLUDE, CMD_HOSTS_SYNC, CMD_SYSTEM_PATH_PREPEND, CMD_UNINSTALL_CLEANUP};
 use phpev_core::env_path::{self, Scope};
 use phpev_core::hosts;
 
@@ -21,6 +21,7 @@ fn main() -> ExitCode {
         [CMD_SYSTEM_PATH_PREPEND, dir] => system_path_prepend(dir),
         [CMD_DEFENDER_EXCLUDE, dir] => defender_exclude(dir),
         [CMD_HOSTS_SYNC, names @ ..] => hosts_sync(names),
+        [CMD_UNINSTALL_CLEANUP, rest @ ..] => uninstall_cleanup(rest),
         _ => ExitCode::from(EXIT_USAGE),
     }
 }
@@ -45,6 +46,74 @@ fn system_path_prepend(dir: &str) -> ExitCode {
     }
 }
 
+/// Undoes PHPev's admin-level changes (see `CMD_UNINSTALL_CLEANUP`). Every step
+/// is attempted; the exit code reports whether all of them succeeded.
+fn uninstall_cleanup(args: &[&str]) -> ExitCode {
+    let mut hosts_block = false;
+    let mut system_path = Vec::new();
+    let mut defender = Vec::new();
+    let mut it = args.iter();
+    while let Some(arg) = it.next() {
+        match *arg {
+            "--hosts" => hosts_block = true,
+            "--system-path" | "--defender" => {
+                let Some(dir) = it.next().filter(|d| Path::new(d).is_absolute()) else {
+                    return ExitCode::from(EXIT_USAGE);
+                };
+                if *arg == "--defender" {
+                    defender.push(*dir)
+                } else {
+                    system_path.push(*dir)
+                }
+            }
+            _ => return ExitCode::from(EXIT_USAGE),
+        }
+    }
+    let mut ok = true;
+    if hosts_block {
+        ok &= hosts_sync(&[]) == ExitCode::SUCCESS;
+    }
+    if !system_path.is_empty() {
+        let result = env_path::get_raw(Scope::System, "Path").and_then(|raw| {
+            let raw = raw.unwrap_or_default();
+            let updated = system_path
+                .iter()
+                .fold(raw.clone(), |acc, dir| env_path::remove(&acc, dir));
+            if updated != raw {
+                env_path::set_raw(Scope::System, "Path", &updated)?;
+                env_path::broadcast_change();
+            }
+            Ok(())
+        });
+        ok &= result.is_ok();
+    }
+    if !defender.is_empty() {
+        // The folders may already be gone, so they are not required to exist.
+        // Single-quoted PowerShell strings: the only escape is doubling `'`.
+        let list = defender
+            .iter()
+            .map(|d| format!("'{}'", d.replace('\'', "''")))
+            .collect::<Vec<_>>()
+            .join(",");
+        ok &= powershell(&format!("Remove-MpPreference -ExclusionPath {list}"));
+    }
+    if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(EXIT_FAILED)
+    }
+}
+
+fn powershell(script: &str) -> bool {
+    let system_root = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
+    let powershell = Path::new(&system_root).join(r"System32\WindowsPowerShell\v1.0\powershell.exe");
+    Command::new(powershell)
+        .args(["-NoProfile", "-NonInteractive", "-Command", script])
+        .creation_flags(CREATE_NO_WINDOW)
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
 /// Adds `dir` to Microsoft Defender's path exclusions (stops on-access scanning
 /// of the PHP binaries on every process start).
 fn defender_exclude(dir: &str) -> ExitCode {
@@ -52,17 +121,14 @@ fn defender_exclude(dir: &str) -> ExitCode {
     if !path.is_absolute() || !path.is_dir() {
         return ExitCode::from(EXIT_USAGE);
     }
-    let system_root = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
-    let powershell = Path::new(&system_root).join(r"System32\WindowsPowerShell\v1.0\powershell.exe");
     // Single-quoted PowerShell string: the only escape is doubling `'`.
-    let script = format!("Add-MpPreference -ExclusionPath '{}'", dir.replace('\'', "''"));
-    let status = Command::new(powershell)
-        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
-        .creation_flags(CREATE_NO_WINDOW)
-        .status();
-    match status {
-        Ok(s) if s.success() => ExitCode::SUCCESS,
-        _ => ExitCode::from(EXIT_FAILED),
+    if powershell(&format!(
+        "Add-MpPreference -ExclusionPath '{}'",
+        dir.replace('\'', "''")
+    )) {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(EXIT_FAILED)
     }
 }
 

@@ -51,6 +51,12 @@ pub fn set_raw(scope: Scope, name: &str, value: &str) -> io::Result<()> {
     registry::write_expand_string(hkey, subkey, name, value)
 }
 
+/// Deletes an environment variable (no error if it does not exist).
+pub fn delete(scope: Scope, name: &str) -> io::Result<()> {
+    let (hkey, subkey) = scope.key();
+    registry::delete_value(hkey, subkey, name)
+}
+
 /// Tells Explorer (and anything else listening) that the environment changed,
 /// so terminals opened afterwards see the new values.
 pub fn broadcast_change() {
@@ -106,6 +112,15 @@ pub fn prepend(raw: &str, dir: &str) -> String {
     let mut parts = vec![dir];
     parts.extend(split(raw).into_iter().filter(|p| !same_dir(p, dir)));
     parts.join(";")
+}
+
+/// Returns `raw` without `dir` (every occurrence).
+pub fn remove(raw: &str, dir: &str) -> String {
+    split(raw)
+        .into_iter()
+        .filter(|p| !same_dir(p, dir))
+        .collect::<Vec<_>>()
+        .join(";")
 }
 
 /// Position of `dir` within a PATH value, if present.
