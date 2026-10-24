@@ -228,6 +228,9 @@ fn asset(path: &str) -> Response<Body> {
             "text/javascript; charset=utf-8",
         ),
         "/favicon.ico" => (include_bytes!("../../../assets/web/favicon.ico"), "image/x-icon"),
+        "/favicon.svg" => (include_bytes!("../../../assets/web/favicon.svg"), "image/svg+xml"),
+        "/logo-light.svg" => (include_bytes!("../../../assets/phpev-logo-light.svg"), "image/svg+xml"),
+        "/logo-dark.svg" => (include_bytes!("../../../assets/phpev-logo-dark.svg"), "image/svg+xml"),
         _ => return text(StatusCode::NOT_FOUND, "Not Found"),
     };
     Response::builder()

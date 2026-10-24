@@ -460,7 +460,7 @@ function App() {
   const active = PAGES.find((p) => p.id === page) ?? PAGES[0];
   const startJob = (id, after) => setJob({ id, after });
   return html`<div class="layout">
-    <nav><div class="brand">${t('app.title')}</div>
+    <nav><div class="brand"><picture><source srcset="/logo-dark.svg" media="(prefers-color-scheme: dark)" /><img src="/logo-light.svg" alt=${t('app.title')} /></picture></div>
       ${PAGES.map((p) => html`<a href="#/${p.id}" onClick=${(e) => go(e, p.id)} class=${p.id === active.id ? 'active' : ''}>${t(p.label)}</a>`)}</nav>
     <main><${active.view} startJob=${startJob} /></main>
     ${job && html`<${JobDialog} id=${job.id} onClose=${() => { job.after?.(); setJob(null); }} />`}

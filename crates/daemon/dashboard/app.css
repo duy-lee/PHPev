@@ -32,7 +32,8 @@ code { background: var(--code); padding: 1px 5px; border-radius: 4px; }
 
 .layout { display: flex; min-height: 100vh; }
 nav { width: 190px; flex: none; background: var(--panel); border-right: 1px solid var(--border); padding: 16px 10px; }
-nav .brand { font-weight: 700; font-size: 18px; padding: 4px 10px 16px; }
+nav .brand { padding: 0 6px 14px; }
+nav .brand img { display: block; width: 150px; height: auto; }
 nav a { display: block; padding: 7px 10px; border-radius: 6px; color: var(--text); text-decoration: none; }
 nav a.active { background: var(--accent); color: var(--accent-text); }
 main { flex: 1; padding: 22px 28px; max-width: 1200px; }
