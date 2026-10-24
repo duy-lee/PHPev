@@ -162,6 +162,8 @@ enum PhpCommand {
     },
     /// Download and install a version, e.g. `8.4` or `8.4.27`
     Install { version: String },
+    /// Add a PHP build you already have (a folder with php.exe and php-cgi.exe); it is copied into PHPev
+    Add { dir: PathBuf },
     /// Set the default version used outside projects
     Use { version: String },
     /// Show (and create if missing) the php.ini of a version
@@ -223,6 +225,7 @@ fn main() -> ExitCode {
         Command::Php { command } => match command {
             PhpCommand::List { available } => runtimes::php_list(available),
             PhpCommand::Install { version } => runtimes::php_install(&version),
+            PhpCommand::Add { dir } => runtimes::php_add(&dir),
             PhpCommand::Use { version } => runtimes::php_use(&version),
             PhpCommand::Ini { version } => runtimes::php_ini(&version),
             PhpCommand::Which => runtimes::php_which(),

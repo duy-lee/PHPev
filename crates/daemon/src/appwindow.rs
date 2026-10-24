@@ -113,6 +113,11 @@ fn focus(hwnd: HWND) {
     }
 }
 
+/// The dashboard app window, if one is open (owner of dialogs the dashboard opens).
+pub(crate) fn window() -> Option<HWND> {
+    windows().into_iter().next()
+}
+
 /// Visible dashboard app windows.
 fn windows() -> Vec<HWND> {
     let mut found = Vec::new();

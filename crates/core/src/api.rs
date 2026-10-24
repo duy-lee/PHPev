@@ -82,6 +82,20 @@ pub struct AvailablePhp {
     pub line: String,
     pub version: String,
     pub installed: bool,
+    /// An end-of-life line, downloaded from the archive.
+    pub archived: bool,
+}
+
+/// A folder on this computer, e.g. a PHP build to add.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PathRequest {
+    pub path: String,
+}
+
+/// The folder chosen in the Windows folder dialog; `None` if cancelled.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PickedFolder {
+    pub path: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

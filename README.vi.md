@@ -72,7 +72,8 @@ kèm cả một Apache. PHPev hướng tới trải nghiệm như Herd, với ba
 - **Một lệnh để project chạy được.** `phpev import` nhận diện Laravel hoặc PHP thuần, chọn version
   PHP theo `composer.json`, bật extension còn thiếu, chạy `composer install`, tạo `.env`, tạo
   database và gán domain cho project.
-- **Nhiều version PHP cùng lúc** (7.4 – 8.5, bản chính thức từ windows.php.net), chọn theo từng
+- **Nhiều version PHP cùng lúc** (7.0 – 8.5, bản chính thức từ windows.php.net, hoặc thư mục PHP
+  bạn đã có sẵn), chọn theo từng
   project bằng `.php-version`, theo site, hoặc mặc định chung. Lệnh `php` và `composer` trong mọi
   terminal tự dùng đúng version của thư mục hiện tại.
 - **MariaDB** (10.6 – 13.0, bản chính thức), mỗi major version một thư mục dữ liệu riêng, chỉ chạy
@@ -237,6 +238,8 @@ hỏi trước, và `--yes` không tự bật. Dùng `--defender-exclude` để 
 ```powershell
 phpev php list --available   # version đã cài và có thể tải
 phpev php install 8.3        # bản 8.3.x mới nhất (hoặc version cụ thể: 8.3.36)
+phpev php install 7.1        # các dòng đã ngừng hỗ trợ 7.0 – 7.3: bản cuối cùng (7.1.33)
+phpev php add C:\php\7.1     # thêm một thư mục PHP bạn đã có sẵn
 phpev php use 8.4            # version mặc định khi ở ngoài project
 phpev php which              # ở đây `php` sẽ chạy version nào, vì sao
 phpev php ini 8.4            # đường dẫn php.ini của version đó
@@ -253,6 +256,15 @@ chạy cùng version. Đặt `PHPEV_SHIM_DEBUG=1` để shim in ra version đã 
 
 Mỗi version có `php.ini` riêng do PHPev sinh ra, bật sẵn OPcache và cấu hình CA bundle để PHP gọi
 HTTPS được ngay. Bật/tắt extension ở trang PHP của dashboard hoặc sửa trực tiếp `php.ini`.
+
+PHP 7.0 – 7.3 đã ngừng được hỗ trợ, không còn bản vá bảo mật; chỉ nên dùng cho project cũ. Các bản
+này lấy từ kho lưu trữ của windows.php.net, nơi không công bố mã checksum, nên PHPev chỉ cài bản cuối
+cùng của mỗi dòng, với mã SHA-256 được ghim sẵn trong PHPev.
+
+`phpev php add <thư mục>` (hoặc mục **Add a PHP you already have** ở trang PHP của dashboard, có hộp
+chọn thư mục) nhận một bản PHP 64-bit có `php.exe` và `php-cgi.exe`, ví dụ lấy từ XAMPP hay Laragon.
+PHPev copy nó vào thư mục home và tự tạo `php.ini`; file `php.ini` gốc được giữ lại bên cạnh với tên
+`php.ini.orig`, còn thư mục gốc không bị thay đổi.
 
 ### MariaDB
 
@@ -304,7 +316,7 @@ Dashboard chạy ở `http://127.0.0.1:7600`, gồm các trang:
 |---|---|
 | **Overview** | Trạng thái dịch vụ, uptime và RAM, router/HTTPS, MariaDB, pool PHP, cảnh báo của `doctor` |
 | **Sites** | Link/unlink, bật/tắt HTTPS, đổi version PHP, mở site, mở thư mục hoặc terminal |
-| **PHP** | Cài version (có tiến độ), đặt mặc định, bật/tắt extension, restart worker |
+| **PHP** | Cài version (có tiến độ) hoặc thêm thư mục PHP có sẵn, đặt mặc định, bật/tắt extension, restart worker |
 | **Services** | Bật/tắt MariaDB, đổi hoặc cài version |
 | **Performance** | Realtime: req/s, độ trễ p50/p95, histogram độ trễ, mã trạng thái, route chậm nhất, CPU/RAM từng process; lọc theo site, có/không tính file tĩnh |
 | **Logs** | Theo dõi realtime log của PHPev, PHP, MariaDB và Laravel (`storage/logs/*.log`), có ô lọc |
@@ -339,7 +351,7 @@ vụ bị kill; MariaDB được tắt êm khi Windows log off hoặc shutdown.
 |---|---|
 | `phpev setup [--home DIR]` | Tạo home của PHPev, đưa shim vào PATH, kiểm tra máy |
 | `phpev doctor [--fix-path] [--defender-exclude]` | Kiểm tra sự cố (thứ tự PATH, port, runtime, CA…) |
-| `phpev php list\|install\|use\|ini\|which\|warm` | Quản lý version PHP |
+| `phpev php list\|install\|add\|use\|ini\|which\|warm` | Quản lý version PHP |
 | `phpev db list\|install\|start\|stop\|use` | Quản lý MariaDB |
 | `phpev composer install\|self-update` | Quản lý Composer |
 | `phpev start\|stop\|status` | Điều khiển dịch vụ nền |

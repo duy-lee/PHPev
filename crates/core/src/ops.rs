@@ -46,14 +46,7 @@ pub fn install_php(http: &Http, layout: &Layout, wanted: &str, r: &mut dyn Repor
         r.info("Visual C++ runtime missing or too old — installing it (Windows will ask for permission)");
         php::install_vc_runtime(http, layout, &mut |d, t| r.progress("vc_redist.x64.exe", d, t))?;
     }
-    if php::ensure_cacert(http, layout, &mut |d, t| r.progress("cacert.pem", d, t))? {
-        // A fresh bundle must carry the PHPev CA again, if HTTPS is in use.
-        if ca::exists(layout) {
-            let tld = Config::load(&layout.config_file())?.tld;
-            let authority = Ca::load_or_create(layout, &tld)?;
-            ca::update_php_bundle(layout, Some(authority.pem()))?;
-        }
-    }
+    ensure_cacert(http, layout, r)?;
     match php::install(http, layout, release, &mut |d, t| r.progress(&release.zip, d, t))? {
         Some(stats) => r.info(&format!(
             "unpacked {} files, skipped {} not needed",
@@ -66,13 +59,79 @@ pub fn install_php(http: &Http, layout: &Layout, wanted: &str, r: &mut dyn Repor
     }
     let modules = php::verify(layout, &release.version)?;
     r.info(&format!("verified: {} extensions loaded", modules.len()));
+    default_php_if_none(layout, &release.line, r)?;
+    Ok(release.version.clone())
+}
+
+/// Adds the PHP build in `src` (for example an old version from another
+/// tool): checks it, copies it into the PHPev home and writes a php.ini for
+/// it; becomes the default if none is set. Returns its version.
+pub fn add_php(http: &Http, layout: &Layout, src: &Path, r: &mut dyn Report) -> io::Result<String> {
+    layout.create_dirs()?;
+    let src = std::path::absolute(src)?;
+    if !src.is_dir() {
+        return Err(not_found(format!("{} is not a folder", src.display())));
+    }
+    if src.starts_with(layout.php_dir()) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("{} is already part of PHPev", src.display()),
+        ));
+    }
+    let build = match php::inspect_folder(&src) {
+        // php.exe could not start: usually a missing or older VC++ runtime.
+        Err(e) if e.kind() == io::ErrorKind::Other && !php::vc_runtime_ok("vs17") => {
+            r.info("PHP did not start; installing the Visual C++ runtime (Windows will ask for permission)");
+            php::install_vc_runtime(http, layout, &mut |d, t| r.progress("vc_redist.x64.exe", d, t))?;
+            php::inspect_folder(&src)?
+        }
+        other => other?,
+    };
+    let kind = if build.thread_safe { "TS" } else { "NTS" };
+    r.info(&format!("PHP {} ({kind} x64) in {}", build.version, src.display()));
+    if build.thread_safe {
+        r.info("note: a thread-safe (TS) build works, but NTS builds are faster with PHPev");
+    }
+
+    let files = php::copy_folder(layout, &src, &build.version)?;
+    let dir = php::version_dir(layout, &build.version);
+    r.info(&format!("copied {files} files to {}", dir.display()));
+    if dir.join("php.ini.orig").is_file() {
+        r.info("kept its php.ini as php.ini.orig");
+    }
+    ensure_cacert(http, layout, r)?;
+    if php::write_php_ini(layout, &build.version)? {
+        r.info("wrote php.ini");
+    }
+    // A build from elsewhere may lack extensions PHPev expects; keep it anyway.
+    match php::verify(layout, &build.version) {
+        Ok(modules) => r.info(&format!("verified: {} extensions loaded", modules.len())),
+        Err(e) => r.info(&format!("warning: {e}")),
+    }
+    let line = build.version.splitn(3, '.').take(2).collect::<Vec<_>>().join(".");
+    default_php_if_none(layout, &line, r)?;
+    Ok(build.version)
+}
+
+/// Downloads the CA bundle PHP uses if missing; a fresh bundle must carry the
+/// PHPev CA again when HTTPS is in use.
+fn ensure_cacert(http: &Http, layout: &Layout, r: &mut dyn Report) -> io::Result<()> {
+    if php::ensure_cacert(http, layout, &mut |d, t| r.progress("cacert.pem", d, t))? && ca::exists(layout) {
+        let tld = Config::load(&layout.config_file())?.tld;
+        let authority = Ca::load_or_create(layout, &tld)?;
+        ca::update_php_bundle(layout, Some(authority.pem()))?;
+    }
+    Ok(())
+}
+
+fn default_php_if_none(layout: &Layout, line: &str, r: &mut dyn Report) -> io::Result<()> {
     let became_default = config::update(&layout.config_file(), |c| {
-        c.php.is_none().then(|| c.php = Some(release.line.clone())).is_some()
+        c.php.is_none().then(|| c.php = Some(line.to_owned())).is_some()
     })?;
     if became_default {
-        r.info(&format!("set as default PHP ({})", release.line));
+        r.info(&format!("set as default PHP ({line})"));
     }
-    Ok(release.version.clone())
+    Ok(())
 }
 
 /// Sets the default PHP (a line like `8.4` or an exact version). Returns the

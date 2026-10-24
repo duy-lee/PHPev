@@ -1,6 +1,7 @@
 //! `phpev php …`, `phpev db …` and `phpev composer …`.
 
 use std::io;
+use std::path::Path;
 use std::process::ExitCode;
 use std::time::Instant;
 
@@ -48,11 +49,13 @@ pub fn php_list(available: bool) -> io::Result<ExitCode> {
     if available {
         println!("\nAvailable (windows.php.net, NTS x64):");
         for r in php::available(&Http::new()?)? {
-            let mark = if installed.contains(&r.version) {
-                "  installed"
-            } else {
-                ""
-            };
+            let mut mark = String::new();
+            if r.archived {
+                mark.push_str("  end of life");
+            }
+            if installed.contains(&r.version) {
+                mark.push_str("  installed");
+            }
             println!("  {:<8} {:<8} {}{mark}", r.line, r.version, r.toolset);
         }
     }
@@ -66,6 +69,16 @@ pub fn php_install(wanted: &str) -> io::Result<ExitCode> {
     println!(
         "Done in {:.1}s → {}",
         started.elapsed().as_secs_f64(),
+        php::version_dir(&layout, &version).display()
+    );
+    Ok(ExitCode::SUCCESS)
+}
+
+pub fn php_add(dir: &Path) -> io::Result<ExitCode> {
+    let layout = layout()?;
+    let version = ops::add_php(&Http::new()?, &layout, dir, &mut Terminal::default())?;
+    println!(
+        "Added PHP {version} → {}",
         php::version_dir(&layout, &version).display()
     );
     Ok(ExitCode::SUCCESS)

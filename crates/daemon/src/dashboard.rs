@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::convert::Infallible;
 use std::io;
 use std::net::Ipv4Addr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -421,6 +421,7 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
                     .into_iter()
                     .map(|r| AvailablePhp {
                         installed: installed.contains(&r.version),
+                        archived: r.archived,
                         line: r.line,
                         version: r.version,
                     })
@@ -436,6 +437,25 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
                 Ok(format!("PHP {v} installed"))
             });
             ok(&JobStarted { job })
+        }
+        (Method::POST, ["php", "add"]) => {
+            let r: PathRequest = body(req).await?;
+            let l = layout.clone();
+            let job = d.jobs.start("Add PHP from a folder".to_owned(), move |rep| {
+                let v = ops::add_php(&Http::new()?, &l, Path::new(r.path.trim()), rep)?;
+                Ok(format!("PHP {v} added"))
+            });
+            ok(&JobStarted { job })
+        }
+        (Method::POST, ["php", "pick-folder"]) => {
+            let path = blocking(|| {
+                crate::folderpick::pick_folder(
+                    "Choose the PHP folder (the one with php.exe)",
+                    crate::appwindow::window(),
+                )
+            })
+            .await?;
+            ok(&PickedFolder { path })
         }
         (Method::PUT, ["php", "default"]) => {
             let r: VersionRequest = body(req).await?;
