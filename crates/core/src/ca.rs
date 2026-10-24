@@ -1,4 +1,4 @@
-//! Local certificate authority for HTTPS sites (DESIGN_SPEC §4, M7).
+//! Local certificate authority for HTTPS sites (M7).
 //!
 //! * The CA key lives in `certs\ca.key.pem`; site certificates are issued in
 //!   memory by the daemon and never written to disk.

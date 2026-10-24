@@ -1,5 +1,4 @@
-//! HTTP front end: Host → site → static file or FastCGI to a php-cgi worker
-//! (DESIGN_SPEC §4).
+//! HTTP front end: Host → site → static file or FastCGI to a php-cgi worker.
 
 use std::collections::HashMap;
 use std::convert::Infallible;

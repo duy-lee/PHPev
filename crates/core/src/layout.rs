@@ -1,4 +1,4 @@
-//! On-disk layout of the PHPev home directory (DESIGN_SPEC §2).
+//! On-disk layout of the PHPev home directory.
 
 use std::io;
 use std::path::{Path, PathBuf};

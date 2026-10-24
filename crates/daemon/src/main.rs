@@ -1,5 +1,5 @@
 //! PHPev background process: supervises MariaDB and the php-cgi pools, answers
-//! `phpev` over a named pipe (DESIGN_SPEC §1). The HTTP router joins in M5.
+//! `phpev` over a named pipe. The HTTP router joins in M5.
 //!
 //! GUI subsystem: no console window, so closing a terminal never kills it.
 

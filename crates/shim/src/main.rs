@@ -1,4 +1,4 @@
-//! `php.exe` / `composer.exe` shim (DESIGN_SPEC §5). One binary, copied under
+//! `php.exe` / `composer.exe` shim. One binary, copied under
 //! both names into `<home>\shims`; the file name decides what it runs.
 //!
 //! Hot path: no config parsing, no registry, no allocation-heavy work — see

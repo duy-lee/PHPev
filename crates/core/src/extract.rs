@@ -1,4 +1,4 @@
-//! Parallel, filtered zip extraction and all-or-nothing installs (DESIGN_SPEC §3).
+//! Parallel, filtered zip extraction and all-or-nothing installs.
 
 use std::fs::File;
 use std::io::{self, BufReader, BufWriter};

@@ -1,4 +1,4 @@
-//! Dashboard API v1 types (DESIGN_SPEC §14.1). They live in core so that any
+//! Dashboard API v1 types. They live in core so that any
 //! client — the web dashboard, a future Slint app or TUI — shares the exact
 //! wire format. Breaking changes go to a new `/api/v2`.
 
@@ -150,7 +150,7 @@ pub struct ErrorBody {
 
 // ---------------------------------------------------------------- M9: metrics and logs
 
-/// Request statistics over a sliding window (DESIGN_SPEC §14.4).
+/// Request statistics over a sliding window.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct RequestStats {
     pub window_secs: u32,

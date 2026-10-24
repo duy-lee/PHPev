@@ -1,4 +1,4 @@
-//! `logs\daemon.log`, rotated by size (5 MB × 3, DESIGN_SPEC §10).
+//! `logs\daemon.log`, rotated by size (5 MB × 3).
 
 use std::fs::{File, OpenOptions};
 use std::io::Write;

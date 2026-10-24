@@ -1,4 +1,4 @@
-//! Puts the daemon in a kill-on-close Job Object (DESIGN_SPEC §0 #7).
+//! Puts the daemon in a kill-on-close Job Object.
 //!
 //! Children inherit job membership at creation, so there is no window in which
 //! a freshly spawned php-cgi/mariadbd is outside the job. The daemon holds the

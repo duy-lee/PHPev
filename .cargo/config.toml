@@ -1,5 +1,5 @@
 # Release target: MSVC with the C runtime linked statically, so end users
-# never need the VC++ redistributable for PHPev itself (DESIGN_SPEC §9.3).
+# never need the VC++ redistributable for PHPev itself.
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-C", "target-feature=+crt-static"]
 

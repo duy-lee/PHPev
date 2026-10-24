@@ -1,4 +1,4 @@
-//! php-cgi worker pools, one per PHP version (DESIGN_SPEC §4, decided 2026-10-23).
+//! php-cgi worker pools, one per PHP version (decided 2026-10-23).
 //!
 //! php-cgi on Windows serves one request at a time and never forks, so the
 //! router leases a whole worker per request. A pool starts with `POOL_MIN`

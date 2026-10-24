@@ -47,7 +47,7 @@ pub fn open_url(url: &str) -> io::Result<()> {
     )
 }
 
-/// Opens `url` in its own app-style window (`msedge --app`, DESIGN_SPEC §14.5),
+/// Opens `url` in its own app-style window (`msedge --app`),
 /// or in the default browser when Edge is missing. Returns whether Edge was used.
 pub fn open_app_window(url: &str) -> io::Result<bool> {
     check_http(url)?;

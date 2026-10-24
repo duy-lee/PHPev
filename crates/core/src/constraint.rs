@@ -1,4 +1,4 @@
-//! Composer version constraints, enough for `require.php` (DESIGN_SPEC §6).
+//! Composer version constraints, enough for `require.php`.
 //!
 //! Supports `||`/`|` (or), `,`/space (and), `^`, `~`, `>=`, `>`, `<=`, `<`,
 //! `!=`, `=`/`==`, wildcards (`8.*`, `8.2.x`, `*`), hyphen ranges

@@ -1,5 +1,5 @@
 //! CLI ↔ daemon protocol: one JSON request line, one JSON response line, over
-//! a per-user named pipe (DESIGN_SPEC §1).
+//! a per-user named pipe.
 //!
 //! Only *actions* go through the daemon. Config changes are written directly
 //! with `config::update` (cross-process lock); the daemon re-reads config.toml

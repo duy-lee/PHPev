@@ -1,4 +1,4 @@
-//! HTTP downloads with on-the-fly SHA-256 verification (DESIGN_SPEC §3).
+//! HTTP downloads with on-the-fly SHA-256 verification.
 //!
 //! Uses the Windows TLS stack (schannel) so corporate proxies/CAs trusted by
 //! Windows work out of the box and no crypto library is compiled in.

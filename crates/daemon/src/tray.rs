@@ -1,4 +1,4 @@
-//! Notification-area icon and menu (DESIGN_SPEC §14.5). It lives on the hidden
+//! Notification-area icon and menu. It lives on the hidden
 //! window the daemon already has for end-session messages (endsession.rs), so
 //! it costs no extra process or thread.
 //!

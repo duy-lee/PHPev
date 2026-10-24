@@ -1,4 +1,4 @@
-//! Minimal FastCGI client (responder role) for php-cgi (DESIGN_SPEC §4).
+//! Minimal FastCGI client (responder role) for php-cgi.
 //!
 //! One request per connection at a time, request id 1, `FCGI_KEEP_CONN` so the
 //! router can reuse the TCP connection to a worker instead of reconnecting.

@@ -537,9 +537,6 @@ cargo clippy --all-targets -- -D warnings
 cargo test
 ```
 
-The design, decisions and measurements are documented (in Vietnamese) in
-[DESIGN_SPEC.md](DESIGN_SPEC.md).
-
 ## Roadmap
 
 Phase 1 (everything above) is complete. Planned next:

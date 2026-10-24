@@ -1,5 +1,5 @@
 //! Site table: linked sites plus the sub-folders of parked directories
-//! (DESIGN_SPEC §4, decided 2026-10-23).
+//! (decided 2026-10-23).
 
 use std::path::{Path, PathBuf};
 

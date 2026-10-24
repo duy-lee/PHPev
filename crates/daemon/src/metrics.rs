@@ -1,4 +1,4 @@
-//! Request metrics (DESIGN_SPEC §14.4).
+//! Request metrics.
 //!
 //! Two structures, both updated under one short lock per request:
 //! * per-second aggregates (count, status classes, latency histograms) for the

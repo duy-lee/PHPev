@@ -1,4 +1,4 @@
-//! Clean shutdown on log off / Windows shutdown (DESIGN_SPEC §10).
+//! Clean shutdown on log off / Windows shutdown.
 //!
 //! A GUI-subsystem process gets no console CTRL_SHUTDOWN_EVENT; Windows instead
 //! sends WM_QUERYENDSESSION / WM_ENDSESSION to top-level windows. A hidden

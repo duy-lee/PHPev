@@ -1,4 +1,4 @@
-//! Log viewing for the dashboard (DESIGN_SPEC §14.4): a fixed list of sources
+//! Log viewing for the dashboard: a fixed list of sources
 //! (PHPev, PHP error logs, MariaDB, and each site's Laravel `storage/logs`),
 //! resolved by id — never by a client-supplied path.
 

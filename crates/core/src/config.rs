@@ -1,6 +1,6 @@
 //! `config.toml` model and atomic persistence.
 //!
-//! Only the daemon writes this file at runtime (DESIGN_SPEC §10); `phpev setup`
+//! Only the daemon writes this file at runtime; `phpev setup`
 //! writes the initial file once, before any daemon exists.
 
 use std::io;
@@ -26,7 +26,7 @@ pub struct Config {
     /// cannot read Defender's exclusion list, so PHPev remembers it here.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub defender_excluded: bool,
-    /// Show the notification-area icon (DESIGN_SPEC §14.5; on unless turned off).
+    /// Show the notification-area icon (on unless turned off).
     #[serde(skip_serializing_if = "is_true")]
     pub tray: bool,
 }
@@ -41,7 +41,7 @@ pub struct Ports {
     pub http: u16,
     pub https: u16,
     pub mariadb: u16,
-    /// Dashboard on 127.0.0.1 (DESIGN_SPEC §14.2).
+    /// Dashboard on 127.0.0.1.
     pub dashboard: u16,
 }
 

@@ -1,4 +1,4 @@
-//! Operations shared by the CLI and the daemon's API (DESIGN_SPEC §14.1: one
+//! Operations shared by the CLI and the daemon's API (one
 //! handling layer, many UIs). Nothing here prints; progress and notes go to a
 //! [`Report`], which the CLI renders on the terminal and the daemon turns into
 //! a job the dashboard follows.

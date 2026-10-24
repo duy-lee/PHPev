@@ -522,8 +522,6 @@ cargo clippy --all-targets -- -D warnings
 cargo test
 ```
 
-Thiết kế, các quyết định và số đo được ghi chi tiết trong [DESIGN_SPEC.md](DESIGN_SPEC.md).
-
 ## Lộ trình
 
 Phase 1 (mọi thứ ở trên) đã hoàn tất. Dự kiến tiếp theo:

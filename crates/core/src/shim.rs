@@ -1,4 +1,4 @@
-//! PHP version resolution for the `php.exe` / `composer.exe` shims (DESIGN_SPEC §5).
+//! PHP version resolution for the `php.exe` / `composer.exe` shims.
 //!
 //! Runs on every `php` invocation, so it avoids TOML and the registry: the home
 //! is the parent of the shims directory, installed versions come from one

@@ -3,7 +3,7 @@
 //!
 //! Windows builds a new process's `PATH` as `System PATH` followed by
 //! `User PATH`, so a directory in the user PATH can never shadow one in the
-//! system PATH. See DESIGN_SPEC §5.
+//! system PATH.
 
 use std::io;
 use std::path::{Path, PathBuf};

@@ -1,4 +1,4 @@
-//! Dashboard: web UI + API v1 on 127.0.0.1 (DESIGN_SPEC §14).
+//! Dashboard: web UI + API v1 on 127.0.0.1.
 //!
 //! Security (§14.3): bound to 127.0.0.1 only; exact Host check (DNS
 //! rebinding); a per-start random token exchanged for an HttpOnly SameSite=
@@ -208,7 +208,7 @@ async fn handle(d: &Dashboard, req: Request<Incoming>) -> Response<Body> {
 
 // ---------------------------------------------------------------- assets
 
-/// Embedded UI files (DESIGN_SPEC §14.2: no CDN, served from memory).
+/// Embedded UI files (no CDN, served from memory).
 fn asset(path: &str) -> Response<Body> {
     let (body, mime): (&'static [u8], &str) = match path {
         "/" | "/index.html" => (include_bytes!("../dashboard/index.html"), "text/html; charset=utf-8"),

@@ -1,4 +1,4 @@
-//! Minimal `.env` reader/editor for `phpev import` (DESIGN_SPEC §6).
+//! Minimal `.env` reader/editor for `phpev import`.
 //! Edits keep every other line (comments, order, blank lines) untouched.
 
 /// Value of `key`, unquoted; `None` if the key is absent or commented out.

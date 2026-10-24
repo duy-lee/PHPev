@@ -1,4 +1,4 @@
-// PHPev dashboard (DESIGN_SPEC §14). Presentation only: every action is an
+// PHPev dashboard. Presentation only: every action is an
 // API v1 call, so another UI (Slint, TUI) can replace this file without
 // touching the daemon. Strings come from /i18n/<lang>.json.
 import { html, render, useState, useEffect, useCallback, useRef } from '/vendor/htm-preact-standalone.mjs';

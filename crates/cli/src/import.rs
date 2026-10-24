@@ -1,4 +1,4 @@
-//! `phpev import [dir]`: make an existing PHP/Laravel project run (DESIGN_SPEC §6).
+//! `phpev import [dir]`: make an existing PHP/Laravel project run.
 //!
 //! Every step is idempotent. Steps with side effects ask first (y/N);
 //! `--yes` answers yes to all of them except migrations, which need

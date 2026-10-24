@@ -1,4 +1,4 @@
-//! Admin-only operations, started by `phpev` through UAC (DESIGN_SPEC §1).
+//! Admin-only operations, started by `phpev` through UAC.
 //! Runs without a console window; the result is reported via the exit code.
 
 #![windows_subsystem = "windows"]
