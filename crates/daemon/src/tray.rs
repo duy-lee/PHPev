@@ -15,6 +15,7 @@ use phpev_core::{autostart, launch, sites};
 use tokio::runtime::Handle;
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows_sys::Win32::UI::HiDpi::{SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2};
 use windows_sys::Win32::UI::Shell::{
     Shell_NotifyIconW, NIF_ICON, NIF_INFO, NIF_MESSAGE, NIF_TIP, NIIF_WARNING, NIM_ADD, NIM_DELETE, NIM_MODIFY,
     NOTIFYICONDATAW,
@@ -145,25 +146,30 @@ fn add(hwnd: HWND) {
     }
 }
 
-/// The embedded tray icon (resource 2, see build.rs; the app icon 1 as a
-/// fallback) at the small-icon size.
+/// Must run before any window exists. Without it Windows reports 16 px as the
+/// small-icon size at every scale and stretches the tray icon (blurry at 125 %+);
+/// with it, the icon is loaded at the real size (20 px at 125 %, 24 px at 150 %).
+pub fn set_dpi_aware() {
+    unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) };
+}
+
+/// The embedded app icon (resource 1, see build.rs) at the small-icon size.
 fn icon() -> HICON {
     unsafe {
         let module = GetModuleHandleW(std::ptr::null());
-        for id in [2usize, 1] {
-            let icon = LoadImageW(
-                module,
-                id as _,
-                IMAGE_ICON,
-                GetSystemMetrics(SM_CXSMICON),
-                GetSystemMetrics(SM_CYSMICON),
-                LR_DEFAULTCOLOR,
-            );
-            if !icon.is_null() {
-                return icon;
-            }
+        let icon = LoadImageW(
+            module,
+            1 as _,
+            IMAGE_ICON,
+            GetSystemMetrics(SM_CXSMICON),
+            GetSystemMetrics(SM_CYSMICON),
+            LR_DEFAULTCOLOR,
+        );
+        if icon.is_null() {
+            LoadIconW(std::ptr::null_mut(), IDI_APPLICATION)
+        } else {
+            icon
         }
-        LoadIconW(std::ptr::null_mut(), IDI_APPLICATION)
     }
 }
 

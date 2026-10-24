@@ -43,6 +43,7 @@ use crate::router::Router;
 use crate::services::Db;
 
 fn main() -> ExitCode {
+    tray::set_dpi_aware();
     let Ok(layout) = Layout::resolve() else {
         return ExitCode::FAILURE;
     };
