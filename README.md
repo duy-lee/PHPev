@@ -293,6 +293,10 @@ phpev composer self-update   # update to the latest stable release
 composer --version           # runs with the PHP version of the current folder
 ```
 
+Composer 2.3 and later need PHP 7.2.5. While a PHP older than that is installed, PHPev also keeps
+Composer 2.2 LTS (`bin\composer\composer-2.2.phar`), and `composer` uses it automatically in
+projects on that PHP.
+
 ### HTTPS
 
 ```powershell

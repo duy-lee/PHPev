@@ -170,7 +170,11 @@ pub fn db_install(wanted: &str) -> io::Result<ExitCode> {
 
 pub fn composer_install(update: bool) -> io::Result<ExitCode> {
     let layout = layout()?;
-    if composer::is_installed(&layout) && !update {
+    // The 2.2 LTS phar is only kept while a PHP older than 7.2.5 is installed.
+    let lts = composer::lts_wanted(&layout) || composer::lts_path(&layout).is_file();
+    let latest_missing = !composer::is_installed(&layout);
+    let lts_missing = lts && !composer::lts_path(&layout).is_file();
+    if !update && !latest_missing && !lts_missing {
         println!(
             "Composer is already installed: {}",
             composer::phar_path(&layout).display()
@@ -179,7 +183,16 @@ pub fn composer_install(update: bool) -> io::Result<ExitCode> {
         return Ok(ExitCode::SUCCESS);
     }
     let http = Http::new()?;
-    with_bar("composer.phar", |p| composer::install_latest(&http, &layout, p))?;
-    println!("Composer installed: {}", composer::phar_path(&layout).display());
+    if update || latest_missing {
+        with_bar(composer::PHAR, |p| composer::install_latest(&http, &layout, p))?;
+        println!("Composer installed: {}", composer::phar_path(&layout).display());
+    }
+    if lts && (update || lts_missing) {
+        with_bar(composer::LTS_PHAR, |p| composer::install_lts(&http, &layout, p))?;
+        println!(
+            "Composer 2.2 LTS (for PHP before 7.2.5) installed: {}",
+            composer::lts_path(&layout).display()
+        );
+    }
     Ok(ExitCode::SUCCESS)
 }

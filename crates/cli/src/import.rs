@@ -83,15 +83,15 @@ pub fn import(opts: Options) -> io::Result<ExitCode> {
     // ---- 4. Composer dependencies
     if composer_json.is_some() {
         step("Composer");
-        if !composer::is_installed(&layout) && ask.confirm("Composer is not installed. Install it?") {
+        let phar = composer::phar_for(&layout.composer_dir(), &php_version);
+        if !phar.is_file() && ask.confirm("Composer is not installed. Install it?") {
             runtimes::composer_install(false)?;
         }
         if dir.join(r"vendor\autoload.php").is_file() {
             println!("  vendor/ present");
-        } else if !composer::is_installed(&layout) {
+        } else if !phar.is_file() {
             todo.push("install Composer, then run `composer install`".into());
         } else if ask.confirm("vendor/ is missing. Run `composer install` now?") {
-            let phar = composer::phar_path(&layout);
             let ok = run_php(
                 &layout,
                 &php_version,

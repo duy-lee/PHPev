@@ -10,7 +10,7 @@ use crate::ca::{self, Ca};
 use crate::config::{self, Config, Site};
 use crate::layout::Layout;
 use crate::net::Http;
-use crate::{clock, elevate, hosts, mariadb, php, sites, version};
+use crate::{clock, composer, elevate, hosts, mariadb, php, sites, version};
 
 /// Receives progress from long operations.
 pub trait Report {
@@ -59,6 +59,7 @@ pub fn install_php(http: &Http, layout: &Layout, wanted: &str, r: &mut dyn Repor
     }
     let modules = php::verify(layout, &release.version)?;
     r.info(&format!("verified: {} extensions loaded", modules.len()));
+    ensure_composer_lts(http, layout, &release.version, r);
     default_php_if_none(layout, &release.line, r)?;
     Ok(release.version.clone())
 }
@@ -109,6 +110,7 @@ pub fn add_php(http: &Http, layout: &Layout, src: &Path, r: &mut dyn Report) -> 
         Err(e) => r.info(&format!("warning: {e}")),
     }
     let line = build.version.splitn(3, '.').take(2).collect::<Vec<_>>().join(".");
+    ensure_composer_lts(http, layout, &build.version, r);
     default_php_if_none(layout, &line, r)?;
     Ok(build.version)
 }
@@ -122,6 +124,20 @@ fn ensure_cacert(http: &Http, layout: &Layout, r: &mut dyn Report) -> io::Result
         ca::update_php_bundle(layout, Some(authority.pem()))?;
     }
     Ok(())
+}
+
+/// Composer 2.3+ does not run on PHP before 7.2.5: when Composer is in use,
+/// fetch the 2.2 LTS phar the `composer` shim runs with such a PHP.
+/// A failed download is only a warning: `phpev composer install` retries it.
+fn ensure_composer_lts(http: &Http, layout: &Layout, version: &str, r: &mut dyn Report) {
+    if composer::needs_lts(version) && composer::is_installed(layout) && !composer::lts_path(layout).is_file() {
+        r.info("PHP before 7.2.5 needs Composer 2.2 LTS; installing it");
+        if let Err(e) = composer::install_lts(http, layout, &mut |d, t| r.progress(composer::LTS_PHAR, d, t)) {
+            r.info(&format!(
+                "warning: Composer 2.2 LTS: {e} (run `phpev composer install` later)"
+            ));
+        }
+    }
 }
 
 fn default_php_if_none(layout: &Layout, line: &str, r: &mut dyn Report) -> io::Result<()> {

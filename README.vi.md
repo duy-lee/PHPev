@@ -287,6 +287,9 @@ phpev composer self-update   # cập nhật lên bản stable mới nhất
 composer --version           # chạy bằng version PHP của thư mục hiện tại
 ```
 
+Composer 2.3 trở lên cần PHP 7.2.5. Khi có cài PHP cũ hơn, PHPev giữ thêm Composer 2.2 LTS
+(`bin\composer\composer-2.2.phar`) và `composer` tự dùng bản này trong các project chạy PHP đó.
+
 ### HTTPS
 
 ```powershell

@@ -14,6 +14,8 @@ All notable changes to PHPev are documented here. The format follows
 - **`phpev php add <folder>`** and **Add a PHP you already have** on the dashboard (with the
   Windows folder picker): copy a 64-bit PHP build you already have into PHPev, with a generated
   `php.ini` (the original is kept as `php.ini.orig`).
+- **Composer 2.2 LTS for PHP before 7.2.5**: Composer 2.3+ refuses to run on such versions, so
+  PHPev also installs 2.2 LTS when one is present, and the `composer` shim picks it automatically.
 
 ## [0.1.0] - 2026-10-24
 
