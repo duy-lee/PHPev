@@ -1,5 +1,7 @@
 {
   "app.title": "PHPev",
+  "app.stopped": "PHPev has stopped",
+  "app.stopped_hint": "You can close this window. To open the dashboard again, start PHPev and use the tray icon or run `phpev dashboard`.",
   "nav.overview": "Overview",
   "nav.sites": "Sites",
   "nav.php": "PHP",

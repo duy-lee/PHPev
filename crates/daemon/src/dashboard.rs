@@ -527,6 +527,10 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
         }
 
         // ---- performance (M9)
+        // Held open by every dashboard page: when it drops, PHPev has stopped
+        // and the page closes its window (tray "Exit", `phpev stop`).
+        (Method::GET, ["events"]) => Ok(events_stream()),
+
         (Method::GET, ["metrics", "requests"]) => {
             let uri = req.uri();
             let window = query_param(uri, "window")
@@ -597,6 +601,18 @@ fn job_stream(job: Arc<crate::jobs::Job>) -> Result<Response<Body>, ApiError> {
         }
     });
     Ok(sse(rx))
+}
+
+/// Sends nothing but a keep-alive comment every 15 s; its end is the event.
+fn events_stream() -> Response<Body> {
+    let (tx, rx) = mpsc::channel(1);
+    tokio::spawn(async move {
+        // The first comment makes the browser report the stream as open.
+        while tx.send(Bytes::from_static(b": ok\n\n")).await.is_ok() {
+            tokio::time::sleep(Duration::from_secs(15)).await;
+        }
+    });
+    sse(rx)
 }
 
 fn sse(rx: mpsc::Receiver<Bytes>) -> Response<Body> {
