@@ -161,6 +161,117 @@ pub fn set_default_php(layout: &Layout, wanted: &str) -> io::Result<String> {
     Ok(found)
 }
 
+/// Linked sites pinned to a PHP that only `version` provides: they lose their
+/// PHP when it is removed.
+pub fn sites_pinned_to(layout: &Layout, version: &str) -> io::Result<Vec<String>> {
+    let installed = php::installed(layout);
+    let rest: Vec<&str> = installed.iter().map(String::as_str).filter(|v| *v != version).collect();
+    let config = Config::load(&layout.config_file())?;
+    Ok(config
+        .sites
+        .iter()
+        .filter(|s| {
+            s.php.as_deref().is_some_and(|w| {
+                version::best_match(w, installed.iter().map(String::as_str)) == Some(version)
+                    && version::best_match(w, rest.iter().copied()).is_none()
+            })
+        })
+        .map(|s| s.name.clone())
+        .collect())
+}
+
+/// Checks that PHP `version` can be removed (see [`remove_php`]).
+pub fn check_remove_php(layout: &Layout, version: &str) -> io::Result<()> {
+    let installed = php::installed(layout);
+    if !installed.iter().any(|v| v == version) {
+        return Err(not_found(format!(
+            "PHP {version} is not installed (give the full version, as `phpev php list` shows it)"
+        )));
+    }
+    let rest: Vec<&str> = installed.iter().map(String::as_str).filter(|v| *v != version).collect();
+    let config = Config::load(&layout.config_file())?;
+    if let Some(wanted) = config.php.as_deref() {
+        let is_default = version::best_match(wanted, installed.iter().map(String::as_str)) == Some(version);
+        if is_default && !rest.is_empty() && version::best_match(wanted, rest.iter().copied()).is_none() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "PHP {version} is the default; make another version the default first (phpev php use <version>)"
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Removes an installed PHP version (exact, e.g. `7.1.33`). Refused while it
+/// is the default, unless it is the last one left. Its workers must be stopped
+/// first. Sites pinned to it keep the pin; see [`sites_pinned_to`].
+pub fn remove_php(layout: &Layout, version: &str, r: &mut dyn Report) -> io::Result<()> {
+    check_remove_php(layout, version)?;
+    let rest = php::installed(layout).into_iter().filter(|v| v != version).count();
+    let config = Config::load(&layout.config_file())?;
+    remove_version_dir(&php::version_dir(layout, version), &format!("PHP {version}"), r)?;
+    r.info(&format!("removed PHP {version}"));
+
+    if rest == 0 && config.php.is_some() {
+        config::update(&layout.config_file(), |c| c.php = None)?;
+        r.info("no PHP left; cleared the default");
+    }
+    if composer::lts_path(layout).is_file() && !composer::lts_wanted(layout) {
+        std::fs::remove_file(composer::lts_path(layout))?;
+        r.info("removed Composer 2.2 LTS (no PHP before 7.2.5 left)");
+    }
+    Ok(())
+}
+
+/// Deletes an installed version folder, unless a program still runs from it
+/// (Windows would delete the other files and leave a broken version).
+fn remove_version_dir(dir: &Path, what: &str, r: &mut dyn Report) -> io::Result<()> {
+    let running = crate::procinfo::running_from(dir);
+    if !running.is_empty() {
+        return Err(io::Error::other(format!(
+            "{what} is in use by {}; close these programs and try again",
+            running.join(", ")
+        )));
+    }
+    let name = dir
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let parent = dir.parent().unwrap_or(dir);
+    // Leftovers of earlier removals that could not finish.
+    for old in std::fs::read_dir(parent).into_iter().flatten().flatten() {
+        if old.file_name().to_string_lossy().starts_with(".removing-") {
+            let _ = std::fs::remove_dir_all(old.path());
+        }
+    }
+    // Renamed first, so a deletion that stops halfway never leaves a version
+    // that looks installed.
+    let trash = parent.join(format!(".removing-{name}-{}", std::process::id()));
+    std::fs::rename(dir, &trash)?;
+    if let Err(e) = std::fs::remove_dir_all(&trash) {
+        r.info(&format!(
+            "warning: could not delete everything in {}: {e}",
+            trash.display()
+        ));
+    }
+    Ok(())
+}
+
+/// Total size of the files under `path`.
+pub fn dir_size(path: &Path) -> u64 {
+    let Ok(meta) = std::fs::symlink_metadata(path) else {
+        return 0;
+    };
+    if !meta.is_dir() {
+        return meta.len();
+    }
+    std::fs::read_dir(path)
+        .map(|entries| entries.flatten().map(|e| dir_size(&e.path())).sum())
+        .unwrap_or(0)
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Extension {
     pub name: String,
@@ -283,6 +394,63 @@ pub fn set_active_mariadb(layout: &Layout, wanted: &str) -> io::Result<(String, 
         .ok_or_else(|| not_found(format!("MariaDB {major} is not installed")))?;
     let previous = config::update(&layout.config_file(), |c| c.mariadb.replace(major.clone()))?;
     Ok((version, previous.filter(|p| *p != major)))
+}
+
+/// What [`remove_mariadb`] would remove.
+pub struct MariaDbRemoval {
+    pub version: String,
+    pub major: String,
+    /// No other release of this major stays installed, so its databases
+    /// (`data_dir`) are no longer used.
+    pub last_of_major: bool,
+    pub data_dir: PathBuf,
+}
+
+/// Checks that MariaDB `wanted` (a version as `phpev db list` shows it, or its
+/// major) can be removed: installed, and not the version in use.
+pub fn plan_remove_mariadb(layout: &Layout, wanted: &str) -> io::Result<MariaDbRemoval> {
+    let installed = mariadb::installed(layout);
+    let version = version::best_match(wanted, installed.iter().map(String::as_str))
+        .ok_or_else(|| not_found(format!("MariaDB {wanted} is not installed")))?
+        .to_owned();
+    let major = mariadb::major_of(&version);
+    let config = Config::load(&layout.config_file())?;
+    if config.mariadb.as_deref() == Some(major.as_str())
+        && mariadb::installed_for_major(layout, &major).as_deref() == Some(version.as_str())
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("MariaDB {version} is the active version; switch to another one first (phpev db use <version>)"),
+        ));
+    }
+    let last_of_major = !installed.iter().any(|v| *v != version && mariadb::major_of(v) == major);
+    Ok(MariaDbRemoval {
+        data_dir: mariadb::data_dir(layout, &major),
+        version,
+        major,
+        last_of_major,
+    })
+}
+
+/// Removes an installed MariaDB, and with `delete_data` the databases of its
+/// major when no other release of that major is left. Returns its version.
+pub fn remove_mariadb(layout: &Layout, wanted: &str, delete_data: bool, r: &mut dyn Report) -> io::Result<String> {
+    let plan = plan_remove_mariadb(layout, wanted)?;
+    remove_version_dir(
+        &mariadb::version_dir(layout, &plan.version),
+        &format!("MariaDB {}", plan.version),
+        r,
+    )?;
+    r.info(&format!("removed MariaDB {}", plan.version));
+    if plan.last_of_major && plan.data_dir.is_dir() {
+        if delete_data {
+            std::fs::remove_dir_all(&plan.data_dir)?;
+            r.info(&format!("deleted the databases in {}", plan.data_dir.display()));
+        } else {
+            r.info(&format!("kept the databases in {}", plan.data_dir.display()));
+        }
+    }
+    Ok(plan.version)
 }
 
 // ---------------------------------------------------------------- sites
@@ -446,4 +614,92 @@ pub fn write_hosts(config: &Config, include: bool) -> io::Result<usize> {
         )));
     }
     Ok(names.len())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::layout::HomeSource;
+
+    fn home(name: &str, php: &[&str], mariadb: &[&str], config: Config) -> Layout {
+        let root = std::env::temp_dir().join(format!("phpev-ops-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let layout = Layout::at(root, HomeSource::ProcessEnv);
+        layout.create_dirs().unwrap();
+        for v in php {
+            let d = php::version_dir(&layout, v);
+            std::fs::create_dir_all(&d).unwrap();
+            std::fs::write(d.join("php.exe"), "").unwrap();
+        }
+        for v in mariadb {
+            let d = mariadb::version_dir(&layout, v).join("bin");
+            std::fs::create_dir_all(&d).unwrap();
+            for exe in mariadb::KEEP_EXES {
+                std::fs::write(d.join(exe), "").unwrap();
+            }
+            std::fs::create_dir_all(mariadb::data_dir(&layout, &mariadb::major_of(v))).unwrap();
+        }
+        config.save(&layout.config_file()).unwrap();
+        layout
+    }
+
+    fn site(name: &str, php: &str) -> Site {
+        Site {
+            name: name.into(),
+            path: PathBuf::from(format!(r"C:\sites\{name}")),
+            php: Some(php.into()),
+            secure: false,
+            defender_excluded: false,
+        }
+    }
+
+    #[test]
+    fn the_default_php_is_kept_until_another_one_is_the_default() {
+        let config = Config {
+            php: Some("7.1".into()),
+            sites: vec![site("old", "7.1"), site("new", "8.4")],
+            ..Config::default()
+        };
+        let layout = home("php-default", &["8.4.27", "7.1.33"], &[], config);
+        std::fs::write(composer::lts_path(&layout), "").unwrap();
+
+        let refused = remove_php(&layout, "7.1.33", &mut Quiet).unwrap_err();
+        assert!(refused.to_string().contains("is the default"), "{refused}");
+        assert_eq!(sites_pinned_to(&layout, "7.1.33").unwrap(), ["old"]);
+        assert!(remove_php(&layout, "7.1", &mut Quiet).is_err(), "only full versions");
+
+        set_default_php(&layout, "8.4").unwrap();
+        remove_php(&layout, "7.1.33", &mut Quiet).unwrap();
+        assert_eq!(php::installed(&layout), ["8.4.27"]);
+        assert!(!composer::lts_path(&layout).exists(), "no PHP before 7.2.5 is left");
+
+        // The last PHP may go; the default then points nowhere and is cleared.
+        remove_php(&layout, "8.4.27", &mut Quiet).unwrap();
+        assert!(php::installed(&layout).is_empty());
+        assert_eq!(Config::load(&layout.config_file()).unwrap().php, None);
+        let _ = std::fs::remove_dir_all(layout.root());
+    }
+
+    #[test]
+    fn mariadb_in_use_stays_and_databases_go_only_when_asked() {
+        let config = Config {
+            mariadb: Some("11.4".into()),
+            ..Config::default()
+        };
+        let layout = home("mariadb", &[], &["11.4.13", "10.11.14", "10.6.23"], config);
+
+        let refused = remove_mariadb(&layout, "11.4", false, &mut Quiet).unwrap_err();
+        assert!(refused.to_string().contains("active"), "{refused}");
+
+        let plan = plan_remove_mariadb(&layout, "10.11").unwrap();
+        assert_eq!(plan.version, "10.11.14");
+        assert!(plan.last_of_major);
+        remove_mariadb(&layout, "10.11", false, &mut Quiet).unwrap();
+        assert!(mariadb::data_dir(&layout, "10.11").is_dir(), "kept by default");
+
+        remove_mariadb(&layout, "10.6.23", true, &mut Quiet).unwrap();
+        assert!(!mariadb::data_dir(&layout, "10.6").exists());
+        assert_eq!(mariadb::installed(&layout), ["11.4.13"]);
+        let _ = std::fs::remove_dir_all(layout.root());
+    }
 }

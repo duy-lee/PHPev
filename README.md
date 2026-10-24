@@ -246,6 +246,7 @@ phpev php install 8.3        # latest 8.3.x  (or an exact version: 8.3.36)
 phpev php install 7.1        # end-of-life lines 7.0 – 7.3: their final release (7.1.33)
 phpev php add C:\php\7.1     # add a PHP folder you already have
 phpev php use 8.4            # default version outside projects
+phpev php remove 7.1.33      # remove a version (not the default one)
 phpev php which              # which PHP `php` runs here, and why
 phpev php ini 8.4            # path of that version's php.ini
 ```
@@ -280,6 +281,7 @@ phpev db install 11.4   # latest 11.4.x
 phpev db start          # remembered: MariaDB starts again with PHPev
 phpev db stop
 phpev db use 10.11      # switch versions; each major keeps its own databases
+phpev db remove 10.11   # remove a version (not the active one); asks whether to delete its databases
 ```
 
 MariaDB listens on `127.0.0.1:3306` with user `root` and **no password**: it is meant for local
@@ -364,8 +366,8 @@ down cleanly when Windows logs off or shuts down.
 |---|---|
 | `phpev setup [--home DIR]` | Create the PHPev home, install the shims on PATH, check the machine |
 | `phpev doctor [--fix-path] [--defender-exclude]` | Check for problems (PATH order, ports, runtime, CA, …) |
-| `phpev php list\|install\|add\|use\|ini\|which\|warm` | Manage PHP versions |
-| `phpev db list\|install\|start\|stop\|use` | Manage MariaDB |
+| `phpev php list\|install\|add\|remove\|use\|ini\|which\|warm` | Manage PHP versions |
+| `phpev db list\|install\|remove\|start\|stop\|use` | Manage MariaDB |
 | `phpev composer install\|self-update` | Manage Composer |
 | `phpev start\|stop\|status` | Control the background service |
 | `phpev autostart on\|off` | Start the service at log in |

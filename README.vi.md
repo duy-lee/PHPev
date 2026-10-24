@@ -241,6 +241,7 @@ phpev php install 8.3        # bản 8.3.x mới nhất (hoặc version cụ th�
 phpev php install 7.1        # các dòng đã ngừng hỗ trợ 7.0 – 7.3: bản cuối cùng (7.1.33)
 phpev php add C:\php\7.1     # thêm một thư mục PHP bạn đã có sẵn
 phpev php use 8.4            # version mặc định khi ở ngoài project
+phpev php remove 7.1.33      # xoá một version (không phải version mặc định)
 phpev php which              # ở đây `php` sẽ chạy version nào, vì sao
 phpev php ini 8.4            # đường dẫn php.ini của version đó
 ```
@@ -274,6 +275,7 @@ phpev db install 11.4   # bản 11.4.x mới nhất
 phpev db start          # được ghi nhớ: lần sau PHPev khởi động thì MariaDB bật lại
 phpev db stop
 phpev db use 10.11      # đổi version; mỗi major giữ database riêng
+phpev db remove 10.11   # xoá một version (không phải version đang dùng); hỏi có xoá database của nó không
 ```
 
 MariaDB lắng nghe ở `127.0.0.1:3306`, user `root`, **không mật khẩu**. Nó chỉ dành cho phát triển
@@ -354,8 +356,8 @@ vụ bị kill; MariaDB được tắt êm khi Windows log off hoặc shutdown.
 |---|---|
 | `phpev setup [--home DIR]` | Tạo home của PHPev, đưa shim vào PATH, kiểm tra máy |
 | `phpev doctor [--fix-path] [--defender-exclude]` | Kiểm tra sự cố (thứ tự PATH, port, runtime, CA…) |
-| `phpev php list\|install\|add\|use\|ini\|which\|warm` | Quản lý version PHP |
-| `phpev db list\|install\|start\|stop\|use` | Quản lý MariaDB |
+| `phpev php list\|install\|add\|remove\|use\|ini\|which\|warm` | Quản lý version PHP |
+| `phpev db list\|install\|remove\|start\|stop\|use` | Quản lý MariaDB |
 | `phpev composer install\|self-update` | Quản lý Composer |
 | `phpev start\|stop\|status` | Điều khiển dịch vụ nền |
 | `phpev autostart on\|off` | Chạy dịch vụ khi đăng nhập |

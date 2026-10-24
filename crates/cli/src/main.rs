@@ -164,6 +164,13 @@ enum PhpCommand {
     Install { version: String },
     /// Add a PHP build you already have (a folder with php.exe and php-cgi.exe); it is copied into PHPev
     Add { dir: PathBuf },
+    /// Remove an installed version, e.g. `7.1.33` (not the default one)
+    Remove {
+        version: String,
+        /// Do not ask, even if sites are pinned to it
+        #[arg(long)]
+        yes: bool,
+    },
     /// Set the default version used outside projects
     Use { version: String },
     /// Show (and create if missing) the php.ini of a version
@@ -183,6 +190,16 @@ enum DbCommand {
     },
     /// Download and install the latest release of a major version, e.g. `11.4`
     Install { version: String },
+    /// Remove an installed version (not the active one); asks whether to delete its databases too
+    Remove {
+        version: String,
+        /// Also delete the databases of its major version
+        #[arg(long)]
+        purge: bool,
+        /// Do not ask (databases are kept unless --purge)
+        #[arg(long)]
+        yes: bool,
+    },
     /// Start MariaDB (remembered: it comes back when PHPev starts again)
     Start,
     /// Stop MariaDB
@@ -226,6 +243,7 @@ fn main() -> ExitCode {
             PhpCommand::List { available } => runtimes::php_list(available),
             PhpCommand::Install { version } => runtimes::php_install(&version),
             PhpCommand::Add { dir } => runtimes::php_add(&dir),
+            PhpCommand::Remove { version, yes } => runtimes::php_remove(&version, yes),
             PhpCommand::Use { version } => runtimes::php_use(&version),
             PhpCommand::Ini { version } => runtimes::php_ini(&version),
             PhpCommand::Which => runtimes::php_which(),
@@ -234,6 +252,7 @@ fn main() -> ExitCode {
         Command::Db { command } => match command {
             DbCommand::List { available } => runtimes::db_list(available),
             DbCommand::Install { version } => runtimes::db_install(&version),
+            DbCommand::Remove { version, purge, yes } => runtimes::db_remove(&version, purge, yes),
             DbCommand::Start => daemon::db_start(),
             DbCommand::Stop => daemon::db_stop(),
             DbCommand::Use { version } => daemon::db_use(&version),

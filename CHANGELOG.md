@@ -16,6 +16,9 @@ All notable changes to PHPev are documented here. The format follows
   `php.ini` (the original is kept as `php.ini.orig`).
 - **Composer 2.2 LTS for PHP before 7.2.5**: Composer 2.3+ refuses to run on such versions, so
   PHPev also installs 2.2 LTS when one is present, and the `composer` shim picks it automatically.
+- **Removing versions**: `phpev php remove <version>` and `phpev db remove <version>`, and a
+  **Remove** button on the dashboard. The default PHP and the active MariaDB cannot be removed;
+  removing MariaDB keeps its databases unless you choose to delete them.
 
 ## [0.1.0] - 2026-10-24
 

@@ -403,12 +403,15 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
                     default: config.php.clone(),
                     installed: installed
                         .iter()
-                        .map(|v| PhpVersionInfo {
-                            version: v.clone(),
-                            default: default_version.as_deref() == Some(v.as_str()),
-                            workers: pools.iter().find(|p| &p.version == v).map_or(0, |p| p.workers.len()),
+                        .map(|v| {
+                            Ok(PhpVersionInfo {
+                                version: v.clone(),
+                                default: default_version.as_deref() == Some(v.as_str()),
+                                workers: pools.iter().find(|p| &p.version == v).map_or(0, |p| p.workers.len()),
+                                pinned_by: ops::sites_pinned_to(&l, v)?,
+                            })
                         })
-                        .collect(),
+                        .collect::<io::Result<_>>()?,
                 })
             })
             .await?)
@@ -478,6 +481,15 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
                 if r.enabled { "enabled" } else { "disabled" }
             ))
         }
+        (Method::DELETE, ["php", v]) => {
+            let (l, v2) = (layout.clone(), v.to_string());
+            blocking(move || ops::check_remove_php(&l, &v2)).await?;
+            // Running php-cgi workers keep the files in use.
+            d.daemon.pools.stop_version(v).await;
+            let (l, v2) = (layout.clone(), v.to_string());
+            blocking(move || ops::remove_php(&l, &v2, &mut ops::Quiet)).await?;
+            message(format!("PHP {v} removed"))
+        }
         (Method::POST, ["php", v, "restart"]) => {
             let n = d.daemon.pools.stop_version(v).await;
             message(format!(
@@ -530,6 +542,12 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
                 Ok(format!("MariaDB {v} installed"))
             });
             ok(&JobStarted { job })
+        }
+        (Method::DELETE, ["mariadb", v]) => {
+            let r: RemoveMariaDbRequest = body(req).await?;
+            let (l, v2) = (layout.clone(), v.to_string());
+            let removed = blocking(move || ops::remove_mariadb(&l, &v2, r.delete_data, &mut ops::Quiet)).await?;
+            message(format!("MariaDB {removed} removed"))
         }
         (Method::POST, ["mariadb", "start"]) => {
             let msg = d.daemon.db_start().await?;

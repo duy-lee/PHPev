@@ -68,6 +68,8 @@ pub struct PhpVersionInfo {
     pub default: bool,
     /// Running php-cgi workers.
     pub workers: usize,
+    /// Linked sites that lose their PHP if this version is removed.
+    pub pinned_by: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -101,6 +103,13 @@ pub struct PickedFolder {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct VersionRequest {
     pub version: String,
+}
+
+/// Removing a MariaDB version.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RemoveMariaDbRequest {
+    /// Also delete the databases of its major when no other release of it is left.
+    pub delete_data: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

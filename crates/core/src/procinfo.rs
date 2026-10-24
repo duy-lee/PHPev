@@ -59,11 +59,43 @@ pub fn exe_path(pid: u32) -> Option<std::path::PathBuf> {
     }
 }
 
+/// Processes whose executable lives under `dir`, as "name (pid)".
+pub fn running_from(dir: &std::path::Path) -> Vec<String> {
+    // Either path may use 8.3 names (an executable keeps the form it was
+    // started with) or forward slashes, so both are compared canonicalized.
+    let lower = |p: std::path::PathBuf| std::path::PathBuf::from(p.to_string_lossy().to_lowercase());
+    let Ok(dir) = std::fs::canonicalize(dir).map(lower) else {
+        return Vec::new();
+    };
+    let mut found: Vec<String> = crate::ports::process_names()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|(pid, _)| {
+            exe_path(*pid)
+                .and_then(|exe| std::fs::canonicalize(exe).ok())
+                .is_some_and(|exe| lower(exe).starts_with(&dir))
+        })
+        .map(|(pid, name)| format!("{name} ({pid})"))
+        .collect();
+    found.sort();
+    found
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
     fn own_exe_path_is_found() {
         assert_eq!(super::exe_path(std::process::id()), std::env::current_exe().ok());
+    }
+
+    #[test]
+    fn finds_processes_running_from_a_folder() {
+        let exe = std::env::current_exe().unwrap();
+        let own = format!("({})", std::process::id());
+        assert!(super::running_from(exe.parent().unwrap())
+            .iter()
+            .any(|p| p.ends_with(&own)));
+        assert!(super::running_from(&exe.parent().unwrap().join("elsewhere")).is_empty());
     }
 
     #[test]

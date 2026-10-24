@@ -17,7 +17,7 @@ use phpev_core::config::Config;
 use phpev_core::elevate::{self, CMD_UNINSTALL_CLEANUP};
 use phpev_core::env_path::{self, Scope};
 use phpev_core::layout::Layout;
-use phpev_core::{autostart, ca, hosts, installer, ipc, HOME_ENV};
+use phpev_core::{autostart, ca, hosts, installer, ipc, ops, HOME_ENV};
 
 use crate::daemon;
 use crate::progress::mib;
@@ -105,7 +105,7 @@ pub fn uninstall(mut purge: bool, yes: bool, from_installer: bool) -> io::Result
             return Ok(ExitCode::SUCCESS);
         }
         if !purge && has_data {
-            let size: u64 = DATA.iter().map(|name| size_of(&root.join(name))).sum();
+            let size: u64 = DATA.iter().map(|name| ops::dir_size(&root.join(name))).sum();
             purge = ask(
                 &format!(
                     "Also delete your databases and settings ({} in data\\ and config.toml)? [y/N] ",
@@ -245,18 +245,6 @@ fn hand_over(setup: &installer::Installed, had_flags: bool) -> io::Result<ExitCo
 }
 
 /// Bytes in a file or directory tree (0 if missing).
-fn size_of(path: &Path) -> u64 {
-    let Ok(meta) = std::fs::symlink_metadata(path) else {
-        return 0;
-    };
-    if !meta.is_dir() {
-        return meta.len();
-    }
-    std::fs::read_dir(path)
-        .map(|entries| entries.flatten().map(|e| size_of(&e.path())).sum())
-        .unwrap_or(0)
-}
-
 /// Deletes what PHPev owns in the home, and the data too with `purge`. The running `phpev.exe`
 /// usually lives in it and cannot be deleted while running, so it is moved to
 /// the temp folder first and deleted from there once this process has exited.
@@ -321,7 +309,7 @@ fn hosts_file_text() -> String {
         .unwrap_or_default()
 }
 
-fn ask(prompt: &str, accept: &[&str]) -> io::Result<bool> {
+pub fn ask(prompt: &str, accept: &[&str]) -> io::Result<bool> {
     print!("{prompt}");
     io::stdout().flush()?;
     let mut line = String::new();

@@ -94,7 +94,7 @@ fn tcp_table<Row: Copy>(family: u32) -> io::Result<Vec<Row>> {
 }
 
 /// PID → executable name for every running process.
-fn process_names() -> io::Result<HashMap<u32, String>> {
+pub(crate) fn process_names() -> io::Result<HashMap<u32, String>> {
     let snap = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
     if snap == INVALID_HANDLE_VALUE {
         return Err(io::Error::last_os_error());
