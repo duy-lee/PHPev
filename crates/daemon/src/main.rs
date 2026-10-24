@@ -5,6 +5,7 @@
 
 #![windows_subsystem = "windows"]
 
+mod appwindow;
 mod dashboard;
 mod endsession;
 mod fastcgi;
@@ -200,6 +201,10 @@ impl Daemon {
                 .unwrap_or_else(|e| e.into_inner())
                 .clone()
                 .map_err(io::Error::other),
+            Request::OpenDashboard { browser } => appwindow::open_dashboard(self, browser).map(|()| {
+                let port = self.config().map(|c| c.ports.dashboard).unwrap_or(7600);
+                format!("Opening the dashboard: http://127.0.0.1:{port}")
+            }),
             Request::SetTray { enabled } => {
                 tray::set_visible(enabled);
                 Ok(format!("tray icon {}", if enabled { "shown" } else { "hidden" }))

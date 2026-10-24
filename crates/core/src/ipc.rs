@@ -50,6 +50,11 @@ pub enum Request {
     EnableHttps,
     /// The dashboard login URL, including this daemon run's token.
     DashboardUrl,
+    /// Open the dashboard window (the daemon opens it so it can give the
+    /// window its icon); `browser` opens a default-browser tab instead.
+    OpenDashboard {
+        browser: bool,
+    },
     /// Show or hide the tray icon (after `phpev tray on|off` saved it).
     SetTray {
         enabled: bool,

@@ -189,11 +189,7 @@ fn notify(title: &str, text: &str) {
 
 fn open_dashboard() {
     let Some(ctx) = CTX.get() else { return };
-    let url = ctx.daemon.dashboard.lock().unwrap_or_else(|e| e.into_inner()).clone();
-    let result = url
-        .map_err(std::io::Error::other)
-        .and_then(|u| launch::open_app_window(&u));
-    if let Err(e) = result {
+    if let Err(e) = crate::appwindow::open_dashboard(&ctx.daemon, false) {
         log_warn!("tray: could not open the dashboard: {e}");
         notify("PHPev", &format!("Could not open the dashboard: {e}"));
     }

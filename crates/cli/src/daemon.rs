@@ -7,12 +7,12 @@ use std::process::{Command, ExitCode, Stdio};
 use std::time::{Duration, Instant};
 
 use clap::ValueEnum;
+use phpev_core::autostart;
 use phpev_core::config;
 use phpev_core::ipc::{self, Request, Response};
 use phpev_core::layout::Layout;
 use phpev_core::mariadb;
 use phpev_core::state::State;
-use phpev_core::{autostart, launch};
 
 use windows_sys::Win32::Foundation::{SetHandleInformation, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE};
 use windows_sys::Win32::System::Console::{GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE};
@@ -283,17 +283,12 @@ pub fn tray(mode: Switch) -> io::Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
-/// `phpev dashboard`: starts PHPev if needed and opens the dashboard with this
-/// run's login token (the browser then holds it as an HttpOnly cookie), in its
-/// own app window (Edge) unless `browser` asks for a normal browser tab.
+/// `phpev dashboard`: starts PHPev if needed and has the daemon open the
+/// dashboard with this run's login token (the browser then holds it as an
+/// HttpOnly cookie), in its own app window (Edge) unless `browser` asks for a
+/// normal browser tab.
 pub fn dashboard(browser: bool) -> io::Result<ExitCode> {
     ensure_running()?;
-    let url = request(&Request::DashboardUrl)?;
-    if browser {
-        launch::open_url(&url)?;
-    } else {
-        launch::open_app_window(&url)?;
-    }
-    println!("Opening the dashboard: {}", url.split("/login").next().unwrap_or(&url));
+    println!("{}", request(&Request::OpenDashboard { browser })?);
     Ok(ExitCode::SUCCESS)
 }
