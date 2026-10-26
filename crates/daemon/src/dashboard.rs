@@ -323,6 +323,117 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             sync_hosts_if_needed(&layout).await;
             message(format!("Linked {}", linked.name))
         }
+        (Method::POST, ["sites", "pick-folder"]) => {
+            let path =
+                blocking(|| crate::folderpick::pick_folder("Choose the project folder", crate::appwindow::window()))
+                    .await?;
+            ok(&PickedFolder { path })
+        }
+        (Method::GET, ["sites", name]) => {
+            let status = d.daemon.status().await;
+            let (l, n) = (layout.clone(), name.to_string());
+            ok(&blocking(move || {
+                let site = site_info(&l, &ops::find_site(&l, &n)?)?;
+                crate::site_page::detail(&l, site, &status.php_pools, status.mariadb.as_ref())
+            })
+            .await?)
+        }
+        (Method::GET, ["sites", name, "database"]) => {
+            let connection = query_param(req.uri(), "name").unwrap_or_default();
+            let db = d.daemon.status().await.mariadb;
+            let (l, n) = (layout.clone(), name.to_string());
+            ok(&blocking(move || {
+                let site = ops::find_site(&l, &n)?;
+                crate::site_page::database(&l, &site.path, &connection, db.as_ref())
+            })
+            .await?)
+        }
+        (Method::POST, ["sites", _name, "database", "import", "pick"]) => {
+            let path = blocking(|| {
+                crate::folderpick::pick_file(
+                    "Choose the .sql file to import",
+                    crate::appwindow::window(),
+                    "SQL dump (*.sql)",
+                    "*.sql",
+                )
+            })
+            .await?;
+            ok(&PickedFolder { path })
+        }
+        (Method::POST, ["sites", name, "database", "import"]) => {
+            let r: DbImportRequest = body(req).await?;
+            let server = running_mariadb(d).await?;
+            let (l, n) = (layout.clone(), name.to_string());
+            let file = PathBuf::from(&r.path);
+            let db = blocking(move || {
+                if !file.is_file() || file.extension().is_none_or(|e| !e.eq_ignore_ascii_case("sql")) {
+                    return Err(io::Error::new(io::ErrorKind::InvalidInput, "choose a .sql file"));
+                }
+                crate::site_page::local_database(&l, &ops::find_site(&l, &n)?.path, &r.name)
+            })
+            .await?;
+            let l = layout.clone();
+            let label = PathBuf::from(&r.path)
+                .file_name()
+                .map(|f| f.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let job = d
+                .jobs
+                .start_cancellable(format!("Import into {db}"), move |rep, cancel| {
+                    rep.info(&format!("{} into `{db}`", r.path));
+                    if r.empty_first {
+                        rep.info(&format!("emptying `{db}` first"));
+                    }
+                    phpev_core::dbdump::import(
+                        &l,
+                        &server.version,
+                        server.port,
+                        &db,
+                        Path::new(&r.path),
+                        r.empty_first,
+                        &mut |done, total| rep.progress(&label, done, total),
+                        cancel,
+                    )?;
+                    Ok(format!("Imported {label} into {db}"))
+                });
+            ok(&JobStarted { job })
+        }
+        (Method::POST, ["sites", name, "database", "export"]) => {
+            let r: DbExportRequest = body(req).await?;
+            let server = running_mariadb(d).await?;
+            let (l, n) = (layout.clone(), name.to_string());
+            let picked = blocking(move || {
+                let db = crate::site_page::local_database(&l, &ops::find_site(&l, &n)?.path, &r.name)?;
+                let proposed = format!("{db}-{}.sql", phpev_core::clock::today());
+                let path = crate::folderpick::save_file(
+                    "Export the database to",
+                    crate::appwindow::window(),
+                    "SQL dump (*.sql)",
+                    "*.sql",
+                    &proposed,
+                )?;
+                Ok(path.map(|p| (db, p)))
+            })
+            .await?;
+            let Some((db, path)) = picked else {
+                return ok(&MaybeJob { job: None });
+            };
+            let l = layout.clone();
+            let job = d.jobs.start_cancellable(format!("Export {db}"), move |rep, cancel| {
+                rep.info(&format!("`{db}` to {path}"));
+                let size = phpev_core::dbdump::export(
+                    &l,
+                    &server.version,
+                    server.port,
+                    &db,
+                    Path::new(&path),
+                    &mut |done, _| rep.progress(&db, done, None),
+                    cancel,
+                )?;
+                Ok(format!("Exported {db} ({:.1} MB) to {path}", size as f64 / 1_048_576.0))
+            });
+            ok(&MaybeJob { job: Some(job) })
+        }
         (Method::DELETE, ["sites", name]) => {
             let (l, n) = (layout.clone(), name.to_string());
             match blocking(move || ops::unlink_site(&l, &n)).await? {
@@ -362,11 +473,16 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             let (l, n) = (layout.clone(), name.to_string());
             blocking(move || {
                 let site = ops::find_site(&l, &n)?;
+                let before = crate::foreground::windows();
                 match r.target {
-                    OpenTarget::Browser => launch::open_url(&site_url(&l, &site)?),
-                    OpenTarget::Folder => launch::open_folder(&site.path),
-                    OpenTarget::Terminal => launch::open_terminal(&site.path),
+                    OpenTarget::Browser => return launch::open_url(&site_url(&l, &site)?),
+                    OpenTarget::Folder => launch::open_folder(&site.path)?,
+                    OpenTarget::Terminal => launch::open_terminal(&site.path)?,
                 }
+                // Explorer reuses a window already showing the folder (titled with its name).
+                let folder = site.path.file_name().map(|n| n.to_string_lossy().into_owned());
+                crate::foreground::raise_new_window(before, folder.filter(|_| r.target == OpenTarget::Folder));
+                Ok(())
             })
             .await?;
             message("opened")
@@ -590,6 +706,17 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
         }
 
         // ---- jobs
+        (Method::POST, ["jobs", id, "cancel"]) => {
+            let job = find_job(d, id)?;
+            if d.jobs.cancel(job.snapshot().id) {
+                message("Cancelling")
+            } else {
+                Err(ApiError(
+                    StatusCode::CONFLICT,
+                    "this job cannot be cancelled now".into(),
+                ))
+            }
+        }
         (Method::GET, ["jobs", id]) => {
             let job = find_job(d, id)?;
             ok(&job.snapshot())
@@ -598,6 +725,16 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
 
         _ => Err(ApiError(StatusCode::NOT_FOUND, format!("no API route {path}"))),
     }
+}
+
+/// The MariaDB server the daemon runs, or a clear error when it is stopped.
+async fn running_mariadb(d: &Dashboard) -> Result<phpev_core::ipc::Service, ApiError> {
+    d.daemon.status().await.mariadb.ok_or_else(|| {
+        ApiError(
+            StatusCode::CONFLICT,
+            "MariaDB is not running; start it on the Services page".into(),
+        )
+    })
 }
 
 fn find_job(d: &Dashboard, id: &str) -> Result<Arc<crate::jobs::Job>, ApiError> {
@@ -801,27 +938,27 @@ pub(crate) fn site_url(layout: &phpev_core::layout::Layout, site: &sites::Site) 
 
 fn site_list(layout: &phpev_core::layout::Layout) -> io::Result<Vec<SiteInfo>> {
     let config = Config::load(&layout.config_file())?;
-    sites::all(&config)
-        .iter()
-        .map(|s| {
-            Ok(SiteInfo {
-                url: site_url(layout, s)?,
-                name: s.name.clone(),
-                kind: if s.kind == sites::Kind::Linked {
-                    "linked"
-                } else {
-                    "parked"
-                }
-                .into(),
-                path: s.path.display().to_string(),
-                php_pinned: s.php.clone(),
-                php: shim::resolve(layout.root(), &s.path)
-                    .map(|r| r.version)
-                    .map_err(|e| e.to_string()),
-                secure: s.secure,
-            })
-        })
-        .collect()
+    sites::all(&config).iter().map(|s| site_info(layout, s)).collect()
+}
+
+fn site_info(layout: &phpev_core::layout::Layout, s: &sites::Site) -> io::Result<SiteInfo> {
+    Ok(SiteInfo {
+        url: site_url(layout, s)?,
+        name: s.name.clone(),
+        kind: if s.kind == sites::Kind::Linked {
+            "linked"
+        } else {
+            "parked"
+        }
+        .into(),
+        path: s.path.display().to_string(),
+        php_pinned: s.php.clone(),
+        php: shim::resolve(layout.root(), &s.path)
+            .map(|r| r.version)
+            .map_err(|e| e.to_string()),
+        secure: s.secure,
+        framework: phpev_core::project::detect(&s.path),
+    })
 }
 
 /// With a TLD other than localhost, keep the hosts file in sync (UAC). A

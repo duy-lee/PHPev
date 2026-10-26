@@ -9,8 +9,9 @@ import { Toasts } from './ui/feedback.js';
 import { DialogHost } from './ui/dialog.js';
 import { JobDialog } from './ui/job-dialog.js';
 import { Palette } from './ui/palette.js';
+import { prefs } from './ui/prefs.js';
 import { Overview } from './pages/overview.js';
-import { Sites } from './pages/sites.js';
+import { Sites, SitesToolbar } from './pages/sites.js';
 import { Php } from './pages/php.js';
 import { Services } from './pages/services.js';
 import { Performance } from './pages/performance.js';
@@ -19,30 +20,12 @@ import { Logs } from './pages/logs.js';
 // Page registry: a new feature = one entry here + its API endpoints.
 const PAGES = [
   { id: 'overview', label: 'nav.overview', icon: 'home', view: Overview },
-  { id: 'sites', label: 'nav.sites', icon: 'globe', view: Sites },
+  { id: 'sites', label: 'nav.sites', icon: 'globe', view: Sites, toolbar: SitesToolbar },
   { id: 'php', label: 'nav.php', icon: 'php', view: Php },
   { id: 'services', label: 'nav.services', icon: 'database', view: Services },
   { id: 'performance', label: 'nav.performance', icon: 'chart', view: Performance },
   { id: 'logs', label: 'nav.logs', icon: 'logs', view: Logs },
 ];
-
-// Per-viewer layout choices. Storage may be unavailable; the page works without it.
-const store = {
-  get(key) {
-    try {
-      return localStorage.getItem(`phpev.${key}`);
-    } catch {
-      return null;
-    }
-  },
-  set(key, value) {
-    try {
-      localStorage.setItem(`phpev.${key}`, value);
-    } catch {
-      /* not remembered */
-    }
-  },
-};
 
 // The menu collapses on its own in a narrow window.
 const NARROW = '(max-width: 1100px)';
@@ -107,15 +90,16 @@ function Sidebar({ active, mini, onToggle, go }) {
 }
 
 function App() {
-  const current = () => location.hash.replace(/^#\//, '').split('/')[0] || 'overview';
-  const [page, setPage] = useState(current());
+  // `#/sites/shop/logs` → ['sites', 'shop', 'logs']
+  const current = () => location.hash.replace(/^#\//, '').split('/').map(decodeURIComponent);
+  const [route, setRoute] = useState(current());
   const [job, setJob] = useState(null);
   const [palette, setPalette] = useState(false);
-  const [collapsed, setCollapsed] = useState(store.get('navCollapsed') === '1');
+  const [collapsed, setCollapsed] = useState(prefs.get('navCollapsed') === '1');
   const narrow = useNarrow();
   const stopped = useDaemonWatch();
   useEffect(() => {
-    const onHash = () => setPage(current());
+    const onHash = () => setRoute(current());
     addEventListener('hashchange', onHash);
     const onKey = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
@@ -137,23 +121,24 @@ function App() {
     return html`<div class="stopped"><div class="card pad" style="max-width: 460px">
       <h1 class="display" style="font-size: 22px; margin-bottom: 6px">${t('app.stopped')}</h1><p class="muted" style="margin: 0">${t('app.stopped_hint')}</p></div></div>`;
   }
-  const active = PAGES.find((p) => p.id === page) ?? PAGES[0];
+  const active = PAGES.find((p) => p.id === route[0]) ?? PAGES[0];
   const startJob = (id, after) => setJob({ id, after });
   // A narrow window collapses the menu unless the user opened it explicitly.
-  const mini = narrow ? store.get('navCollapsed') !== '0' : collapsed;
+  const mini = narrow ? prefs.get('navCollapsed') !== '0' : collapsed;
   const toggle = () => {
-    store.set('navCollapsed', mini ? '0' : '1');
+    prefs.set('navCollapsed', mini ? '0' : '1');
     setCollapsed(!mini);
   };
   return html`<div class="shell">
     <${Sidebar} active=${active.id} mini=${mini} onToggle=${toggle} go=${go} />
     <main class="content">
       <div class="toolbar">
+        ${active.toolbar && html`<${active.toolbar} route=${route} />`}
         <span class="grow"></span>
         <button class="search-btn" aria-label=${t('palette.title')} onClick=${() => setPalette(true)}>
           <${Icon} name="search" size=${16} /><span class="search-label">${t('palette.button')}</span><span class="kbd">Ctrl K</span></button>
       </div>
-      <${active.view} startJob=${startJob} />
+      <${active.view} startJob=${startJob} route=${route} />
     </main>
     ${job && html`<${JobDialog} id=${job.id} onClose=${() => { job.after?.(); setJob(null); }} />`}
     ${palette && html`<${Palette} pages=${PAGES} onClose=${() => setPalette(false)} onOpen=${(hash) => { setPalette(false); location.replace(hash); }} />`}

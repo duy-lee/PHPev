@@ -27,6 +27,11 @@
   --shadow-raised: 0 1px 2px rgba(27, 34, 48, .08), 0 1px 6px rgba(27, 34, 48, .05);
   --shadow-overlay: 0 22px 56px rgba(27, 34, 48, .18);
   --scrim: rgba(20, 24, 32, .32);
+  --fw-laravel: #FCE9E5;   --fw-laravel-ink: #B4402E;
+  --fw-symfony: #EEF0F3;   --fw-symfony-ink: #3B4252;
+  --fw-wordpress: #E6EEFD; --fw-wordpress-ink: #2457C9;
+  --fw-php: #ECEAF7;       --fw-php-ink: #4F4A93;
+  --fw-static: #E8F4EE;    --fw-static-ink: #1F7048;
 
   --font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
   --font-display: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
@@ -64,6 +69,11 @@
     --shadow-raised: 0 1px 2px rgba(0, 0, 0, .35);
     --shadow-overlay: 0 22px 56px rgba(0, 0, 0, .5);
     --scrim: rgba(0, 0, 0, .5);
+    --fw-laravel: #3A211C;   --fw-laravel-ink: #FF9A86;
+    --fw-symfony: #2A2F38;   --fw-symfony-ink: #C9D1DE;
+    --fw-wordpress: #1E2B45; --fw-wordpress-ink: #8DB2FF;
+    --fw-php: #2A2740;       --fw-php-ink: #B9B3F0;
+    --fw-static: #173226;    --fw-static-ink: #7FD9A6;
     color-scheme: dark;
   }
 }
@@ -93,5 +103,10 @@
   --shadow-raised: 0 1px 2px rgba(0, 0, 0, .35);
   --shadow-overlay: 0 22px 56px rgba(0, 0, 0, .5);
   --scrim: rgba(0, 0, 0, .5);
+  --fw-laravel: #3A211C;   --fw-laravel-ink: #FF9A86;
+  --fw-symfony: #2A2F38;   --fw-symfony-ink: #C9D1DE;
+  --fw-wordpress: #1E2B45; --fw-wordpress-ink: #8DB2FF;
+  --fw-php: #2A2740;       --fw-php-ink: #B9B3F0;
+  --fw-static: #173226;    --fw-static-ink: #7FD9A6;
   color-scheme: dark;
 }

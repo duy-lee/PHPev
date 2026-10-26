@@ -25,10 +25,11 @@ export function Chart({ title, labels, data }) {
       setFailure(String(e));
       return;
     }
-    const onResize = () => plot.current?.setSize({ width: box.current.clientWidth, height: 180 });
-    addEventListener('resize', onResize);
+    // Follows its card, not only the window: a card can still be growing when the chart is created.
+    const observer = new ResizeObserver(() => box.current && plot.current?.setSize({ width: box.current.clientWidth, height: 180 }));
+    observer.observe(box.current);
     return () => {
-      removeEventListener('resize', onResize);
+      observer.disconnect();
       plot.current?.destroy();
       plot.current = null;
     };

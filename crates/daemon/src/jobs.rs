@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 use std::io;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -22,6 +22,8 @@ const PROGRESS_EVERY: Duration = Duration::from_millis(150);
 pub struct Job {
     info: Mutex<JobInfo>,
     changed: watch::Sender<u64>,
+    /// Set by `cancel`; cancellable work checks it and stops.
+    cancel: Arc<AtomicBool>,
 }
 
 impl Job {
@@ -51,6 +53,33 @@ impl Jobs {
     where
         F: FnOnce(&mut dyn Report) -> io::Result<String> + Send + 'static,
     {
+        self.run(title, false, move |report, _| work(report))
+    }
+
+    /// Like `start`, for work that stops (with any error) once the flag it
+    /// gets is set by `cancel`.
+    pub fn start_cancellable<F>(&self, title: String, work: F) -> u64
+    where
+        F: FnOnce(&mut dyn Report, &AtomicBool) -> io::Result<String> + Send + 'static,
+    {
+        self.run(title, true, work)
+    }
+
+    /// Asks a running cancellable job to stop. False if there is none.
+    pub fn cancel(&self, id: u64) -> bool {
+        match self.get(id) {
+            Some(job) if job.snapshot().cancellable && job.snapshot().status == JobStatus::Running => {
+                job.cancel.store(true, Ordering::SeqCst);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn run<F>(&self, title: String, cancellable: bool, work: F) -> u64
+    where
+        F: FnOnce(&mut dyn Report, &AtomicBool) -> io::Result<String> + Send + 'static,
+    {
         let id = self.next.fetch_add(1, Ordering::Relaxed) + 1;
         let (changed, _) = watch::channel(0);
         let job = Arc::new(Job {
@@ -61,8 +90,10 @@ impl Jobs {
                 lines: Vec::new(),
                 progress: None,
                 error: None,
+                cancellable,
             }),
             changed,
+            cancel: Arc::new(AtomicBool::new(false)),
         });
         {
             let mut jobs = self.jobs.lock().unwrap_or_else(|e| e.into_inner());
@@ -75,13 +106,18 @@ impl Jobs {
                 job: job.clone(),
                 last_progress: None,
             };
-            let result = work(&mut report);
+            let cancel = job.cancel.clone();
+            let result = work(&mut report, &cancel);
             job.update(|i| {
                 i.progress = None;
                 match result {
                     Ok(msg) => {
                         i.lines.push(msg);
                         i.status = JobStatus::Ok;
+                    }
+                    Err(_) if cancel.load(Ordering::SeqCst) => {
+                        log_info!("job {id} cancelled");
+                        i.status = JobStatus::Cancelled;
                     }
                     Err(e) => {
                         log_warn!("job {id} failed: {e}");

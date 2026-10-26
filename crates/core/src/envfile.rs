@@ -34,6 +34,11 @@ pub fn set(text: &str, key: &str, value: &str) -> String {
     out
 }
 
+/// Active keys, in file order.
+pub fn keys(text: &str) -> Vec<&str> {
+    text.lines().filter_map(|l| split(l).map(|(k, _)| k)).collect()
+}
+
 fn split(line: &str) -> Option<(&str, &str)> {
     let line = line.trim_start();
     if line.starts_with('#') {
