@@ -17,6 +17,9 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The whole history and tags: the release notes list the commits since the previous tag.
+          fetch-depth: 0
 
       - name: Install Rust
         run: |
@@ -64,16 +67,9 @@ jobs:
             Out-File -Encoding ascii dist/SHA256SUMS.txt
           Get-Content dist/SHA256SUMS.txt
 
-      - name: Release notes from CHANGELOG.md
+      - name: Release notes
         shell: pwsh
-        run: |
-          $lines = Get-Content CHANGELOG.md
-          $start = ($lines | Select-String -Pattern "^## \[$([regex]::Escape($env:VERSION))\]").LineNumber
-          if (-not $start) { throw "CHANGELOG.md has no section for $env:VERSION" }
-          $rest = $lines[$start..($lines.Length - 1)]
-          $end = ($rest | Select-String -Pattern '^## \[' | Select-Object -First 1).LineNumber
-          $notes = if ($end) { $rest[0..($end - 2)] } else { $rest }
-          $notes | Out-File -Encoding utf8 dist/notes.md
+        run: ./.github/scripts/release-notes.ps1 -Version $env:VERSION -Tag $env:GITHUB_REF_NAME
 
       - name: Create the draft release
         shell: pwsh
