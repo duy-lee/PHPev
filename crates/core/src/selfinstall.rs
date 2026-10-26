@@ -8,7 +8,14 @@ use crate::layout::Layout;
 
 /// Shim binary as built, and the names it is installed under.
 const SHIM_SOURCE: &str = "phpev-shim.exe";
-const SHIM_NAMES: &[&str] = &["php.exe", "composer.exe"];
+const SHIM_NAMES: &[&str] = &[
+    "php.exe",
+    "composer.exe",
+    "mysql.exe",
+    "mysqldump.exe",
+    "mariadb.exe",
+    "mariadb-dump.exe",
+];
 /// PHPev's own executables, installed under their own names.
 const TOOLS: &[&str] = &["phpev.exe", "phpev-elevate.exe", "phpev-daemon.exe"];
 

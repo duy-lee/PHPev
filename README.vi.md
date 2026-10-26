@@ -281,6 +281,17 @@ phpev db remove 10.11   # xoá một version (không phải version đang dùng)
 MariaDB lắng nghe ở `127.0.0.1:3306`, user `root`, **không mật khẩu**. Nó chỉ dành cho phát triển
 local và máy khác không truy cập được.
 
+Lệnh `mysql`, `mysqldump`, `mariadb` và `mariadb-dump` trong mọi terminal chạy client của MariaDB
+đang dùng, đã kết nối sẵn bằng `root` (`-u`, `-h`, `-P` bạn tự truyền được ưu tiên; `-p` chỉ hỏi
+mật khẩu rỗng, bấm Enter):
+
+```powershell
+mysql -e "CREATE DATABASE shop"
+cmd /c "mysql shop < dump.sql"       # import (PowerShell không có `<`; trong cmd: mysql shop < dump.sql)
+mysql shop -e "source C:/path/dump.sql"   # tương tự, không cần cmd
+mysqldump shop > shop.sql            # export
+```
+
 ### Composer
 
 ```powershell
@@ -413,7 +424,7 @@ Thư mục:
 
 ```
 %USERPROFILE%\.phpev\
-├── shims\          thư mục duy nhất trong PATH: php.exe, composer.exe, phpev*.exe
+├── shims\          thư mục duy nhất trong PATH: php.exe, composer.exe, mysql.exe, …, phpev*.exe
 ├── bin\            php\<version>\, mariadb\<version>\, composer\, cacert.pem
 ├── data\mariadb\   database, mỗi major version một thư mục
 ├── certs\          CA nội bộ
@@ -441,6 +452,8 @@ Thư mục:
 - **`phpev-daemon.exe`**: dịch vụ nền viết bằng Rust/tokio, gồm router (hyper, rustls), giám sát
   process, dashboard và icon tray. Mọi process con chạy trong một Job Object kill-on-close.
 - **`php.exe` / `composer.exe`**: shim rất nhỏ, chọn version PHP rồi chạy bản thật.
+  `mysql.exe` / `mysqldump.exe` (và `mariadb.exe` / `mariadb-dump.exe`) cũng là shim đó, chạy client
+  của MariaDB đang dùng.
 - **`phpev-elevate.exe`**: chạy vài thao tác cần quyền admin, mỗi lần một hộp thoại UAC.
 
 Dashboard là một app Preact nhỏ nhúng trong binary của dịch vụ. Nó chỉ dùng API đã công bố

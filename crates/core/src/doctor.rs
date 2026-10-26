@@ -50,7 +50,7 @@ impl Check {
 /// Facts about PATH ordering that `doctor --fix-path` acts on.
 #[derive(Debug, Default)]
 pub struct PathReport {
-    /// A PHP/Composer found on the *system* PATH would win over the shims.
+    /// A PHP/Composer/MySQL client found on the *system* PATH would win over the shims.
     pub shadowed_by_system: bool,
 }
 
@@ -153,9 +153,13 @@ fn path_checks(layout: &Layout) -> (Vec<Check>, PathReport) {
         }
     };
 
-    for (tool, names) in [
-        ("php", &["php.exe"][..]),
-        ("composer", &["composer.exe", "composer.bat", "composer.cmd"][..]),
+    // (tool, file names, PHPev cannot work right without its shim)
+    for (tool, names, required) in [
+        ("php", &["php.exe"][..], true),
+        ("composer", &["composer.exe", "composer.bat", "composer.cmd"][..], true),
+        // A MySQL server installation: only its client is shadowed, and
+        // `mariadb` still reaches PHPev's server.
+        ("mysql", &["mysql.exe"][..], false),
     ] {
         // Entries that would run instead of our shim: everything resolved before it.
         let others: Vec<(Scope, PathBuf)> = env_path::which_all(&effective, names)
@@ -175,7 +179,11 @@ fn path_checks(layout: &Layout) -> (Vec<Check>, PathReport) {
         let in_system = others.iter().any(|(s, _)| *s == Scope::System);
         report.shadowed_by_system |= in_system;
         // Before the shims are installed (M3) a foreign tool is only a heads-up.
-        let status = if shim_exists { Status::Fail } else { Status::Warn };
+        let status = if shim_exists && required {
+            Status::Fail
+        } else {
+            Status::Warn
+        };
         let mut c = Check::new(status, format!("Another `{tool}` comes before the PHPev shim on PATH"));
         for (scope, p) in &others {
             let label = if *scope == Scope::System {
@@ -190,6 +198,11 @@ fn path_checks(layout: &Layout) -> (Vec<Check>, PathReport) {
         } else {
             c.hint("phpev setup   (moves the shims to the front of the user PATH)")
         };
+        if !required {
+            c = c.detail(format!(
+                "`mariadb` reaches PHPev's MariaDB either way; `{tool}` runs the one above"
+            ));
+        }
         checks.push(c);
     }
     (checks, report)

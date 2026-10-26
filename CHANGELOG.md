@@ -4,6 +4,14 @@ All notable changes to PHPev are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/). Until 1.0, minor versions may contain breaking changes.
 
+## [Unreleased]
+
+### Added
+
+- **`mysql`, `mysqldump`, `mariadb`, `mariadb-dump`** in any terminal: the client of the active
+  MariaDB, connected to it as `root` (e.g. `mysql shop < dump.sql` in cmd). Your own `-u`, `-h`
+  and `-P` take precedence.
+
 ## [0.1.1] - 2026-10-25
 
 ### Install
