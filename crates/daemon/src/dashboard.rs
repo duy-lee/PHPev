@@ -208,30 +208,15 @@ async fn handle(d: &Dashboard, req: Request<Incoming>) -> Response<Body> {
 
 // ---------------------------------------------------------------- assets
 
+/// The table build.rs generates from `dashboard/`.
+mod assets {
+    include!(concat!(env!("OUT_DIR"), "/dashboard_assets.rs"));
+}
+
 /// Embedded UI files (no CDN, served from memory).
 fn asset(path: &str) -> Response<Body> {
-    let (body, mime): (&'static [u8], &str) = match path {
-        "/" | "/index.html" => (include_bytes!("../dashboard/index.html"), "text/html; charset=utf-8"),
-        "/app.js" => (include_bytes!("../dashboard/app.js"), "text/javascript; charset=utf-8"),
-        "/app.css" => (include_bytes!("../dashboard/app.css"), "text/css; charset=utf-8"),
-        "/i18n/en.json" => (include_bytes!("../dashboard/i18n/en.json"), "application/json"),
-        "/vendor/uPlot.iife.min.js" => (
-            include_bytes!("../dashboard/vendor/uPlot.iife.min.js"),
-            "text/javascript; charset=utf-8",
-        ),
-        "/vendor/uPlot.min.css" => (
-            include_bytes!("../dashboard/vendor/uPlot.min.css"),
-            "text/css; charset=utf-8",
-        ),
-        "/vendor/htm-preact-standalone.mjs" => (
-            include_bytes!("../dashboard/vendor/htm-preact-standalone.mjs"),
-            "text/javascript; charset=utf-8",
-        ),
-        "/favicon.ico" => (include_bytes!("../../../assets/web/favicon.ico"), "image/x-icon"),
-        "/favicon.svg" => (include_bytes!("../../../assets/web/favicon.svg"), "image/svg+xml"),
-        "/logo-light.svg" => (include_bytes!("../../../assets/phpev-logo-light.svg"), "image/svg+xml"),
-        "/logo-dark.svg" => (include_bytes!("../../../assets/phpev-logo-dark.svg"), "image/svg+xml"),
-        _ => return text(StatusCode::NOT_FOUND, "Not Found"),
+    let Some((body, mime)) = assets::lookup(path) else {
+        return text(StatusCode::NOT_FOUND, "Not Found");
     };
     Response::builder()
         .header(header::CONTENT_TYPE, mime)
@@ -853,5 +838,86 @@ async fn sync_hosts_if_needed(layout: &phpev_core::layout::Layout) {
     .await;
     if let Ok(Err(e)) = result {
         log_warn!("hosts file not updated: {e}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::assets::lookup;
+
+    #[test]
+    fn index_and_entry_files_are_embedded() {
+        for path in [
+            "/",
+            "/index.html",
+            "/app.js",
+            "/app.css",
+            "/i18n/en.json",
+            "/favicon.ico",
+        ] {
+            assert!(lookup(path).is_some(), "{path} is not embedded");
+        }
+        assert_eq!(lookup("/app.js").unwrap().1, "text/javascript; charset=utf-8");
+        assert!(lookup("/nope.js").is_none());
+    }
+
+    /// Every `from '…'` in the dashboard's modules points at an embedded file,
+    /// so a renamed or moved module fails here instead of in the window.
+    #[test]
+    fn module_imports_resolve() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("dashboard");
+        let mut stack = vec![root.clone()];
+        let mut checked = 0;
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    if !path.ends_with("vendor") {
+                        stack.push(path);
+                    }
+                    continue;
+                }
+                if path.extension().is_none_or(|e| e != "js") {
+                    continue;
+                }
+                let url_dir = format!(
+                    "/{}",
+                    path.parent()
+                        .unwrap()
+                        .strip_prefix(&root)
+                        .unwrap()
+                        .to_string_lossy()
+                        .replace('\\', "/")
+                );
+                let text = std::fs::read_to_string(&path).unwrap();
+                for spec in text.split(" from '").skip(1).filter_map(|s| s.split('\'').next()) {
+                    let url = resolve(&url_dir, spec);
+                    assert!(
+                        lookup(&url).is_some(),
+                        "{}: import '{spec}' ({url}) is not embedded",
+                        path.display()
+                    );
+                    checked += 1;
+                }
+            }
+        }
+        assert!(checked > 10, "only {checked} imports found");
+    }
+
+    fn resolve(dir: &str, spec: &str) -> String {
+        if spec.starts_with('/') {
+            return spec.to_owned();
+        }
+        let mut parts: Vec<&str> = dir.split('/').filter(|p| !p.is_empty()).collect();
+        for part in spec.split('/') {
+            match part {
+                "." => {}
+                ".." => {
+                    parts.pop();
+                }
+                p => parts.push(p),
+            }
+        }
+        format!("/{}", parts.join("/"))
     }
 }
