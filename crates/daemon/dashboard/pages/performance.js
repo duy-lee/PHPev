@@ -4,6 +4,7 @@ import { api, res, useApi } from '../api.js';
 import { mb, uptime, fmtMs } from '../format.js';
 import { act, showToast } from '../ui/feedback.js';
 import { Chart } from '../ui/chart.js';
+import { Empty, Loading } from '../ui/controls.js';
 
 const HISTORY = 60; // seconds of process history kept in the browser
 
@@ -43,7 +44,7 @@ export function Performance() {
     return () => source.close();
   }, [host, withStatic, visible]);
 
-  if (!live) return html`<h1>${t('perf.title')}</h1><p>${t('common.loading')}</p>`;
+  if (!live) return html`<div class="page-head"><h1>${t('perf.title')}</h1></div><${Loading} />`;
   const r = live.requests;
   const x = r.per_second.map((_, i) => i - r.per_second.length + 1);
   const ago = Math.max(0, (now - r.generated_ms) / 1000).toFixed(1) + ' s';
@@ -52,34 +53,59 @@ export function Performance() {
   const maxCount = Math.max(1, ...r.histogram.map(([, c]) => c));
 
   return html`
-    <h1>${t('perf.title')}</h1>
-    <div class="row">
-      <select value=${host} onChange=${(e) => { setHost(e.target.value); setProcHistory([]); }}>
-        <option value="">${t('perf.all_sites')}</option>
-        ${r.hosts.map((h) => html`<option value=${h}>${h}</option>`)}
-      </select>
-      <label><input type="checkbox" checked=${withStatic} onChange=${(e) => setWithStatic(e.target.checked)} /> ${t('perf.include_static')}</label>
-      <span class="muted">${visible ? t('perf.live', { ago }) : t('perf.paused')}</span>
+    <div class="page-head">
+      <div class="grow"><h1>${t('perf.title')}</h1><p>${visible ? t('perf.live', { ago }) : t('perf.paused')}</p></div>
+      <div class="row-flex">
+        <label class="sr-only" for="perf-host">${t('perf.all_sites')}</label>
+        <select class="select" id="perf-host" value=${host} onChange=${(e) => { setHost(e.target.value); setProcHistory([]); }}>
+          <option value="">${t('perf.all_sites')}</option>
+          ${r.hosts.map((h) => html`<option value=${h}>${h}</option>`)}
+        </select>
+        <label class="check"><input type="checkbox" checked=${withStatic} onChange=${(e) => setWithStatic(e.target.checked)} />${t('perf.include_static')}</label>
+      </div>
     </div>
-    <p>${t('perf.summary', { window: r.window_secs, total: r.total, p50: fmtMs(r.p50_ms), p95: fmtMs(r.p95_ms), p99: fmtMs(r.p99_ms) })}<br />
-      <span class="muted">${t('perf.status', { s2: r.status.s2xx, s3: r.status.s3xx, s4: r.status.s4xx, s5: r.status.s5xx })}</span></p>
-    <div class="cards charts">
+
+    <section class="card pad">
+      <div class="row-flex" style="gap: 36px; align-items: flex-end">
+        <div><div class="small muted">${t('perf.requests', { window: r.window_secs })}</div><div class="display" style="font-size: 32px; font-weight: 600; letter-spacing: -.02em">${r.total}</div></div>
+        <div><div class="small muted">p50</div><b style="font-size: 18px">${fmtMs(r.p50_ms)}</b></div>
+        <div><div class="small muted">p95</div><b style="font-size: 18px">${fmtMs(r.p95_ms)}</b></div>
+        <div><div class="small muted">p99</div><b style="font-size: 18px">${fmtMs(r.p99_ms)}</b></div>
+        <span class="grow"></span>
+        <div class="row-flex">
+          <span class="pill ok">2xx ${r.status.s2xx}</span><span class="pill">3xx ${r.status.s3xx}</span>
+          <span class="pill warn">4xx ${r.status.s4xx}</span><span class="pill danger">5xx ${r.status.s5xx}</span>
+        </div>
+      </div>
+    </section>
+
+    <div class="charts">
       <${Chart} title=${t('perf.rps')} labels=${['req/s']} data=${[x, r.per_second]} />
       <${Chart} title=${t('perf.latency')} labels=${[t('perf.p50'), t('perf.p95')]} data=${[x, r.p50_per_second, r.p95_per_second]} />
       ${names.length > 0 && html`<${Chart} title=${t('perf.cpu')} labels=${names}
         data=${[px, ...names.map((n) => procHistory.map((h) => h.groups[n]?.cpu ?? null))]} />`}
     </div>
-    <h2>${t('perf.histogram')}</h2>
-    <div class="hist">${r.histogram.map(([label, count]) => html`<div class="hist-row">
-      <span class="mono">${label}</span><span class="bar" style=${`width:${(count / maxCount) * 100}%`}></span><span>${count}</span></div>`)}</div>
-    <h2>${t('perf.slowest')}</h2>
-    ${r.slowest.length === 0 ? html`<p class="muted">${t('perf.none', { window: r.window_secs })}</p>` : html`<table>
-      <tr><th>${t('perf.route')}</th><th>${t('perf.count')}</th><th>${t('perf.avg')}</th><th>p95</th><th>${t('perf.max')}</th></tr>
-      ${r.slowest.map((s) => html`<tr><td class="mono">${s.method} ${s.host}${s.route}</td><td>${s.count}</td><td>${fmtMs(s.avg_ms)}</td><td>${fmtMs(s.p95_ms)}</td><td>${fmtMs(s.max_ms)}</td></tr>`)}
-    </table>
-    <p class="muted">${t('perf.slowest_note', { n: 2000 })}</p>`}
-    <h2>${t('perf.processes')}</h2>
-    <table><tr><th></th><th>pid</th><th>${t('perf.cpu')}</th><th>${t('perf.ram')}</th></tr>
-      ${live.processes.map((p) => html`<tr><td>${p.name}</td><td class="mono">${p.pid}</td><td>${p.cpu_percent.toFixed(1)}%</td><td>${mb(p.memory_kb)}</td></tr>`)}
-    </table>`;
+
+    <section class="card">
+      <div class="card-head"><h2>${t('perf.histogram')}</h2></div>
+      <div class="hist">${r.histogram.map(([label, count]) => html`<div class="hist-row">
+        <span class="mono">${label}</span><span class="bar" style=${`width:${(count / maxCount) * 100}%`}></span><span class="small muted">${count}</span></div>`)}</div>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2>${t('perf.slowest')}</h2></div>
+      ${r.slowest.length === 0 ? html`<${Empty} icon="chart" title=${t('perf.none', { window: r.window_secs })} />` : html`<div class="scroll-x"><table class="table">
+        <thead><tr><th>${t('perf.route')}</th><th class="num">${t('perf.count')}</th><th class="num">${t('perf.avg')}</th><th class="num">p95</th><th class="num">${t('perf.max')}</th></tr></thead>
+        <tbody>${r.slowest.map((s) => html`<tr><td class="mono">${s.method} ${s.host}${s.route}</td><td class="num">${s.count}</td><td class="num">${fmtMs(s.avg_ms)}</td><td class="num">${fmtMs(s.p95_ms)}</td><td class="num">${fmtMs(s.max_ms)}</td></tr>`)}</tbody>
+      </table></div>
+      <div class="card-foot"><span class="small muted">${t('perf.slowest_note', { n: 2000 })}</span></div>`}
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2>${t('perf.processes')}</h2></div>
+      <div class="scroll-x"><table class="table">
+        <thead><tr><th>${t('perf.process')}</th><th class="num">pid</th><th class="num">${t('perf.cpu')}</th><th class="num">${t('perf.ram')}</th></tr></thead>
+        <tbody>${live.processes.map((p) => html`<tr><td>${p.name}</td><td class="num mono">${p.pid}</td><td class="num">${p.cpu_percent.toFixed(1)}%</td><td class="num">${mb(p.memory_kb)}</td></tr>`)}</tbody>
+      </table></div>
+    </section>`;
 }

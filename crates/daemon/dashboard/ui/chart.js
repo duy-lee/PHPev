@@ -1,7 +1,7 @@
 import { html, useState, useEffect, useRef } from '/vendor/htm-preact-standalone.mjs';
 
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-const PALETTE = ['--accent', '--ok', '--warn', '--fail', '--muted'];
+const PALETTE = ['--accent', '--ok', '--warn', '--danger', '--muted'];
 
 // A uPlot line chart that follows `data` ([x, ...series]) and resizes with its box.
 export function Chart({ title, labels, data }) {
@@ -15,7 +15,7 @@ export function Chart({ title, labels, data }) {
       height: 180,
       scales: { x: { time: false } },
       legend: { show: true },
-      axes: [{ stroke: css('--muted'), grid: { stroke: css('--border') } }, { stroke: css('--muted'), grid: { stroke: css('--border') } }],
+      axes: [{ stroke: css('--muted'), grid: { stroke: css('--hair') } }, { stroke: css('--muted'), grid: { stroke: css('--hair') } }],
       series: [{ label: 's' }, ...labels.map((label, i) => ({ label, stroke: css(PALETTE[i % PALETTE.length]), width: 2, spanGaps: false }))],
     };
     try {
@@ -36,5 +36,5 @@ export function Chart({ title, labels, data }) {
   useEffect(() => {
     plot.current?.setData(data);
   }, [data]);
-  return html`<div class="card"><h3>${title}</h3>${failure && html`<span class="badge fail">${failure}</span>`}<div ref=${box}></div></div>`;
+  return html`<div class="card chart-card"><h3>${title}</h3>${failure && html`<span class="pill danger">${failure}</span>`}<div ref=${box}></div></div>`;
 }

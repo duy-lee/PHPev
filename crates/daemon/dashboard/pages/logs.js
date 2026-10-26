@@ -3,6 +3,8 @@ import { t } from '../i18n.js';
 import { api, res, useApi } from '../api.js';
 import { mb, uptime, fmtMs } from '../format.js';
 import { act, showToast } from '../ui/feedback.js';
+import { Icon } from '../icons.js';
+import { Switch, Loading } from '../ui/controls.js';
 
 const MAX_LOG_LINES = 5000;
 
@@ -32,20 +34,23 @@ export function Logs() {
     if (follow && box.current) box.current.scrollTop = box.current.scrollHeight;
   }, [lines, follow, filter, sources]);
 
-  if (!sources) return error ? html`<p>${t('common.error', { message: error })}</p>` : html`<p>${t('common.loading')}</p>`;
+  if (!sources) return html`<div class="page-head"><h1>${t('logs.title')}</h1></div><${Loading} error=${error} />`;
   const needle = filter.toLowerCase();
   const shown = needle ? lines.filter((l) => l.toLowerCase().includes(needle)) : lines;
   const current = sources.find((s) => s.id === source);
   return html`
-    <h1>${t('logs.title')}</h1>
-    <div class="row">
-      <select value=${source} onChange=${(e) => setSource(e.target.value)}>
+    <div class="page-head">
+      <div class="grow"><h1>${t('logs.title')}</h1><p class="mono small">${current?.path}</p></div>
+    </div>
+    <div class="row-flex">
+      <label class="sr-only" for="log-source">${t('logs.source')}</label>
+      <select class="select" id="log-source" value=${source} onChange=${(e) => setSource(e.target.value)}>
         ${sources.map((s) => html`<option value=${s.id}>${s.label}</option>`)}
       </select>
-      <input type="text" placeholder=${t('logs.filter')} value=${filter} onInput=${(e) => setFilter(e.target.value)} style="min-width:220px" />
-      <label><input type="checkbox" checked=${follow} onChange=${(e) => setFollow(e.target.checked)} /> ${t('logs.follow')}</label>
-      <span class="muted">${t('logs.lines', { count: shown.length })}</span>
+      <label class="field grow" style="flex: 1 1 240px; border-radius: 999px"><${Icon} name="search" size=${16} />
+        <input placeholder=${t('logs.filter')} aria-label=${t('logs.filter')} value=${filter} onInput=${(e) => setFilter(e.target.value)} /></label>
+      <span class="row-flex small" style="font-weight: 600"><${Switch} checked=${follow} label=${t('logs.follow')} onChange=${setFollow} />${t('logs.follow')}</span>
+      <span class="small muted">${t('logs.lines', { count: shown.length })}</span>
     </div>
-    <p class="muted mono">${current?.path}</p>
-    <div class="log logview mono" ref=${box}>${shown.length ? shown.join('\n') : t('logs.empty')}</div>`;
+    <section class="card"><pre class="logview" ref=${box}>${shown.length ? shown.join('\n') : t('logs.empty')}</pre></section>`;
 }

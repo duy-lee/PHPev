@@ -851,9 +851,11 @@ mod tests {
             "/",
             "/index.html",
             "/app.js",
-            "/app.css",
+            "/styles/tokens.css",
+            "/styles/app.css",
             "/i18n/en.json",
             "/favicon.ico",
+            "/mark.svg",
         ] {
             assert!(lookup(path).is_some(), "{path} is not embedded");
         }

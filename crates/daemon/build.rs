@@ -13,6 +13,7 @@ const EXTRA_ASSETS: &[(&str, &str)] = &[
     ("/favicon.svg", "../../assets/web/favicon.svg"),
     ("/logo-light.svg", "../../assets/phpev-logo-light.svg"),
     ("/logo-dark.svg", "../../assets/phpev-logo-dark.svg"),
+    ("/mark.svg", "../../assets/phpev-icon-transparent.svg"),
 ];
 
 fn main() {
