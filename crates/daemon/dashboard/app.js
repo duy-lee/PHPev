@@ -10,7 +10,7 @@ import { DialogHost } from './ui/dialog.js';
 import { JobDialog } from './ui/job-dialog.js';
 import { Palette } from './ui/palette.js';
 import { prefs } from './ui/prefs.js';
-import { Overview } from './pages/overview.js';
+import { Home } from './pages/home.js';
 import { Sites, SitesToolbar } from './pages/sites.js';
 import { Php } from './pages/php.js';
 import { Services } from './pages/services.js';
@@ -19,7 +19,7 @@ import { Logs } from './pages/logs.js';
 
 // Page registry: a new feature = one entry here + its API endpoints.
 const PAGES = [
-  { id: 'overview', label: 'nav.overview', icon: 'home', view: Overview },
+  { id: 'home', label: 'nav.home', icon: 'home', view: Home },
   { id: 'sites', label: 'nav.sites', icon: 'globe', view: Sites, toolbar: SitesToolbar },
   { id: 'php', label: 'nav.php', icon: 'php', view: Php },
   { id: 'services', label: 'nav.services', icon: 'database', view: Services },

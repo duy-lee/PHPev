@@ -10,9 +10,23 @@ import { Switch, Picker, Tabs, SetRow, Empty, Loading } from '../ui/controls.js'
 import { Chart } from '../ui/chart.js';
 import { LogEntries } from '../ui/entries.js';
 import { siteHref } from './sites.js';
+import { prefs } from '../ui/prefs.js';
 
 const host = (url) => url.replace(/^https?:\/\//, '').replace(/\/$/, '');
 const line = (v) => v.split('.').slice(0, 2).join('.');
+// Metrics key requests by host without the port.
+const metricsHost = (url) => host(url).split(':')[0];
+
+/** Remembers the sites opened here, newest first, for Home's "Recent" order. */
+function rememberRecent(name) {
+  let list = [];
+  try {
+    list = JSON.parse(prefs.get('recentSites') ?? '[]');
+  } catch {
+    list = [];
+  }
+  prefs.set('recentSites', JSON.stringify([name, ...list.filter((n) => n !== name)].slice(0, 20)));
+}
 const size = (bytes) => (bytes >= 1073741824 ? `${(bytes / 1073741824).toFixed(1)} GB` : bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
 const copy = (text) => navigator.clipboard.writeText(text).then(() => showToast(t('common.copied')), () => showToast(text));
 
@@ -81,7 +95,7 @@ function Environment({ d, reload }) {
       <a class="btn quiet sm" href="#/php" onClick=${(e) => { e.preventDefault(); location.replace('#/php'); }}>${t('site.manage')}</a>
     </${SetRow}>`}
     ${php.ok && html`<${SetRow} icon="restart" title=${t('site.workers')}
-      desc=${d.workers ? t('site.workers_running', { count: d.workers, mb: mb(d.workers_memory_kb) }) : t('overview.no_pools')}>
+      desc=${d.workers ? t('site.workers_running', { count: d.workers, mb: mb(d.workers_memory_kb) }) : t('home.no_pools')}>
       <button class="btn quiet sm" onClick=${() => act(api('POST', `/php/${php.value}/restart`), reload)}>${t('site.restart')}</button>
     </${SetRow}>`}
   </section>`;
@@ -341,6 +355,7 @@ function Database({ d, conn, onPick, startJob }) {
 
 export function SiteDetail({ name, tab, sub, onChanged, startJob }) {
   const [{ data: d, error }, reloadDetail] = useApi(`/sites/${encodeURIComponent(name)}`, 15000);
+  useEffect(() => rememberRecent(name), [name]);
   if (!d) return html`<div class="site-detail"><${Loading} error=${error} /></div>`;
   const s = d.site;
   const reload = () => { reloadDetail(); onChanged?.(); };
@@ -397,14 +412,14 @@ export function SiteDetail({ name, tab, sub, onChanged, startJob }) {
         <${LatestLogs} logs=${d.logs} onOpen=${() => go('logs')} />
       </div>
       <div class="col-side">
-        <${Activity} siteHost=${host(s.url)} />
+        <${Activity} siteHost=${metricsHost(s.url)} />
         <${Health} siteName=${s.name} checks=${d.checks} startJob=${startJob} reload=${reload} />
         ${s.kind === 'linked' && html`<div class="row-flex" style="padding: 0 6px">
           <span class="grow small muted">${t('site.unlink_hint')}</span>
           <button class="btn link-danger sm" onClick=${unlink}>${t('sites.unlink')}</button></div>`}
       </div>
     </div>`}
-    ${current === 'requests' && html`<${Requests} siteHost=${host(s.url)} />`}
+    ${current === 'requests' && html`<${Requests} siteHost=${metricsHost(s.url)} />`}
     ${current === 'logs' && (d.logs.length
       ? html`<${LogEntries} sources=${d.logs.map((l) => ({ ...l, label: l.label.replace(`${s.name} · `, '') }))} initial=${defaultLog(d.logs)} />`
       : html`<section class="card"><${Empty} icon="logs" title=${t('site.no_logs')} /></section>`)}

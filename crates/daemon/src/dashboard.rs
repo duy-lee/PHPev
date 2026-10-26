@@ -310,8 +310,22 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
 
         // ---- sites
         (Method::GET, ["sites"]) => {
+            let counts = d.daemon.metrics.host_counts(600);
             let l = layout.clone();
-            ok(&blocking(move || site_list(&l)).await?)
+            let mut list = blocking(move || site_list(&l)).await?;
+            for site in &mut list {
+                // Metrics key requests by host, lower case and without the port.
+                let host = site
+                    .url
+                    .split("://")
+                    .nth(1)
+                    .unwrap_or("")
+                    .split([':', '/'])
+                    .next()
+                    .unwrap_or("");
+                site.requests_10m = counts.get(&host.to_ascii_lowercase()).copied().unwrap_or(0);
+            }
+            ok(&list)
         }
         (Method::POST, ["sites"]) => {
             let r: LinkRequest = body(req).await?;
@@ -1077,6 +1091,7 @@ fn site_info(layout: &phpev_core::layout::Layout, s: &sites::Site) -> io::Result
             .map_err(|e| e.to_string()),
         secure: s.secure,
         framework: phpev_core::project::detect(&s.path),
+        requests_10m: 0,
     })
 }
 

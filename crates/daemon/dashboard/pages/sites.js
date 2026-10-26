@@ -71,7 +71,7 @@ export function SitesToolbar({ route }) {
   </div>`;
 }
 
-function LinkDialog({ onClose, onLinked }) {
+export function LinkDialog({ onClose, onLinked }) {
   const [path, setPath] = useState('');
   const [name, setName] = useState('');
   const browse = () => api('POST', '/sites/pick-folder').then((r) => r.path && setPath(r.path), (e) => showToast(e.message, true));

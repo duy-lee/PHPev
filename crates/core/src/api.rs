@@ -30,6 +30,9 @@ pub struct SiteInfo {
     pub secure: bool,
     /// Detected from the project's files.
     pub framework: crate::project::Framework,
+    /// PHP requests in the last 10 minutes (only filled by `GET /sites`).
+    #[serde(default)]
+    pub requests_10m: u64,
 }
 
 /// Everything the site page shows (`GET /sites/<name>`).
