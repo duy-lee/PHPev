@@ -1,5 +1,5 @@
 ; PHPev installer (Inno Setup 6), built by .github/scripts/build-installer.ps1:
-;   ISCC.exe /DAppVersion=0.1.1 installer\phpev.iss
+;   ISCC.exe /DAppVersion=0.1.2 installer\phpev.iss
 ;
 ; The executables go into the program folder; `phpev setup` then copies them
 ; into the PHPev home (the folder for PHP, MariaDB, databases and settings) of
