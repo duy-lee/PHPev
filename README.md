@@ -287,6 +287,17 @@ phpev db remove 10.11   # remove a version (not the active one); asks whether to
 MariaDB listens on `127.0.0.1:3306` with user `root` and **no password**: it is meant for local
 development only and is not reachable from other machines.
 
+`mysql`, `mysqldump`, `mariadb` and `mariadb-dump` in any terminal run the client of the active
+MariaDB, already connected to it as `root` (your own `-u`, `-h` or `-P` take precedence; `-p` just
+asks for the empty password):
+
+```powershell
+mysql -e "CREATE DATABASE shop"
+cmd /c "mysql shop < dump.sql"       # import (PowerShell has no `<`; in cmd: mysql shop < dump.sql)
+mysql shop -e "source C:/path/dump.sql"   # the same, without cmd
+mysqldump shop > shop.sql            # export
+```
+
 ### Composer
 
 ```powershell
@@ -423,7 +434,7 @@ Files and folders:
 
 ```
 %USERPROFILE%\.phpev\
-├── shims\          the only folder on PATH: php.exe, composer.exe, phpev*.exe
+├── shims\          the only folder on PATH: php.exe, composer.exe, mysql.exe, …, phpev*.exe
 ├── bin\            php\<version>\, mariadb\<version>\, composer\, cacert.pem
 ├── data\mariadb\   databases, one folder per major version
 ├── certs\          local certificate authority
@@ -452,6 +463,8 @@ Files and folders:
   rustls), process supervision, the dashboard and the tray icon. All children run in a
   kill-on-close Job Object.
 - **`php.exe` / `composer.exe`**: tiny shims that choose the PHP version and start the real one.
+  `mysql.exe` / `mysqldump.exe` (and `mariadb.exe` / `mariadb-dump.exe`) are the same shim, starting
+  the client of the active MariaDB.
 - **`phpev-elevate.exe`**: a helper that runs the few admin-only operations behind one UAC prompt.
 
 The dashboard is a small Preact app embedded in the service binary. It uses only the documented
