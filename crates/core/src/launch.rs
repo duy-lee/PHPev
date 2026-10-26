@@ -75,6 +75,15 @@ pub fn edge_exe() -> Option<PathBuf> {
         .find(|p| p.is_file())
 }
 
+/// Starts `program` (an .exe, never a script: cmd would interpret `&` and
+/// the like in the folder name) with folder `dir` as its argument.
+pub fn open_with(program: &Path, dir: &Path) -> io::Result<()> {
+    if !program.extension().is_some_and(|e| e.eq_ignore_ascii_case("exe")) {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "not a program"));
+    }
+    spawn(Command::new(program).arg(dir), 0)
+}
+
 pub fn open_folder(dir: &Path) -> io::Result<()> {
     spawn(Command::new(windows_dir().join("explorer.exe")).arg(dir), 0)
 }

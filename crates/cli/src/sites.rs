@@ -148,7 +148,7 @@ pub fn list() -> io::Result<ExitCode> {
             Err(_) => "PHP ?".to_owned(),
         };
         let kind = if s.kind == Kind::Linked { "linked" } else { "parked" };
-        let excluded = config.sites.iter().any(|c| c.name == s.name && c.defender_excluded);
+        let excluded = config.is_defender_excluded(&s.path);
         let defender = if excluded { "  (Defender exclusion)" } else { "" };
         println!(
             "http://{}{port}  {kind}  {php}  {}{defender}",

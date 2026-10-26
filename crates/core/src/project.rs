@@ -216,12 +216,22 @@ pub enum CheckStatus {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Check {
-    /// Stable id (`dependencies`, `env`, `app_key`, `extensions`, `database`).
+    /// Stable id (`dependencies`, `env`, `app_key`, `extensions`,
+    /// `database[:<connection>]`, `mariadb`, `defender`).
     pub id: String,
     pub status: CheckStatus,
     pub title: String,
     /// What to do about it, when not ok.
     pub hint: Option<String>,
+    /// PHPev can fix it (`POST /sites/<name>/fix/<id>`).
+    pub fix: Option<Fix>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Fix {
+    /// Shown for confirmation before fixing, when the fix changes the
+    /// project's files or Windows settings (`composer install`); `None` runs at once.
+    pub confirm: Option<String>,
 }
 
 fn check(id: &str, status: CheckStatus, title: String, hint: Option<&str>) -> Check {
@@ -230,6 +240,16 @@ fn check(id: &str, status: CheckStatus, title: String, hint: Option<&str>) -> Ch
         status,
         title,
         hint: hint.map(str::to_owned),
+        fix: None,
+    }
+}
+
+impl Check {
+    fn fixed_by(mut self, confirm: Option<&str>) -> Self {
+        self.fix = Some(Fix {
+            confirm: confirm.map(str::to_owned),
+        });
+        self
     }
 }
 
@@ -239,7 +259,19 @@ pub struct Facts<'a> {
     pub modules: Option<&'a [String]>,
     /// Databases on PHPev's MariaDB; `None` when it is not running (or could not be asked).
     pub existing_databases: Option<&'a [String]>,
+    /// PHPev added a Defender exclusion for the project folder.
+    pub defender_excluded: bool,
 }
+
+/// What `composer install` does, for its confirmation.
+pub const CONFIRM_COMPOSER: &str = "Runs `composer install` in the project folder. It downloads the packages \
+     into vendor/ and may take a few minutes.";
+pub const CONFIRM_KEY: &str = "Runs `php artisan key:generate`, which writes a new APP_KEY into .env.";
+pub const CONFIRM_ENV: &str = "Copies .env.example to .env, then runs `php artisan key:generate`, which writes \
+     a new APP_KEY into it.";
+pub const CONFIRM_DEFENDER: &str = "Excludes the project folder from Microsoft Defender real-time scanning \
+     (Windows asks for permission). Composer and PHP get faster, but malware written into this folder, \
+     such as a compromised package, is not caught when it is written.";
 
 /// Readiness checks of the project in `dir`, problems first.
 pub fn checks(dir: &Path, facts: &Facts, mariadb_port: u16) -> Vec<Check> {
@@ -258,17 +290,36 @@ pub fn checks(dir: &Path, facts: &Facts, mariadb_port: u16) -> Vec<Check> {
                 "Dependencies are not installed".into(),
                 Some("Run `composer install` in the project folder"),
             )
+            .fixed_by(Some(CONFIRM_COMPOSER))
+        });
+        out.push(if facts.defender_excluded {
+            check("defender", Ok, "Excluded from Defender scans".into(), None)
+        } else {
+            check(
+                "defender",
+                Warn,
+                "Speed up Composer and PHP".into(),
+                Some("Exclude this folder from Defender scans"),
+            )
+            .fixed_by(Some(CONFIRM_DEFENDER))
         });
     }
 
     if is_laravel(dir, composer_json.as_ref()) {
         match std::fs::read_to_string(dir.join(".env")) {
-            Err(_) => out.push(check(
-                "env",
-                Fail,
-                ".env is missing".into(),
-                Some("Copy .env.example to .env, then run `php artisan key:generate`"),
-            )),
+            Err(_) => {
+                let missing = check(
+                    "env",
+                    Fail,
+                    ".env is missing".into(),
+                    Some("Copy .env.example to .env, then run `php artisan key:generate`"),
+                );
+                out.push(if dir.join(".env.example").is_file() {
+                    missing.fixed_by(Some(CONFIRM_ENV))
+                } else {
+                    missing
+                });
+            }
             Result::Ok(env) => {
                 out.push(check("env", Ok, ".env present".into(), None));
                 out.push(if envfile::get(&env, "APP_KEY").is_some_and(|k| !k.is_empty()) {
@@ -280,6 +331,7 @@ pub fn checks(dir: &Path, facts: &Facts, mariadb_port: u16) -> Vec<Check> {
                         "APP_KEY is not set".into(),
                         Some("Run `php artisan key:generate`"),
                     )
+                    .fixed_by(Some(CONFIRM_KEY))
                 });
             }
         }
@@ -300,8 +352,9 @@ pub fn checks(dir: &Path, facts: &Facts, mariadb_port: u16) -> Vec<Check> {
                 "extensions",
                 Warn,
                 format!("Missing extensions: {}", names.join(", ")),
-                Some("Turn them on in PHP › Extensions"),
+                Some("PHPev turns on the ones its PHP build includes"),
             )
+            .fixed_by(None)
         });
     }
 
@@ -310,12 +363,15 @@ pub fn checks(dir: &Path, facts: &Facts, mariadb_port: u16) -> Vec<Check> {
         .filter(|d| d.is_local_mysql(mariadb_port) && !d.database.is_empty())
         .collect();
     match facts.existing_databases {
-        None if !local.is_empty() => out.push(check(
-            "database",
-            Warn,
-            "MariaDB is not running".into(),
-            Some("Start it on the Services page"),
-        )),
+        None if !local.is_empty() => out.push(
+            check(
+                "mariadb",
+                Warn,
+                "MariaDB is not running".into(),
+                Some("The site's database is on it"),
+            )
+            .fixed_by(None),
+        ),
         None => {}
         Some(existing) => {
             for db in &local {
@@ -331,8 +387,9 @@ pub fn checks(dir: &Path, facts: &Facts, mariadb_port: u16) -> Vec<Check> {
                         &id,
                         Fail,
                         format!("Database `{}` does not exist", db.database),
-                        Some("Create it, or import a dump on the Database tab"),
+                        Some("PHPev creates it empty; import a dump afterwards"),
                     )
+                    .fixed_by(None)
                 });
             }
         }
@@ -517,6 +574,7 @@ REDIS_HOST=127.0.0.1
         let facts = Facts {
             modules: Some(&modules),
             existing_databases: Some(&existing),
+            defender_excluded: true,
         };
         let got = checks(&dir, &facts, 3306);
         let ids: Vec<(&str, CheckStatus)> = got.iter().map(|c| (c.id.as_str(), c.status)).collect();
@@ -526,11 +584,16 @@ REDIS_HOST=127.0.0.1
                 ("dependencies", CheckStatus::Fail),
                 ("app_key", CheckStatus::Fail),
                 ("extensions", CheckStatus::Warn),
+                ("defender", CheckStatus::Ok),
                 ("env", CheckStatus::Ok),
                 ("database", CheckStatus::Ok),
             ]
         );
         assert_eq!(got[2].title, "Missing extensions: intl");
+        // Changing the project's files is confirmed first; enabling an extension is not.
+        assert_eq!(got[0].fix.as_ref().unwrap().confirm.as_deref(), Some(CONFIRM_COMPOSER));
+        assert_eq!(got[2].fix, Some(Fix { confirm: None }));
+        assert_eq!(got[3].fix, None, "nothing to fix when it is fine");
         let _ = std::fs::remove_dir_all(dir);
     }
 

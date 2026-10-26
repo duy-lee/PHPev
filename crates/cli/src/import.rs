@@ -383,11 +383,7 @@ fn same_path(a: &Path, b: &Path) -> bool {
 /// excluded (now or by an earlier import).
 fn defender_exclusion(layout: &Layout, dir: &Path, opts: &Options, ask: &Asker) -> io::Result<bool> {
     let config = Config::load(&layout.config_file())?;
-    if config
-        .sites
-        .iter()
-        .any(|s| s.defender_excluded && same_path(&s.path, dir))
-    {
+    if config.is_defender_excluded(dir) {
         println!("  already excluded by an earlier import");
         return Ok(true);
     }

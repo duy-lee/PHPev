@@ -200,14 +200,70 @@ function Activity({ siteHost }) {
 
 const CHECK_ICON = { ok: 'check', warn: 'warning', fail: 'error' };
 
-function Health({ checks }) {
+async function fix(siteName, check, startJob, reload) {
+  if (check.fix.confirm) {
+    const ok = await confirmAction({ title: t('site.fix_title', { title: check.title }), body: check.fix.confirm, confirmLabel: t('site.fix_run') });
+    if (!ok) return;
+  }
+  try {
+    const r = await api('POST', `/sites/${encodeURIComponent(siteName)}/fix/${encodeURIComponent(check.id)}`);
+    if (r.job) startJob(r.job, reload);
+    else {
+      showToast(r.message);
+      reload();
+    }
+  } catch (e) {
+    showToast(e.message, true);
+  }
+}
+
+function Health({ siteName, checks, startJob, reload }) {
   if (!checks.length) return null;
   const problems = checks.filter((c) => c.status !== 'ok');
   return html`<section class="card checklist" style="overflow: hidden">
     <div class="card-head" style="padding-bottom: 10px"><h2>${t('site.health')}</h2><span class="grow"></span>
       <span class="pill ${problems.length ? 'warn' : 'ok'}">${problems.length ? t('site.to_fix', { count: problems.length }) : t('site.all_good')}</span></div>
-    ${checks.map((c) => html`<${SetRow} icon=${CHECK_ICON[c.status]} title=${c.title} desc=${c.hint ?? ''} tone=${c.status === 'ok' ? 'ok' : 'warn'} />`)}
+    ${checks.map((c) => html`<${SetRow} icon=${CHECK_ICON[c.status]} title=${c.title} desc=${c.hint ?? ''} tone=${c.status === 'ok' ? 'ok' : 'warn'}>
+      ${c.status !== 'ok' && c.fix && html`<button class="btn sm" style="background: var(--surface)" onClick=${() => fix(siteName, c, startJob, reload)}>${t('site.fix')}</button>`}
+    </${SetRow}>`)}
   </section>`;
+}
+
+/** "Editor" opens the remembered editor; the arrow picks (and remembers) another. */
+function EditorButton({ siteName, onFallback }) {
+  const [info, setInfo] = useState(null);
+  const [menu, setMenu] = useState(false);
+  const load = () => api('GET', '/editors').then(setInfo, () => setInfo({ editors: [], chosen: null, supported: [] }));
+  useEffect(() => { load(); }, []);
+  const openWith = (editor) => {
+    setMenu(false);
+    api('POST', `/sites/${encodeURIComponent(siteName)}/open`, { target: 'editor', editor })
+      .then(load, (e) => showToast(e.message, true));
+  };
+  const main = () => {
+    if (!info) return;
+    if (info.chosen) openWith(null);
+    else if (info.editors.length) setMenu(true);
+    else {
+      showToast(t('site.no_editor', { list: info.supported.join(', ') }));
+      onFallback();
+    }
+  };
+  const chosenName = info?.editors.find((e) => e.id === info.chosen)?.name;
+  return html`<div class="split" style="position: relative">
+    <button class="btn" title=${chosenName ?? t('site.choose_editor')} onClick=${main}><${Icon} name="editor" size=${15} />${t('site.editor')}</button>
+    <button class="btn" aria-label=${t('site.choose_editor')} title=${t('site.choose_editor')} aria-haspopup="menu" aria-expanded=${menu ? 'true' : 'false'}
+      onClick=${() => setMenu(!menu)}><${Icon} name="chevron-down" size=${15} /></button>
+    ${menu && html`
+      <div style="position: fixed; inset: 0; z-index: 14" onClick=${() => setMenu(false)}></div>
+      <div class="menu" role="menu" aria-label=${t('site.choose_editor')} style="top: 42px; left: auto; right: 0; width: 260px">
+        ${info.editors.length === 0 && html`<div class="palette-empty">${t('site.no_editor', { list: info.supported.join(', ') })}</div>`}
+        ${info.editors.map((e) => html`<button role="menuitemradio" aria-checked=${e.id === info.chosen ? 'true' : 'false'} class="site-item"
+          style="width: 100%; border: 0; background: none; font: inherit; cursor: pointer" onClick=${() => openWith(e.id)}>
+          <${Icon} name="editor" size=${16} /><span class="grow" style="text-align: left">${e.name}</span>
+          ${e.id === info.chosen && html`<${Icon} name="check" size=${16} />`}</button>`)}
+      </div>`}
+  </div>`;
 }
 
 function Requests({ siteHost }) {
@@ -321,11 +377,12 @@ export function SiteDetail({ name, tab, sub, onChanged, startJob }) {
         <div class="row-flex" style="gap: 16px">
           <a href=${s.url} target="_blank" rel="noopener" style="display: inline-flex; align-items: center; gap: 6px; font-weight: 600">
             <${Icon} name=${s.secure ? 'lock' : 'globe'} size=${15} />${host(s.url)}</a>
-          <span class="mono small muted" style="display: inline-flex; align-items: center; gap: 6px"><${Icon} name="folder" size=${15} />${s.path}</span>
+          <span class="mono small muted" style="display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow-wrap: anywhere"><${Icon} name="folder" size=${15} /><span style="min-width: 0">${s.path}</span></span>
         </div>
       </div>
       <div class="row-flex">
         <a class="btn primary" href=${s.url} target="_blank" rel="noopener">${t('site.open_site')}<${Icon} name="open" size=${15} /></a>
+        <${EditorButton} siteName=${s.name} onFallback=${() => open('folder')} />
         <button class="btn" onClick=${() => open('folder')}><${Icon} name="folder" size=${15} />${t('sites.open_folder')}</button>
         <button class="btn" onClick=${() => open('terminal')}><${Icon} name="terminal" size=${15} />${t('sites.open_terminal')}</button>
       </div>
@@ -341,7 +398,7 @@ export function SiteDetail({ name, tab, sub, onChanged, startJob }) {
       </div>
       <div class="col-side">
         <${Activity} siteHost=${host(s.url)} />
-        <${Health} checks=${d.checks} />
+        <${Health} siteName=${s.name} checks=${d.checks} startJob=${startJob} reload=${reload} />
         ${s.kind === 'linked' && html`<div class="row-flex" style="padding: 0 6px">
           <span class="grow small muted">${t('site.unlink_hint')}</span>
           <button class="btn link-danger sm" onClick=${unlink}>${t('sites.unlink')}</button></div>`}

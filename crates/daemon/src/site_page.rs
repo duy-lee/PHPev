@@ -53,6 +53,7 @@ pub fn detail(
         &project::Facts {
             modules: modules.as_deref(),
             existing_databases: existing.as_deref(),
+            defender_excluded: config.is_defender_excluded(&dir),
         },
         config.ports.mariadb,
     );

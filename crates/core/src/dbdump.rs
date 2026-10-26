@@ -7,13 +7,10 @@ use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
-
-use windows_sys::Win32::Foundation::CloseHandle;
-use windows_sys::Win32::System::Threading::{OpenProcess, TerminateProcess, PROCESS_TERMINATE};
 
 use crate::layout::Layout;
 use crate::mariadb::{self, is_safe_db_name, version_dir};
+use crate::process::with_cancel;
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 /// Large enough for dumps with big rows or long multi-row INSERTs; the server
@@ -48,32 +45,6 @@ fn check_name(db: &str) -> io::Result<()> {
 
 fn cancelled() -> io::Error {
     io::Error::new(io::ErrorKind::Interrupted, "cancelled")
-}
-
-/// Runs `work` while another thread ends process `pid` as soon as `cancel`
-/// is set: a write blocked on the process's input must not delay it.
-fn with_cancel<T>(pid: u32, cancel: &AtomicBool, work: impl FnOnce() -> T) -> T {
-    let done = AtomicBool::new(false);
-    std::thread::scope(|scope| {
-        scope.spawn(|| {
-            while !done.load(Ordering::SeqCst) {
-                if cancel.load(Ordering::SeqCst) {
-                    unsafe {
-                        let handle = OpenProcess(PROCESS_TERMINATE, 0, pid);
-                        if !handle.is_null() {
-                            TerminateProcess(handle, 1);
-                            CloseHandle(handle);
-                        }
-                    }
-                    return;
-                }
-                std::thread::sleep(Duration::from_millis(100));
-            }
-        });
-        let out = work();
-        done.store(true, Ordering::SeqCst);
-        out
-    })
 }
 
 fn stderr_text(child: &mut Child) -> std::thread::JoinHandle<String> {
@@ -247,6 +218,7 @@ pub fn export(
 mod tests {
     use super::*;
     use crate::config::Config;
+    use std::time::Duration;
 
     /// Needs PHPev's MariaDB running (`cargo test -- --ignored`).
     #[test]

@@ -104,11 +104,40 @@ pub enum OpenTarget {
     Browser,
     Folder,
     Terminal,
+    Editor,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OpenRequest {
     pub target: OpenTarget,
+    /// With `editor`: the editor to use, remembered for next time; without,
+    /// the remembered one.
+    #[serde(default)]
+    pub editor: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct EditorChoice {
+    pub id: String,
+    pub name: String,
+}
+
+/// `GET /editors`
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct EditorsInfo {
+    /// Found on this computer.
+    pub editors: Vec<EditorChoice>,
+    /// The remembered choice, if it is still installed.
+    pub chosen: Option<String>,
+    /// Every editor PHPev looks for.
+    pub supported: Vec<String>,
+}
+
+/// `POST /sites/<name>/fix/<check>`: done at once (a message) or as a job.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FixResult {
+    pub message: Option<String>,
+    pub job: Option<u64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

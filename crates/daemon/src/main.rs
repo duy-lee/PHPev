@@ -21,6 +21,7 @@ mod metrics;
 mod pool;
 mod router;
 mod services;
+mod site_fix;
 mod site_page;
 mod supervise;
 mod tls;

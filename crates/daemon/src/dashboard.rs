@@ -23,13 +23,13 @@ use hyper_util::rt::TokioIo;
 use phpev_core::api::{self, *};
 use phpev_core::config::Config;
 use phpev_core::net::Http;
-use phpev_core::{doctor, mariadb, ops, php, shim, sites, version};
+use phpev_core::{config, doctor, mariadb, ops, php, shim, sites, version};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
 
-use crate::http_util::{full, internal, query_param, text, Body, ChannelBody};
+use crate::http_util::{full, internal, percent_decode, query_param, text, Body, ChannelBody};
 use crate::jobs::Jobs;
 use crate::log::log_warn;
 use crate::logs;
@@ -286,7 +286,8 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> io::Result<T> + Send + 
 }
 
 async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Response<Body>, ApiError> {
-    let segs: Vec<String> = path.trim_matches('/').split('/').map(|s| s.to_owned()).collect();
+    // Segments come percent-encoded (`database%3AMAIN`, a site name with a space).
+    let segs: Vec<String> = path.trim_matches('/').split('/').map(percent_decode).collect();
     let segs: Vec<&str> = segs.iter().map(String::as_str).collect();
     let method = req.method().clone();
     let layout = d.daemon.layout.clone();
@@ -468,6 +469,23 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             blocking(move || ops::set_site_php(&l, &n, r.version)).await?;
             message(format!("PHP for {name} updated"))
         }
+        (Method::GET, ["editors"]) => {
+            let l = layout.clone();
+            ok(&blocking(move || {
+                let chosen = Config::load(&l.config_file())?.ui.editor;
+                let found = phpev_core::editors::installed();
+                Ok(EditorsInfo {
+                    chosen: chosen.filter(|c| found.iter().any(|e| &e.id == c)),
+                    editors: found
+                        .into_iter()
+                        .map(|e| EditorChoice { id: e.id, name: e.name })
+                        .collect(),
+                    supported: phpev_core::editors::supported().into_iter().map(String::from).collect(),
+                })
+            })
+            .await?)
+        }
+        (Method::POST, ["sites", name, "fix", check]) => fix_check(d, &layout, name, check).await,
         (Method::POST, ["sites", name, "open"]) => {
             let r: OpenRequest = body(req).await?;
             let (l, n) = (layout.clone(), name.to_string());
@@ -478,6 +496,20 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
                     OpenTarget::Browser => return launch::open_url(&site_url(&l, &site)?),
                     OpenTarget::Folder => launch::open_folder(&site.path)?,
                     OpenTarget::Terminal => launch::open_terminal(&site.path)?,
+                    OpenTarget::Editor => {
+                        let wanted = match r.editor.clone() {
+                            Some(id) => Some(id),
+                            None => Config::load(&l.config_file())?.ui.editor,
+                        };
+                        let editor = phpev_core::editors::installed()
+                            .into_iter()
+                            .find(|e| Some(&e.id) == wanted.as_ref())
+                            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "choose an editor"))?;
+                        if r.editor.is_some() {
+                            config::update(&l.config_file(), |c| c.ui.editor = Some(editor.id.clone()))?;
+                        }
+                        phpev_core::editors::open(&editor, &site.path)?;
+                    }
                 }
                 // Explorer reuses a window already showing the folder (titled with its name).
                 let folder = site.path.file_name().map(|n| n.to_string_lossy().into_owned());
@@ -724,6 +756,93 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
         (Method::GET, ["jobs", id, "stream"]) => job_stream(find_job(d, id)?),
 
         _ => Err(ApiError(StatusCode::NOT_FOUND, format!("no API route {path}"))),
+    }
+}
+
+/// `POST /sites/<name>/fix/<check>`: what the site page's Fix buttons do.
+async fn fix_check(
+    d: &Dashboard,
+    layout: &phpev_core::layout::Layout,
+    name: &str,
+    check: &str,
+) -> Result<Response<Body>, ApiError> {
+    let (l, n) = (layout.clone(), name.to_string());
+    let (dir, resolved) = blocking(move || crate::site_fix::site(&l, &n)).await?;
+    let done = |message: String| {
+        ok(&FixResult {
+            message: Some(message),
+            job: None,
+        })
+    };
+    match check {
+        "dependencies" | "env" | "app_key" => {
+            let l = layout.clone();
+            let check = check.to_owned();
+            let title = match check.as_str() {
+                "dependencies" => format!("composer install in {name}"),
+                _ => format!("Application key for {name}"),
+            };
+            let job = d
+                .jobs
+                .start_cancellable(title, move |rep, cancel| match check.as_str() {
+                    "dependencies" => crate::site_fix::composer_install(&l, &dir, &resolved, rep, cancel),
+                    other => crate::site_fix::app_key(&dir, &resolved, other == "env", rep, cancel),
+                });
+            ok(&FixResult {
+                message: None,
+                job: Some(job),
+            })
+        }
+        "extensions" => {
+            let (l, version) = (layout.clone(), resolved.version.clone());
+            let (enabled, unavailable) =
+                blocking(move || crate::site_fix::enable_extensions(&l, &dir, &version)).await?;
+            if !enabled.is_empty() {
+                // Workers loaded the old php.ini; the pool restarts on the next request.
+                d.daemon.pools.stop_version(&resolved.version).await;
+            }
+            match (enabled.is_empty(), unavailable.is_empty()) {
+                (false, true) => done(format!("Turned on {}", enabled.join(", "))),
+                (false, false) => done(format!(
+                    "Turned on {}; not part of this PHP build: {}",
+                    enabled.join(", "),
+                    unavailable.join(", ")
+                )),
+                (true, false) => Err(ApiError(
+                    StatusCode::CONFLICT,
+                    format!("Not part of this PHP build (PECL): {}", unavailable.join(", ")),
+                )),
+                (true, true) => done("Every required extension is already on".into()),
+            }
+        }
+        "mariadb" => {
+            let msg = d.daemon.db_start().await?;
+            d.daemon.remember_db(true);
+            done(msg)
+        }
+        "defender" => {
+            let l = layout.clone();
+            blocking(move || crate::site_fix::defender(&l, &dir)).await?;
+            done("Excluded from Defender scans".into())
+        }
+        db if db == "database" || db.starts_with("database:") => {
+            let connection = db.strip_prefix("database:").unwrap_or("").to_owned();
+            let server = running_mariadb(d).await?;
+            let l = layout.clone();
+            let created = blocking(move || {
+                let name = crate::site_page::local_database(&l, &dir, &connection)?;
+                phpev_core::mariadb::exec_sql(
+                    &l,
+                    &server.version,
+                    server.port,
+                    &format!("CREATE DATABASE IF NOT EXISTS `{name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"),
+                )?;
+                Ok(name)
+            })
+            .await?;
+            done(format!("Created database {created}"))
+        }
+        other => Err(ApiError(StatusCode::NOT_FOUND, format!("nothing to fix for `{other}`"))),
     }
 }
 

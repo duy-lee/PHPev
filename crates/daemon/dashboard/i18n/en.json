@@ -222,5 +222,11 @@
   "site.import_title": "Import into {db}?",
   "site.import_body": "{file} runs against this database. Tables in the file replace the ones with the same name; other tables stay.",
   "site.import_empty_first": "Empty the database first (deletes all its tables)",
-  "job.cancelled": "Cancelled. A cancelled import can leave part of the data in the database."
+  "job.cancelled": "Cancelled. A cancelled import can leave part of the data in the database.",
+  "site.editor": "Editor",
+  "site.choose_editor": "Choose an editor",
+  "site.no_editor": "No supported editor found. PHPev looks for {list}.",
+  "site.fix": "Fix",
+  "site.fix_title": "Fix: {title}",
+  "site.fix_run": "Run"
 }
