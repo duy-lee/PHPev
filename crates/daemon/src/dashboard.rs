@@ -30,6 +30,7 @@ use tokio::net::TcpListener;
 use tokio::sync::mpsc;
 
 use crate::http_util::{full, internal, percent_decode, query_param, text, Body, ChannelBody};
+use crate::i18n::tr;
 use crate::jobs::Jobs;
 use crate::log::log_warn;
 use crate::logs;
@@ -209,7 +210,7 @@ async fn handle(d: &Dashboard, req: Request<Incoming>) -> Response<Body> {
 // ---------------------------------------------------------------- assets
 
 /// The table build.rs generates from `dashboard/`.
-mod assets {
+pub(crate) mod assets {
     include!(concat!(env!("OUT_DIR"), "/dashboard_assets.rs"));
 }
 
@@ -336,11 +337,11 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             })
             .await?;
             sync_hosts_if_needed(&layout).await;
-            message(format!("Linked {}", linked.name))
+            message(tr("msg.linked", &[("name", &linked.name)]))
         }
         (Method::POST, ["sites", "pick-folder"]) => {
             let path =
-                blocking(|| crate::folderpick::pick_folder("Choose the project folder", crate::appwindow::window()))
+                blocking(|| crate::folderpick::pick_folder(&tr("pick.project", &[]), crate::appwindow::window()))
                     .await?;
             ok(&PickedFolder { path })
         }
@@ -454,7 +455,7 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             match blocking(move || ops::unlink_site(&l, &n)).await? {
                 Some(s) => {
                     sync_hosts_if_needed(&layout).await;
-                    message(format!("Unlinked {}", s.name))
+                    message(tr("msg.unlinked", &[("name", &s.name)]))
                 }
                 None => Err(ApiError(
                     StatusCode::NOT_FOUND,
@@ -471,17 +472,14 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
                 d.daemon.start_https().await?;
             }
             sync_hosts_if_needed(&layout).await;
-            message(if r.secure {
-                format!("HTTPS on for {name}")
-            } else {
-                format!("HTTPS off for {name}")
-            })
+            let key = if r.secure { "msg.https_on" } else { "msg.https_off" };
+            message(tr(key, &[("name", &name)]))
         }
         (Method::PUT, ["sites", name, "php"]) => {
             let r: PhpPinRequest = body(req).await?;
             let (l, n) = (layout.clone(), name.to_string());
             blocking(move || ops::set_site_php(&l, &n, r.version)).await?;
-            message(format!("PHP for {name} updated"))
+            message(tr("msg.site_php", &[("name", &name)]))
         }
         (Method::GET, ["editors"]) => {
             let l = layout.clone();
@@ -598,20 +596,15 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             ok(&JobStarted { job })
         }
         (Method::POST, ["php", "pick-folder"]) => {
-            let path = blocking(|| {
-                crate::folderpick::pick_folder(
-                    "Choose the PHP folder (the one with php.exe)",
-                    crate::appwindow::window(),
-                )
-            })
-            .await?;
+            let path =
+                blocking(|| crate::folderpick::pick_folder(&tr("pick.php", &[]), crate::appwindow::window())).await?;
             ok(&PickedFolder { path })
         }
         (Method::PUT, ["php", "default"]) => {
             let r: VersionRequest = body(req).await?;
             let l = layout.clone();
             let found = blocking(move || ops::set_default_php(&l, &r.version)).await?;
-            message(format!("Default PHP is now {found}"))
+            message(tr("msg.default_php", &[("version", &found)]))
         }
         (Method::GET, ["php", v, "extensions"]) => {
             let (l, v) = (layout.clone(), v.to_string());
@@ -623,10 +616,8 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             blocking(move || ops::set_extension(&l, &v2, &e, r.enabled)).await?;
             // Workers loaded the old php.ini; the pool restarts on the next request.
             d.daemon.pools.stop_version(v).await;
-            message(format!(
-                "{ext} {} for PHP {v}",
-                if r.enabled { "enabled" } else { "disabled" }
-            ))
+            let key = if r.enabled { "msg.ext_on" } else { "msg.ext_off" };
+            message(tr(key, &[("ext", &ext), ("version", &v)]))
         }
         (Method::DELETE, ["php", v]) => {
             let (l, v2) = (layout.clone(), v.to_string());
@@ -635,13 +626,11 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             d.daemon.pools.stop_version(v).await;
             let (l, v2) = (layout.clone(), v.to_string());
             blocking(move || ops::remove_php(&l, &v2, &mut ops::Quiet)).await?;
-            message(format!("PHP {v} removed"))
+            message(tr("msg.php_removed", &[("version", &v)]))
         }
         (Method::POST, ["php", v, "restart"]) => {
             let n = d.daemon.pools.stop_version(v).await;
-            message(format!(
-                "Stopped {n} workers of PHP {v}; they restart on the next request"
-            ))
+            message(tr("msg.workers_stopped", &[("count", &n), ("version", v)]))
         }
 
         // ---- MariaDB
@@ -694,7 +683,7 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             let r: RemoveMariaDbRequest = body(req).await?;
             let (l, v2) = (layout.clone(), v.to_string());
             let removed = blocking(move || ops::remove_mariadb(&l, &v2, r.delete_data, &mut ops::Quiet)).await?;
-            message(format!("MariaDB {removed} removed"))
+            message(tr("msg.mariadb_removed", &[("version", &removed)]))
         }
         (Method::POST, ["mariadb", "start"]) => {
             let msg = d.daemon.db_start().await?;
@@ -714,6 +703,14 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             message(d.daemon.db_use(&mariadb::major_of(&r.version)).await?)
         }
 
+        (Method::GET, ["ui"]) => {
+            let config = Config::load(&layout.config_file())?;
+            ok(&UiInfo {
+                theme: config.ui.theme.unwrap_or_else(|| "system".into()),
+                language: crate::i18n::current().into(),
+            })
+        }
+
         // ---- update check
         (Method::GET, ["update"]) => {
             let l = layout.clone();
@@ -722,7 +719,7 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
         (Method::POST, ["update", "skip"]) => {
             let l = layout.clone();
             blocking(move || update::modify(&l, |u| u.skipped = u.latest.clone())).await?;
-            message("You will be told about the next version")
+            message(tr("msg.update_skipped", &[]))
         }
 
         // ---- settings
@@ -737,7 +734,10 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
         (Method::POST, ["settings", "storage", id, "clean"]) => {
             let (l, id) = (layout.clone(), id.to_string());
             let freed = blocking(move || crate::settings::clean(&l, &id)).await?;
-            message(format!("Freed {:.1} MB", freed as f64 / 1_048_576.0))
+            message(tr(
+                "msg.freed",
+                &[("size", &format!("{:.1} MB", freed as f64 / 1_048_576.0))],
+            ))
         }
         (Method::PUT, ["settings", "general"]) => {
             let r: GeneralSettings = body(req).await?;
@@ -747,7 +747,7 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             if check {
                 crate::updates::check_soon(&layout);
             }
-            message("Saved")
+            message(tr("msg.saved", &[]))
         }
         (Method::PUT, ["settings", "ports"]) => {
             let wanted: config::Ports = body(req).await?;
@@ -764,13 +764,13 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             .await?;
             if !changed {
                 return ok(&SettingsApplied {
-                    message: "Nothing changed".into(),
+                    message: tr("msg.nothing_changed", &[]),
                     restarting: false,
                 });
             }
             d.daemon.restart()?;
             ok(&SettingsApplied {
-                message: "Ports saved; PHPev restarts to use them".into(),
+                message: tr("msg.ports_saved", &[]),
                 restarting: true,
             })
         }
@@ -779,15 +779,15 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             let l = layout.clone();
             // May show the UAC prompt (hosts file) and the CA trust dialog.
             let change = blocking(move || ops::set_tld(&l, &r.tld, &mut ops::Quiet)).await?;
-            let mut text = format!("Sites now end in .{}", change.new);
+            let mut text = tr("msg.tld_set", &[("tld", &change.new)]);
             if let Some(e) = &change.hosts_error {
-                text = format!("{text}, but the hosts file was not updated ({e})");
+                text = tr("msg.tld_hosts_failed", &[("tld", &change.new), ("error", e)]);
             }
             if change.old != change.new && change.https_in_use {
                 // HTTPS certificates are issued for the old names.
                 d.daemon.restart()?;
                 return ok(&SettingsApplied {
-                    message: format!("{text}; PHPev restarts for HTTPS"),
+                    message: format!("{text} {}", tr("msg.tld_restart", &[])),
                     restarting: true,
                 });
             }
@@ -802,23 +802,18 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             let l = layout.clone();
             let added = blocking(move || ops::park(&l, Path::new(r.path.trim()))).await?;
             sync_hosts_if_needed(&layout).await;
-            message(if added { "Folder parked" } else { "Already parked" })
+            message(tr(if added { "msg.parked" } else { "msg.already_parked" }, &[]))
         }
         (Method::POST, ["settings", "parked", "remove"]) => {
             let r: PathRequest = body(req).await?;
             let l = layout.clone();
             blocking(move || ops::unpark(&l, Path::new(r.path.trim()))).await?;
             sync_hosts_if_needed(&layout).await;
-            message("Folder no longer parked")
+            message(tr("msg.unparked", &[]))
         }
         (Method::POST, ["settings", "parked", "pick"]) => {
-            let path = blocking(|| {
-                crate::folderpick::pick_folder(
-                    "Choose the folder whose sub-folders become sites",
-                    crate::appwindow::window(),
-                )
-            })
-            .await?;
+            let path = blocking(|| crate::folderpick::pick_folder(&tr("pick.parked", &[]), crate::appwindow::window()))
+                .await?;
             ok(&PickedFolder { path })
         }
         (Method::POST, ["settings", "hosts"]) => {
@@ -828,12 +823,12 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
                 ops::write_hosts(&config, ops::needs_hosts(&config))
             })
             .await?;
-            message(format!("Hosts file updated ({n} sites)"))
+            message(tr("msg.hosts_updated", &[("count", &n)]))
         }
         (Method::POST, ["settings", "defender"]) => {
             let l = layout.clone();
             blocking(move || crate::settings::defender_exclude_home(&l)).await?;
-            message("PHPev folder excluded from Defender scans")
+            message(tr("msg.defender_done", &[]))
         }
         (Method::POST, ["settings", "open-home"]) => {
             let l = layout.clone();
@@ -889,7 +884,7 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
         (Method::POST, ["jobs", id, "cancel"]) => {
             let job = find_job(d, id)?;
             if d.jobs.cancel(job.snapshot().id) {
-                message("Cancelling")
+                message(tr("msg.cancelling", &[]))
             } else {
                 Err(ApiError(
                     StatusCode::CONFLICT,

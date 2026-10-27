@@ -54,6 +54,9 @@ pub struct Ui {
     /// Look for a newer PHPev release once a day (on unless turned off).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub check_updates: Option<bool>,
+    /// `en` or `vi`; the Windows display language when unset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
 }
 
 impl Ui {

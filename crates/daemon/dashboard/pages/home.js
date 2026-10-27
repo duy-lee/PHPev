@@ -1,6 +1,6 @@
 // Home: is everything running, the sites, and what needs attention.
 import { html, useState } from '/vendor/htm-preact-standalone.mjs';
-import { t } from '../i18n.js';
+import { t, LANG } from '../i18n.js';
 import { api, res, useApi } from '../api.js';
 import { mb } from '../format.js';
 import { act } from '../ui/feedback.js';
@@ -162,7 +162,7 @@ export function Home() {
     prefs.set('homeSort', o);
     setOrder(o);
   };
-  const today = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+  const today = new Date().toLocaleDateString(LANG, { weekday: 'long', day: 'numeric', month: 'long' });
   return html`
     <div class="page-head">
       <div class="grow">

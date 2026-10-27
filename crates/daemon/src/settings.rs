@@ -7,7 +7,9 @@ use std::path::Path;
 use phpev_core::api::{GeneralSettings, SettingsInfo, StorageItem};
 use phpev_core::config::{self, Config, Ports};
 use phpev_core::layout::Layout;
-use phpev_core::{autostart, ca, doctor, elevate, ops, sites};
+use phpev_core::{autostart, ca, doctor, elevate, ops, ports, sites};
+
+use crate::i18n::tr;
 
 pub fn info(layout: &Layout) -> io::Result<SettingsInfo> {
     let config = Config::load(&layout.config_file())?;
@@ -21,6 +23,7 @@ pub fn info(layout: &Layout) -> io::Result<SettingsInfo> {
         tray: config.tray,
         theme: config.ui.theme.clone().unwrap_or_else(|| "system".into()),
         check_updates: config.ui.check_updates(),
+        language: config.ui.language.clone().unwrap_or_else(|| "system".into()),
         tld: config.tld.clone(),
         parked: config.parked.iter().map(|p| p.display().to_string()).collect(),
         ports: config.ports.clone(),
@@ -52,6 +55,17 @@ pub fn set_general(layout: &Layout, r: &GeneralSettings) -> io::Result<()> {
             ))
         }
     };
+    let language = match r.language.as_deref() {
+        None => None,
+        Some("system") => Some(None),
+        Some(l) if crate::i18n::LANGUAGES.contains(&l) => Some(Some(l.to_owned())),
+        Some(other) => {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("unknown language `{other}`"),
+            ))
+        }
+    };
     if let Some(id) = &r.editor {
         if !phpev_core::editors::installed().iter().any(|e| &e.id == id) {
             return Err(io::Error::new(
@@ -63,7 +77,7 @@ pub fn set_general(layout: &Layout, r: &GeneralSettings) -> io::Result<()> {
     if let Some(on) = r.autostart {
         autostart::set(layout, on)?;
     }
-    if r.tray.is_some() || theme.is_some() || r.editor.is_some() || r.check_updates.is_some() {
+    if r.tray.is_some() || theme.is_some() || r.editor.is_some() || r.check_updates.is_some() || language.is_some() {
         config::update(&layout.config_file(), |c| {
             if let Some(id) = &r.editor {
                 c.ui.editor = Some(id.clone());
@@ -74,6 +88,9 @@ pub fn set_general(layout: &Layout, r: &GeneralSettings) -> io::Result<()> {
             if let Some(theme) = theme {
                 c.ui.theme = theme;
             }
+            if let Some(language) = language.clone() {
+                c.ui.language = language;
+            }
             if let Some(on) = r.check_updates {
                 // Unset means on.
                 c.ui.check_updates = (!on).then_some(false);
@@ -83,34 +100,47 @@ pub fn set_general(layout: &Layout, r: &GeneralSettings) -> io::Result<()> {
     if let Some(on) = r.tray {
         crate::tray::set_visible(on);
     }
+    if language.is_some() {
+        crate::i18n::load(layout);
+    }
     Ok(())
 }
 
 /// Ports must differ from each other, and the ones that change must be free.
 pub fn check_ports(current: &Ports, wanted: &Ports) -> io::Result<()> {
     let all = [
-        ("HTTP", current.http, wanted.http),
-        ("HTTPS", current.https, wanted.https),
-        ("MariaDB", current.mariadb, wanted.mariadb),
-        ("the dashboard", current.dashboard, wanted.dashboard),
+        (tr("settings.port_http", &[]), current.http, wanted.http),
+        (tr("settings.port_https", &[]), current.https, wanted.https),
+        (tr("settings.port_mariadb", &[]), current.mariadb, wanted.mariadb),
+        (tr("settings.port_dashboard", &[]), current.dashboard, wanted.dashboard),
     ];
     for (i, (what, _, port)) in all.iter().enumerate() {
         if *port == 0 {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                format!("choose a port for {what} (1-65535)"),
+                tr("msg.port_zero", &[("what", what)]),
             ));
         }
         if let Some((other, _, _)) = all[..i].iter().find(|(_, _, p)| p == port) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                format!("{other} and {what} cannot share port {port}"),
+                tr("msg.port_shared", &[("a", other), ("b", what), ("port", port)]),
             ));
         }
     }
-    for (what, old, new) in all {
-        if old != new {
-            crate::ensure_port_free(new, what)?;
+    for (what, old, new) in &all {
+        if old == new {
+            continue;
+        }
+        if let Some(user) = ports::listeners_on(*new)?.first() {
+            let process = match ports::known_culprit(&user.process) {
+                Some(k) => format!("{} (pid {}, {k})", user.process, user.pid),
+                None => format!("{} (pid {})", user.process, user.pid),
+            };
+            return Err(io::Error::new(
+                io::ErrorKind::AddrInUse,
+                tr("msg.port_busy", &[("port", new), ("what", what), ("process", &process)]),
+            ));
         }
     }
     Ok(())

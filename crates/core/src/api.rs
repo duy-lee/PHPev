@@ -368,6 +368,8 @@ pub struct SettingsInfo {
     pub theme: String,
     /// Look for a newer release once a day.
     pub check_updates: bool,
+    /// `en`, `vi` or `system`.
+    pub language: String,
     pub tld: String,
     pub parked: Vec<String>,
     pub ports: crate::config::Ports,
@@ -391,6 +393,17 @@ pub struct GeneralSettings {
     /// Id of an installed editor (`GET /editors`).
     pub editor: Option<String>,
     pub check_updates: Option<bool>,
+    /// `en`, `vi` or `system`.
+    pub language: Option<String>,
+}
+
+/// What the dashboard needs before its first paint.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct UiInfo {
+    /// `light`, `dark` or `system`.
+    pub theme: String,
+    /// The language in use (`en`, `vi`), already resolved.
+    pub language: String,
 }
 
 /// The saved result of the daily release check.

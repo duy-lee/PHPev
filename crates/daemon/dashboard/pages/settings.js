@@ -22,6 +22,8 @@ function General({ s, reload }) {
     applyTheme(value);
     save({ theme: value });
   };
+  // Every string is loaded once at start, so the page reloads in the new language.
+  const language = (value) => api('PUT', '/settings/general', { language: value }).then(() => location.reload(), (e) => showToast(t('common.error', { message: e.message }), true));
   return html`<section class="card">
     <${SetRow} icon="power" title=${t('settings.autostart')} desc=${t('settings.autostart_hint')}>
       <${Switch} label=${t('settings.autostart')} checked=${s.autostart} onChange=${(on) => save({ autostart: on })} />
@@ -35,6 +37,10 @@ function General({ s, reload }) {
     <${SetRow} icon="theme" title=${t('settings.theme')} desc=${t('settings.theme_hint')}>
       <${Picker} label=${t('settings.theme')} value=${s.theme} onChange=${theme}
         options=${[{ value: 'system', label: t('settings.theme_system') }, { value: 'light', label: t('settings.theme_light') }, { value: 'dark', label: t('settings.theme_dark') }]} />
+    </${SetRow}>
+    <${SetRow} icon="globe" title=${t('settings.language')} desc=${t('settings.language_hint')}>
+      <${Picker} label=${t('settings.language')} value=${s.language} onChange=${language}
+        options=${[{ value: 'system', label: t('settings.theme_system') }, { value: 'en', label: 'English' }, { value: 'vi', label: 'Tiếng Việt' }]} />
     </${SetRow}>
     <${SetRow} icon="editor" title=${t('settings.editor')}
       desc=${editors?.editors.length ? t('settings.editor_hint') : t('site.no_editor', { list: editors?.supported.join(', ') ?? '' })}>

@@ -27,6 +27,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     TPM_BOTTOMALIGN, TPM_RETURNCMD, TPM_RIGHTBUTTON, WM_APP, WM_CONTEXTMENU, WM_LBUTTONUP, WM_NULL, WM_RBUTTONUP,
 };
 
+use crate::i18n::tr;
 use crate::log::log_warn;
 use crate::Daemon;
 
@@ -191,8 +192,8 @@ fn notify(title: &str, text: &str) {
 /// False when there is no icon to show it on.
 pub fn notify_update(version: &str, url: &str) -> bool {
     balloon(
-        &format!("PHPev {version} is available"),
-        "Click to see what is new and download it.",
+        &tr("tray.update_title", &[("version", &version)]),
+        &tr("tray.update_text", &[]),
         NIIF_INFO,
         Some(url),
     )
@@ -214,7 +215,7 @@ fn balloon(title: &str, text: &str, kind: u32, url: Option<&str>) -> bool {
 
 fn open(url: &str) {
     if let Err(e) = launch::open_url(url) {
-        notify("PHPev", &format!("Could not open {url}: {e}"));
+        notify("PHPev", &tr("tray.open_failed", &[("url", &url), ("error", &e)]));
     }
 }
 
@@ -222,7 +223,7 @@ fn open_dashboard() {
     let Some(ctx) = CTX.get() else { return };
     if let Err(e) = crate::appwindow::open_dashboard(&ctx.daemon, false) {
         log_warn!("tray: could not open the dashboard: {e}");
-        notify("PHPev", &format!("Could not open the dashboard: {e}"));
+        notify("PHPev", &tr("tray.dashboard_failed", &[("error", &e)]));
     }
 }
 
@@ -237,14 +238,14 @@ fn show_menu(hwnd: HWND) {
         .zip(update.url.as_deref());
     unsafe {
         let menu = CreatePopupMenu();
-        append(menu, MF_STRING, CMD_DASHBOARD, "Open dashboard");
+        append(menu, MF_STRING, CMD_DASHBOARD, &tr("tray.open_dashboard", &[]));
         SetMenuDefaultItem(menu, CMD_DASHBOARD as u32, 0);
         if let Some((version, _)) = release {
             append(
                 menu,
                 MF_STRING,
                 CMD_UPDATE,
-                &format!("Update available: PHPev {version}"),
+                &tr("tray.update", &[("version", &version)]),
             );
         }
 
@@ -256,17 +257,17 @@ fn show_menu(hwnd: HWND) {
             }
         }
         if site_urls.is_empty() {
-            append(sites_menu, MF_STRING | MF_GRAYED, 0, "No sites yet");
+            append(sites_menu, MF_STRING | MF_GRAYED, 0, &tr("tray.no_sites", &[]));
         }
-        append(menu, MF_POPUP, sites_menu as usize, "Sites");
+        append(menu, MF_POPUP, sites_menu as usize, &tr("nav.sites", &[]));
         append(menu, MF_SEPARATOR, 0, "");
 
         // try_lock: never block the UI thread while MariaDB is starting/stopping.
         let db_label = match (config.mariadb.as_deref(), ctx.daemon.db.try_lock()) {
-            (None, _) => ("MariaDB: not installed".to_owned(), MF_GRAYED),
-            (Some(v), Ok(db)) if db.is_some() => (format!("Stop MariaDB {v}"), 0),
-            (Some(v), Ok(_)) => (format!("Start MariaDB {v}"), 0),
-            (Some(v), Err(_)) => (format!("MariaDB {v}: busy…"), MF_GRAYED),
+            (None, _) => (tr("tray.db_missing", &[]), MF_GRAYED),
+            (Some(v), Ok(db)) if db.is_some() => (tr("tray.db_stop", &[("version", &v)]), 0),
+            (Some(v), Ok(_)) => (tr("tray.db_start", &[("version", &v)]), 0),
+            (Some(v), Err(_)) => (tr("tray.db_busy", &[("version", &v)]), MF_GRAYED),
         };
         append(menu, MF_STRING | db_label.1, CMD_DB_TOGGLE, &db_label.0);
         let auto = autostart::is_enabled().unwrap_or(false);
@@ -274,10 +275,10 @@ fn show_menu(hwnd: HWND) {
             menu,
             MF_STRING | if auto { MF_CHECKED } else { 0 },
             CMD_AUTOSTART,
-            "Start with Windows",
+            &tr("tray.autostart", &[]),
         );
         append(menu, MF_SEPARATOR, 0, "");
-        append(menu, MF_STRING, CMD_EXIT, "Exit PHPev");
+        append(menu, MF_STRING, CMD_EXIT, &tr("tray.exit", &[]));
 
         let mut pt = POINT { x: 0, y: 0 };
         GetCursorPos(&mut pt);
@@ -323,7 +324,7 @@ fn run(ctx: &Ctx, cmd: usize, site_urls: &[String], release_url: Option<&str>) {
         CMD_AUTOSTART => {
             let on = !autostart::is_enabled().unwrap_or(false);
             if let Err(e) = autostart::set(&ctx.daemon.layout, on) {
-                notify("PHPev", &format!("Could not change autostart: {e}"));
+                notify("PHPev", &tr("tray.autostart_failed", &[("error", &e)]));
             }
         }
         CMD_UPDATE => {

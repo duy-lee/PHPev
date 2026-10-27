@@ -12,6 +12,7 @@ mod fastcgi;
 mod folderpick;
 mod foreground;
 mod http_util;
+mod i18n;
 mod job;
 mod jobs;
 mod launcher;
@@ -130,6 +131,7 @@ async fn run(layout: Layout) -> io::Result<()> {
         shutdown: shutdown_tx.clone(),
         dashboard: std::sync::Mutex::new(Err("not started".into())),
     });
+    i18n::load(&daemon.layout);
     tray::init(daemon.clone(), tokio::runtime::Handle::current());
     endsession::spawn(shutdown_tx);
 

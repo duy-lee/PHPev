@@ -151,12 +151,16 @@ function App() {
 }
 
 applyTheme(prefs.get('theme'));
-api('GET', '/settings').then((s) => applyTheme(s.theme), () => {});
 
-const lang = (navigator.language || 'en').slice(0, 2);
-fetch(`/i18n/${lang}.json`)
-  .then((r) => (r.ok ? r.json() : fetch('/i18n/en.json').then((x) => x.json())))
-  .then((s) => {
-    setStrings(s);
+// The daemon knows the chosen language (or the Windows one); English if it cannot answer.
+const strings = (lang) => fetch(`/i18n/${lang}.json`).then((r) => (r.ok ? r.json() : Promise.reject()));
+api('GET', '/ui')
+  .then((ui) => {
+    applyTheme(ui.theme);
+    return ui.language;
+  }, () => 'en')
+  .then((lang) => strings(lang).then((s) => [s, lang], () => strings('en').then((s) => [s, 'en'])))
+  .then(([s, lang]) => {
+    setStrings(s, lang);
     render(html`<${App} />`, document.getElementById('app'));
   });

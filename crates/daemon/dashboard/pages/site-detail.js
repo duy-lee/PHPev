@@ -1,6 +1,6 @@
 // The page of one site: header, then Overview / Requests / Logs / Database.
 import { html, useState, useEffect } from '/vendor/htm-preact-standalone.mjs';
-import { t } from '../i18n.js';
+import { t, LANG } from '../i18n.js';
 import { api, res, useApi } from '../api.js';
 import { mb, fmtMs } from '../format.js';
 import { act, showToast } from '../ui/feedback.js';
@@ -201,7 +201,7 @@ function Activity({ siteHost }) {
   return html`<section class="card pad">
     <div class="row-flex"><h2 style="font-size: 15px">${t('site.activity')}</h2><span class="grow"></span><span class="small muted">${t('site.last_10_min')}</span></div>
     ${!r ? html`<p class="muted small">${t('common.loading')}</p>` : html`
-      <div class="big-number" style="margin-top: 8px">${r.total.toLocaleString()}</div>
+      <div class="big-number" style="margin-top: 8px">${r.total.toLocaleString(LANG)}</div>
       <div class="small muted">${t('site.requests')}</div>
       ${r.total > 0 ? html`<${Sparkline} perSecond=${r.per_second} />` : html`<p class="small muted" style="margin: 12px 0">${t('site.no_requests')}</p>`}
       <div class="row-flex" style="justify-content: space-between">
@@ -287,7 +287,7 @@ function Requests({ siteHost }) {
   return html`
     <section class="card pad">
       <div class="row-flex" style="gap: 36px; align-items: flex-end">
-        <div><div class="small muted">${t('site.requests_10_min')}</div><div class="big-number">${r.total.toLocaleString()}</div></div>
+        <div><div class="small muted">${t('site.requests_10_min')}</div><div class="big-number">${r.total.toLocaleString(LANG)}</div></div>
         <div class="stat"><b>${fmtMs(r.p50_ms)}</b><span>${t('site.median')}</span></div>
         <div class="stat"><b>${fmtMs(r.p95_ms)}</b><span>p95</span></div>
         <div class="stat"><b>${fmtMs(r.p99_ms)}</b><span>p99</span></div>
@@ -347,7 +347,7 @@ function Database({ d, conn, onPick, startJob }) {
         : info.tables.length === 0 ? html`<${Empty} icon="database" title=${databaseDesc(db, info)} />`
         : html`<div class="scroll-x"><table class="table">
           <thead><tr><th>${t('site.table')}</th><th class="num">${t('site.rows')}</th><th class="num">${t('site.size')}</th></tr></thead>
-          <tbody>${info.tables.map((x) => html`<tr><td class="mono">${x.name}</td><td class="num">${x.rows.toLocaleString()}</td><td class="num">${size(x.bytes)}</td></tr>`)}</tbody>
+          <tbody>${info.tables.map((x) => html`<tr><td class="mono">${x.name}</td><td class="num">${x.rows.toLocaleString(LANG)}</td><td class="num">${size(x.bytes)}</td></tr>`)}</tbody>
         </table></div>`}
     </section></div>
   </div>`;
