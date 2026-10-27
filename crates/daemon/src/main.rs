@@ -10,7 +10,9 @@ mod dashboard;
 mod endsession;
 mod fastcgi;
 mod folderpick;
+mod foreground;
 mod http_util;
+mod i18n;
 mod job;
 mod jobs;
 mod launcher;
@@ -20,9 +22,13 @@ mod metrics;
 mod pool;
 mod router;
 mod services;
+mod settings;
+mod site_fix;
+mod site_page;
 mod supervise;
 mod tls;
 mod tray;
+mod updates;
 
 use std::io;
 use std::process::ExitCode;
@@ -47,8 +53,10 @@ use crate::services::Db;
 
 fn main() -> ExitCode {
     tray::set_dpi_aware();
-    if std::env::args().nth(1).as_deref() == Some(launcher::ARG) {
-        return launcher::open_dashboard();
+    match std::env::args().nth(1).as_deref() {
+        Some(launcher::ARG) => return launcher::open_dashboard(false),
+        Some(launcher::RESTART_ARG) => return launcher::open_dashboard(true),
+        _ => {}
     }
     let Ok(layout) = Layout::resolve() else {
         return ExitCode::FAILURE;
@@ -123,6 +131,7 @@ async fn run(layout: Layout) -> io::Result<()> {
         shutdown: shutdown_tx.clone(),
         dashboard: std::sync::Mutex::new(Err("not started".into())),
     });
+    i18n::load(&daemon.layout);
     tray::init(daemon.clone(), tokio::runtime::Handle::current());
     endsession::spawn(shutdown_tx);
 
@@ -134,6 +143,7 @@ async fn run(layout: Layout) -> io::Result<()> {
 
     daemon.start_router().await;
     daemon.clone().start_dashboard().await;
+    updates::spawn(daemon.clone());
 
     let reaper = daemon.clone();
     tokio::spawn(async move {
@@ -236,9 +246,7 @@ impl Daemon {
     }
 
     pub(crate) fn remember_db(&self, running: bool) {
-        let mut state = State::load(&self.layout);
-        state.mariadb_running = running;
-        if let Err(e) = state.save(&self.layout) {
+        if let Err(e) = State::modify(&self.layout, |s| s.mariadb_running = running) {
             log_warn!("could not save state.json: {e}");
         }
     }
@@ -440,6 +448,28 @@ impl Daemon {
         *self.dashboard.lock().unwrap_or_else(|e| e.into_inner()) = result.map_err(|e| e.to_string());
     }
 
+    /// Stops PHPev and starts it again (new ports), reopening the dashboard.
+    /// A helper process waits for this one to exit; the reply that asked for
+    /// the restart goes out first.
+    pub(crate) fn restart(&self) -> io::Result<()> {
+        let installed = self.layout.shims().join("phpev-daemon.exe");
+        let exe = if installed.is_file() {
+            installed
+        } else {
+            std::env::current_exe()?
+        };
+        let mut cmd = std::process::Command::new(exe);
+        cmd.arg(launcher::RESTART_ARG);
+        launcher::spawn(cmd)?;
+        log_info!("restarting to apply new settings");
+        let shutdown = self.shutdown.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(400)).await;
+            let _ = shutdown.send(None);
+        });
+        Ok(())
+    }
+
     /// Stops everything but keeps `state.json`, so the next start restores MariaDB.
     async fn stop_services(&self) {
         let db = self.db.lock().await.take();
@@ -452,7 +482,7 @@ impl Daemon {
     }
 }
 
-fn ensure_port_free(port: u16, what: &str) -> io::Result<()> {
+pub(crate) fn ensure_port_free(port: u16, what: &str) -> io::Result<()> {
     let users = ports::listeners_on(port)?;
     let Some(first) = users.first() else { return Ok(()) };
     let hint = ports::known_culprit(&first.process)

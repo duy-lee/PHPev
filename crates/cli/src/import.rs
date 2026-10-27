@@ -15,7 +15,7 @@ use phpev_core::constraint::Constraint;
 use phpev_core::ipc::Request;
 use phpev_core::layout::Layout;
 use phpev_core::net::Http;
-use phpev_core::{composer, elevate, envfile, mariadb, php, shim, sites, version};
+use phpev_core::{composer, elevate, envfile, mariadb, php, project, shim, sites, version};
 
 use crate::{daemon, runtimes};
 
@@ -37,17 +37,14 @@ pub fn import(opts: Options) -> io::Result<ExitCode> {
     let dir = crate::sites::absolute(opts.dir.clone())?;
     let ask = Asker { yes: opts.yes };
 
-    let composer_json = read_json(&dir.join("composer.json"));
-    let lock_json = read_json(&dir.join("composer.lock"));
-    let laravel = dir.join("artisan").is_file()
-        && composer_json
-            .as_ref()
-            .is_some_and(|c| c.pointer("/require/laravel~1framework").is_some());
+    let composer_json = project::read_json(&dir.join("composer.json"));
+    let lock_json = project::read_json(&dir.join("composer.lock"));
+    let laravel = project::is_laravel(&dir, composer_json.as_ref());
     println!("Project: {}", dir.display());
     if laravel {
         let v = lock_json
             .as_ref()
-            .and_then(|l| package_version(l, "laravel/framework"))
+            .and_then(|l| project::package_version(l, "laravel/framework"))
             .unwrap_or_else(|| "?".into());
         println!("  Laravel {v}");
     } else if composer_json.is_some() {
@@ -178,19 +175,6 @@ fn step(title: &str) {
     println!("\n[{title}]");
 }
 
-fn read_json(path: &Path) -> Option<serde_json::Value> {
-    serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()
-}
-
-fn package_version(lock: &serde_json::Value, name: &str) -> Option<String> {
-    ["packages", "packages-dev"].iter().find_map(|key| {
-        lock.get(*key)?.as_array()?.iter().find_map(|p| {
-            (p.get("name")?.as_str()? == name)
-                .then(|| p.get("version")?.as_str().map(|v| v.trim_start_matches('v').to_owned()))?
-        })
-    })
-}
-
 // ---------------------------------------------------------------- PHP
 
 /// Returns (installed version to use, version pin for the config).
@@ -291,37 +275,20 @@ fn check_extensions(
     ask: &Asker,
     todo: &mut Vec<String>,
 ) -> io::Result<()> {
-    let mut wanted: Vec<String> = Vec::new();
-    let mut collect = |req: Option<&serde_json::Value>| {
-        for key in req.and_then(|r| r.as_object()).into_iter().flat_map(|o| o.keys()) {
-            if let Some(ext) = key.strip_prefix("ext-") {
-                let ext = ext.to_ascii_lowercase();
-                if !wanted.contains(&ext) {
-                    wanted.push(ext);
-                }
-            }
-        }
-    };
-    collect(composer_json.and_then(|c| c.get("require")));
-    for key in ["packages", "packages-dev"] {
-        for p in lock_json.and_then(|l| l.get(key)?.as_array()).into_iter().flatten() {
-            collect(p.get("require"));
-        }
-    }
+    let wanted = project::required_extensions(composer_json, lock_json);
     if wanted.is_empty() {
         println!("  no ext-* requirements");
         return Ok(());
     }
-    wanted.sort();
 
     let loaded: Vec<String> = php::modules(layout, version)?
         .iter()
-        .map(|m| normalize_module(m))
+        .map(|m| project::normalize_module(m))
         .collect();
     let mut missing_pecl = Vec::new();
     let mut enabled_any = false;
     for ext in &wanted {
-        let name = normalize_module(ext);
+        let name = project::normalize_module(ext);
         if loaded.contains(&name) {
             continue;
         }
@@ -358,16 +325,6 @@ fn check_extensions(
         println!("  all {} required extensions are loaded", wanted.len());
     }
     Ok(())
-}
-
-/// Compares `php -m` names with `ext-*` names: case and `-`/`_`/space insensitive,
-/// `Zend OPcache` = `opcache`.
-fn normalize_module(m: &str) -> String {
-    let m = m.to_ascii_lowercase().replace(['-', ' '], "_");
-    match m.as_str() {
-        "zend_opcache" => "opcache".into(),
-        _ => m,
-    }
 }
 
 // ---------------------------------------------------------------- site
@@ -426,11 +383,7 @@ fn same_path(a: &Path, b: &Path) -> bool {
 /// excluded (now or by an earlier import).
 fn defender_exclusion(layout: &Layout, dir: &Path, opts: &Options, ask: &Asker) -> io::Result<bool> {
     let config = Config::load(&layout.config_file())?;
-    if config
-        .sites
-        .iter()
-        .any(|s| s.defender_excluded && same_path(&s.path, dir))
-    {
+    if config.is_defender_excluded(dir) {
         println!("  already excluded by an earlier import");
         return Ok(true);
     }
@@ -696,24 +649,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn module_names_match_composer_ext_names() {
-        assert_eq!(normalize_module("Zend OPcache"), "opcache");
-        assert_eq!(normalize_module("pdo_mysql"), normalize_module("PDO_MYSQL"));
-        assert_eq!(normalize_module("SimpleXML"), "simplexml");
-    }
-
-    #[test]
     fn mysql_env_checks() {
         let ok = "DB_CONNECTION=mysql\nDB_HOST=127.0.0.1\nDB_PORT=3306\nDB_USERNAME=root\nDB_PASSWORD=\n";
         assert!(mysql_mismatches(ok, 3306).is_empty());
         let bad = "DB_CONNECTION=mysql\nDB_HOST=db\nDB_PORT=3307\nDB_USERNAME=laravel\nDB_PASSWORD=secret\n";
         assert_eq!(mysql_mismatches(bad, 3306).len(), 3);
-    }
-
-    #[test]
-    fn lock_versions() {
-        let lock: serde_json::Value =
-            serde_json::from_str(r#"{"packages":[{"name":"laravel/framework","version":"v12.3.1"}]}"#).unwrap();
-        assert_eq!(package_version(&lock, "laravel/framework").as_deref(), Some("12.3.1"));
     }
 }

@@ -23,13 +23,14 @@ use hyper_util::rt::TokioIo;
 use phpev_core::api::{self, *};
 use phpev_core::config::Config;
 use phpev_core::net::Http;
-use phpev_core::{doctor, mariadb, ops, php, shim, sites, version};
+use phpev_core::{config, doctor, mariadb, ops, php, shim, sites, update, version};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
 
-use crate::http_util::{full, internal, query_param, text, Body, ChannelBody};
+use crate::http_util::{full, internal, percent_decode, query_param, text, Body, ChannelBody};
+use crate::i18n::tr;
 use crate::jobs::Jobs;
 use crate::log::log_warn;
 use crate::logs;
@@ -208,30 +209,15 @@ async fn handle(d: &Dashboard, req: Request<Incoming>) -> Response<Body> {
 
 // ---------------------------------------------------------------- assets
 
+/// The table build.rs generates from `dashboard/`.
+pub(crate) mod assets {
+    include!(concat!(env!("OUT_DIR"), "/dashboard_assets.rs"));
+}
+
 /// Embedded UI files (no CDN, served from memory).
 fn asset(path: &str) -> Response<Body> {
-    let (body, mime): (&'static [u8], &str) = match path {
-        "/" | "/index.html" => (include_bytes!("../dashboard/index.html"), "text/html; charset=utf-8"),
-        "/app.js" => (include_bytes!("../dashboard/app.js"), "text/javascript; charset=utf-8"),
-        "/app.css" => (include_bytes!("../dashboard/app.css"), "text/css; charset=utf-8"),
-        "/i18n/en.json" => (include_bytes!("../dashboard/i18n/en.json"), "application/json"),
-        "/vendor/uPlot.iife.min.js" => (
-            include_bytes!("../dashboard/vendor/uPlot.iife.min.js"),
-            "text/javascript; charset=utf-8",
-        ),
-        "/vendor/uPlot.min.css" => (
-            include_bytes!("../dashboard/vendor/uPlot.min.css"),
-            "text/css; charset=utf-8",
-        ),
-        "/vendor/htm-preact-standalone.mjs" => (
-            include_bytes!("../dashboard/vendor/htm-preact-standalone.mjs"),
-            "text/javascript; charset=utf-8",
-        ),
-        "/favicon.ico" => (include_bytes!("../../../assets/web/favicon.ico"), "image/x-icon"),
-        "/favicon.svg" => (include_bytes!("../../../assets/web/favicon.svg"), "image/svg+xml"),
-        "/logo-light.svg" => (include_bytes!("../../../assets/phpev-logo-light.svg"), "image/svg+xml"),
-        "/logo-dark.svg" => (include_bytes!("../../../assets/phpev-logo-dark.svg"), "image/svg+xml"),
-        _ => return text(StatusCode::NOT_FOUND, "Not Found"),
+    let Some((body, mime)) = assets::lookup(path) else {
+        return text(StatusCode::NOT_FOUND, "Not Found");
     };
     Response::builder()
         .header(header::CONTENT_TYPE, mime)
@@ -249,7 +235,7 @@ impl From<io::Error> for ApiError {
         let status = match e.kind() {
             io::ErrorKind::NotFound => StatusCode::NOT_FOUND,
             io::ErrorKind::InvalidInput | io::ErrorKind::InvalidData => StatusCode::BAD_REQUEST,
-            io::ErrorKind::AlreadyExists => StatusCode::CONFLICT,
+            io::ErrorKind::AlreadyExists | io::ErrorKind::AddrInUse => StatusCode::CONFLICT,
             io::ErrorKind::PermissionDenied => StatusCode::FORBIDDEN,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
@@ -301,7 +287,8 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> io::Result<T> + Send + 
 }
 
 async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Response<Body>, ApiError> {
-    let segs: Vec<String> = path.trim_matches('/').split('/').map(|s| s.to_owned()).collect();
+    // Segments come percent-encoded (`database%3AMAIN`, a site name with a space).
+    let segs: Vec<String> = path.trim_matches('/').split('/').map(percent_decode).collect();
     let segs: Vec<&str> = segs.iter().map(String::as_str).collect();
     let method = req.method().clone();
     let layout = d.daemon.layout.clone();
@@ -324,8 +311,22 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
 
         // ---- sites
         (Method::GET, ["sites"]) => {
+            let counts = d.daemon.metrics.host_counts(600);
             let l = layout.clone();
-            ok(&blocking(move || site_list(&l)).await?)
+            let mut list = blocking(move || site_list(&l)).await?;
+            for site in &mut list {
+                // Metrics key requests by host, lower case and without the port.
+                let host = site
+                    .url
+                    .split("://")
+                    .nth(1)
+                    .unwrap_or("")
+                    .split([':', '/'])
+                    .next()
+                    .unwrap_or("");
+                site.requests_10m = counts.get(&host.to_ascii_lowercase()).copied().unwrap_or(0);
+            }
+            ok(&list)
         }
         (Method::POST, ["sites"]) => {
             let r: LinkRequest = body(req).await?;
@@ -336,14 +337,125 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             })
             .await?;
             sync_hosts_if_needed(&layout).await;
-            message(format!("Linked {}", linked.name))
+            message(tr("msg.linked", &[("name", &linked.name)]))
+        }
+        (Method::POST, ["sites", "pick-folder"]) => {
+            let path =
+                blocking(|| crate::folderpick::pick_folder(&tr("pick.project", &[]), crate::appwindow::window()))
+                    .await?;
+            ok(&PickedFolder { path })
+        }
+        (Method::GET, ["sites", name]) => {
+            let status = d.daemon.status().await;
+            let (l, n) = (layout.clone(), name.to_string());
+            ok(&blocking(move || {
+                let site = site_info(&l, &ops::find_site(&l, &n)?)?;
+                crate::site_page::detail(&l, site, &status.php_pools, status.mariadb.as_ref())
+            })
+            .await?)
+        }
+        (Method::GET, ["sites", name, "database"]) => {
+            let connection = query_param(req.uri(), "name").unwrap_or_default();
+            let db = d.daemon.status().await.mariadb;
+            let (l, n) = (layout.clone(), name.to_string());
+            ok(&blocking(move || {
+                let site = ops::find_site(&l, &n)?;
+                crate::site_page::database(&l, &site.path, &connection, db.as_ref())
+            })
+            .await?)
+        }
+        (Method::POST, ["sites", _name, "database", "import", "pick"]) => {
+            let path = blocking(|| {
+                crate::folderpick::pick_file(
+                    "Choose the .sql file to import",
+                    crate::appwindow::window(),
+                    "SQL dump (*.sql)",
+                    "*.sql",
+                )
+            })
+            .await?;
+            ok(&PickedFolder { path })
+        }
+        (Method::POST, ["sites", name, "database", "import"]) => {
+            let r: DbImportRequest = body(req).await?;
+            let server = running_mariadb(d).await?;
+            let (l, n) = (layout.clone(), name.to_string());
+            let file = PathBuf::from(&r.path);
+            let db = blocking(move || {
+                if !file.is_file() || file.extension().is_none_or(|e| !e.eq_ignore_ascii_case("sql")) {
+                    return Err(io::Error::new(io::ErrorKind::InvalidInput, "choose a .sql file"));
+                }
+                crate::site_page::local_database(&l, &ops::find_site(&l, &n)?.path, &r.name)
+            })
+            .await?;
+            let l = layout.clone();
+            let label = PathBuf::from(&r.path)
+                .file_name()
+                .map(|f| f.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let job = d
+                .jobs
+                .start_cancellable(format!("Import into {db}"), move |rep, cancel| {
+                    rep.info(&format!("{} into `{db}`", r.path));
+                    if r.empty_first {
+                        rep.info(&format!("emptying `{db}` first"));
+                    }
+                    phpev_core::dbdump::import(
+                        &l,
+                        &server.version,
+                        server.port,
+                        &db,
+                        Path::new(&r.path),
+                        r.empty_first,
+                        &mut |done, total| rep.progress(&label, done, total),
+                        cancel,
+                    )?;
+                    Ok(format!("Imported {label} into {db}"))
+                });
+            ok(&JobStarted { job })
+        }
+        (Method::POST, ["sites", name, "database", "export"]) => {
+            let r: DbExportRequest = body(req).await?;
+            let server = running_mariadb(d).await?;
+            let (l, n) = (layout.clone(), name.to_string());
+            let picked = blocking(move || {
+                let db = crate::site_page::local_database(&l, &ops::find_site(&l, &n)?.path, &r.name)?;
+                let proposed = format!("{db}-{}.sql", phpev_core::clock::today());
+                let path = crate::folderpick::save_file(
+                    "Export the database to",
+                    crate::appwindow::window(),
+                    "SQL dump (*.sql)",
+                    "*.sql",
+                    &proposed,
+                )?;
+                Ok(path.map(|p| (db, p)))
+            })
+            .await?;
+            let Some((db, path)) = picked else {
+                return ok(&MaybeJob { job: None });
+            };
+            let l = layout.clone();
+            let job = d.jobs.start_cancellable(format!("Export {db}"), move |rep, cancel| {
+                rep.info(&format!("`{db}` to {path}"));
+                let size = phpev_core::dbdump::export(
+                    &l,
+                    &server.version,
+                    server.port,
+                    &db,
+                    Path::new(&path),
+                    &mut |done, _| rep.progress(&db, done, None),
+                    cancel,
+                )?;
+                Ok(format!("Exported {db} ({:.1} MB) to {path}", size as f64 / 1_048_576.0))
+            });
+            ok(&MaybeJob { job: Some(job) })
         }
         (Method::DELETE, ["sites", name]) => {
             let (l, n) = (layout.clone(), name.to_string());
             match blocking(move || ops::unlink_site(&l, &n)).await? {
                 Some(s) => {
                     sync_hosts_if_needed(&layout).await;
-                    message(format!("Unlinked {}", s.name))
+                    message(tr("msg.unlinked", &[("name", &s.name)]))
                 }
                 None => Err(ApiError(
                     StatusCode::NOT_FOUND,
@@ -360,28 +472,61 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
                 d.daemon.start_https().await?;
             }
             sync_hosts_if_needed(&layout).await;
-            message(if r.secure {
-                format!("HTTPS on for {name}")
-            } else {
-                format!("HTTPS off for {name}")
-            })
+            let key = if r.secure { "msg.https_on" } else { "msg.https_off" };
+            message(tr(key, &[("name", &name)]))
         }
         (Method::PUT, ["sites", name, "php"]) => {
             let r: PhpPinRequest = body(req).await?;
             let (l, n) = (layout.clone(), name.to_string());
             blocking(move || ops::set_site_php(&l, &n, r.version)).await?;
-            message(format!("PHP for {name} updated"))
+            message(tr("msg.site_php", &[("name", &name)]))
         }
+        (Method::GET, ["editors"]) => {
+            let l = layout.clone();
+            ok(&blocking(move || {
+                let chosen = Config::load(&l.config_file())?.ui.editor;
+                let found = phpev_core::editors::installed();
+                Ok(EditorsInfo {
+                    chosen: chosen.filter(|c| found.iter().any(|e| &e.id == c)),
+                    editors: found
+                        .into_iter()
+                        .map(|e| EditorChoice { id: e.id, name: e.name })
+                        .collect(),
+                    supported: phpev_core::editors::supported().into_iter().map(String::from).collect(),
+                })
+            })
+            .await?)
+        }
+        (Method::POST, ["sites", name, "fix", check]) => fix_check(d, &layout, name, check).await,
         (Method::POST, ["sites", name, "open"]) => {
             let r: OpenRequest = body(req).await?;
             let (l, n) = (layout.clone(), name.to_string());
             blocking(move || {
                 let site = ops::find_site(&l, &n)?;
+                let before = crate::foreground::windows();
                 match r.target {
-                    OpenTarget::Browser => launch::open_url(&site_url(&l, &site)?),
-                    OpenTarget::Folder => launch::open_folder(&site.path),
-                    OpenTarget::Terminal => launch::open_terminal(&site.path),
+                    OpenTarget::Browser => return launch::open_url(&site_url(&l, &site)?),
+                    OpenTarget::Folder => launch::open_folder(&site.path)?,
+                    OpenTarget::Terminal => launch::open_terminal(&site.path)?,
+                    OpenTarget::Editor => {
+                        let wanted = match r.editor.clone() {
+                            Some(id) => Some(id),
+                            None => Config::load(&l.config_file())?.ui.editor,
+                        };
+                        let editor = phpev_core::editors::installed()
+                            .into_iter()
+                            .find(|e| Some(&e.id) == wanted.as_ref())
+                            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "choose an editor"))?;
+                        if r.editor.is_some() {
+                            config::update(&l.config_file(), |c| c.ui.editor = Some(editor.id.clone()))?;
+                        }
+                        phpev_core::editors::open(&editor, &site.path)?;
+                    }
                 }
+                // Explorer reuses a window already showing the folder (titled with its name).
+                let folder = site.path.file_name().map(|n| n.to_string_lossy().into_owned());
+                crate::foreground::raise_new_window(before, folder.filter(|_| r.target == OpenTarget::Folder));
+                Ok(())
             })
             .await?;
             message("opened")
@@ -451,20 +596,15 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             ok(&JobStarted { job })
         }
         (Method::POST, ["php", "pick-folder"]) => {
-            let path = blocking(|| {
-                crate::folderpick::pick_folder(
-                    "Choose the PHP folder (the one with php.exe)",
-                    crate::appwindow::window(),
-                )
-            })
-            .await?;
+            let path =
+                blocking(|| crate::folderpick::pick_folder(&tr("pick.php", &[]), crate::appwindow::window())).await?;
             ok(&PickedFolder { path })
         }
         (Method::PUT, ["php", "default"]) => {
             let r: VersionRequest = body(req).await?;
             let l = layout.clone();
             let found = blocking(move || ops::set_default_php(&l, &r.version)).await?;
-            message(format!("Default PHP is now {found}"))
+            message(tr("msg.default_php", &[("version", &found)]))
         }
         (Method::GET, ["php", v, "extensions"]) => {
             let (l, v) = (layout.clone(), v.to_string());
@@ -476,10 +616,8 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             blocking(move || ops::set_extension(&l, &v2, &e, r.enabled)).await?;
             // Workers loaded the old php.ini; the pool restarts on the next request.
             d.daemon.pools.stop_version(v).await;
-            message(format!(
-                "{ext} {} for PHP {v}",
-                if r.enabled { "enabled" } else { "disabled" }
-            ))
+            let key = if r.enabled { "msg.ext_on" } else { "msg.ext_off" };
+            message(tr(key, &[("ext", &ext), ("version", &v)]))
         }
         (Method::DELETE, ["php", v]) => {
             let (l, v2) = (layout.clone(), v.to_string());
@@ -488,13 +626,11 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             d.daemon.pools.stop_version(v).await;
             let (l, v2) = (layout.clone(), v.to_string());
             blocking(move || ops::remove_php(&l, &v2, &mut ops::Quiet)).await?;
-            message(format!("PHP {v} removed"))
+            message(tr("msg.php_removed", &[("version", &v)]))
         }
         (Method::POST, ["php", v, "restart"]) => {
             let n = d.daemon.pools.stop_version(v).await;
-            message(format!(
-                "Stopped {n} workers of PHP {v}; they restart on the next request"
-            ))
+            message(tr("msg.workers_stopped", &[("count", &n), ("version", v)]))
         }
 
         // ---- MariaDB
@@ -547,7 +683,7 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             let r: RemoveMariaDbRequest = body(req).await?;
             let (l, v2) = (layout.clone(), v.to_string());
             let removed = blocking(move || ops::remove_mariadb(&l, &v2, r.delete_data, &mut ops::Quiet)).await?;
-            message(format!("MariaDB {removed} removed"))
+            message(tr("msg.mariadb_removed", &[("version", &removed)]))
         }
         (Method::POST, ["mariadb", "start"]) => {
             let msg = d.daemon.db_start().await?;
@@ -565,6 +701,152 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             let wanted = r.version.clone();
             let (_, _previous) = blocking(move || ops::set_active_mariadb(&l, &wanted)).await?;
             message(d.daemon.db_use(&mariadb::major_of(&r.version)).await?)
+        }
+
+        // The window has its own Edge profile: links open in the user's browser instead.
+        (Method::POST, ["open-url"]) => {
+            let r: UrlRequest = body(req).await?;
+            launch::open_url(&r.url)?;
+            message("opened")
+        }
+        (Method::GET, ["ui"]) => {
+            let config = Config::load(&layout.config_file())?;
+            ok(&UiInfo {
+                theme: config.ui.theme.unwrap_or_else(|| "system".into()),
+                language: crate::i18n::current().into(),
+            })
+        }
+
+        // ---- update check
+        (Method::GET, ["update"]) => {
+            let l = layout.clone();
+            ok(&blocking(move || Ok(update_info(&l))).await?)
+        }
+        (Method::POST, ["update", "skip"]) => {
+            let l = layout.clone();
+            blocking(move || update::modify(&l, |u| u.skipped = u.latest.clone())).await?;
+            message(tr("msg.update_skipped", &[]))
+        }
+
+        // ---- settings
+        (Method::GET, ["settings"]) => {
+            let l = layout.clone();
+            ok(&blocking(move || crate::settings::info(&l)).await?)
+        }
+        (Method::GET, ["settings", "storage"]) => {
+            let l = layout.clone();
+            ok(&blocking(move || Ok(crate::settings::storage(&l))).await?)
+        }
+        (Method::POST, ["settings", "storage", id, "clean"]) => {
+            let (l, id) = (layout.clone(), id.to_string());
+            let freed = blocking(move || crate::settings::clean(&l, &id)).await?;
+            message(tr(
+                "msg.freed",
+                &[("size", &format!("{:.1} MB", freed as f64 / 1_048_576.0))],
+            ))
+        }
+        (Method::PUT, ["settings", "general"]) => {
+            let r: GeneralSettings = body(req).await?;
+            let check = r.check_updates == Some(true);
+            let l = layout.clone();
+            blocking(move || crate::settings::set_general(&l, &r)).await?;
+            if check {
+                crate::updates::check_soon(&layout);
+            }
+            message(tr("msg.saved", &[]))
+        }
+        (Method::PUT, ["settings", "ports"]) => {
+            let wanted: config::Ports = body(req).await?;
+            let l = layout.clone();
+            let changed = blocking(move || {
+                let current = Config::load(&l.config_file())?.ports;
+                crate::settings::check_ports(&current, &wanted)?;
+                if current == wanted {
+                    return Ok(false);
+                }
+                config::update(&l.config_file(), |c| c.ports = wanted)?;
+                Ok(true)
+            })
+            .await?;
+            if !changed {
+                return ok(&SettingsApplied {
+                    message: tr("msg.nothing_changed", &[]),
+                    restarting: false,
+                });
+            }
+            d.daemon.restart()?;
+            ok(&SettingsApplied {
+                message: tr("msg.ports_saved", &[]),
+                restarting: true,
+            })
+        }
+        (Method::PUT, ["settings", "tld"]) => {
+            let r: TldRequest = body(req).await?;
+            let l = layout.clone();
+            // May show the UAC prompt (hosts file) and the CA trust dialog.
+            let change = blocking(move || ops::set_tld(&l, &r.tld, &mut ops::Quiet)).await?;
+            let mut text = tr("msg.tld_set", &[("tld", &change.new)]);
+            if let Some(e) = &change.hosts_error {
+                text = tr("msg.tld_hosts_failed", &[("tld", &change.new), ("error", e)]);
+            }
+            if change.old != change.new && change.https_in_use {
+                // HTTPS certificates are issued for the old names.
+                d.daemon.restart()?;
+                return ok(&SettingsApplied {
+                    message: format!("{text} {}", tr("msg.tld_restart", &[])),
+                    restarting: true,
+                });
+            }
+            d.daemon.router.lock().unwrap_or_else(|e| e.into_inner()).tld = change.new;
+            ok(&SettingsApplied {
+                message: text,
+                restarting: false,
+            })
+        }
+        (Method::POST, ["settings", "parked"]) => {
+            let r: PathRequest = body(req).await?;
+            let l = layout.clone();
+            let added = blocking(move || ops::park(&l, Path::new(r.path.trim()))).await?;
+            sync_hosts_if_needed(&layout).await;
+            message(tr(if added { "msg.parked" } else { "msg.already_parked" }, &[]))
+        }
+        (Method::POST, ["settings", "parked", "remove"]) => {
+            let r: PathRequest = body(req).await?;
+            let l = layout.clone();
+            blocking(move || ops::unpark(&l, Path::new(r.path.trim()))).await?;
+            sync_hosts_if_needed(&layout).await;
+            message(tr("msg.unparked", &[]))
+        }
+        (Method::POST, ["settings", "parked", "pick"]) => {
+            let path = blocking(|| crate::folderpick::pick_folder(&tr("pick.parked", &[]), crate::appwindow::window()))
+                .await?;
+            ok(&PickedFolder { path })
+        }
+        (Method::POST, ["settings", "hosts"]) => {
+            let l = layout.clone();
+            let n = blocking(move || {
+                let config = Config::load(&l.config_file())?;
+                ops::write_hosts(&config, ops::needs_hosts(&config))
+            })
+            .await?;
+            message(tr("msg.hosts_updated", &[("count", &n)]))
+        }
+        (Method::POST, ["settings", "defender"]) => {
+            let l = layout.clone();
+            blocking(move || crate::settings::defender_exclude_home(&l)).await?;
+            message(tr("msg.defender_done", &[]))
+        }
+        (Method::POST, ["settings", "open-home"]) => {
+            let l = layout.clone();
+            blocking(move || {
+                let before = crate::foreground::windows();
+                launch::open_folder(l.root())?;
+                let name = l.root().file_name().map(|n| n.to_string_lossy().into_owned());
+                crate::foreground::raise_new_window(before, name);
+                Ok(())
+            })
+            .await?;
+            message("opened")
         }
 
         // ---- performance (M9)
@@ -605,6 +887,17 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
         }
 
         // ---- jobs
+        (Method::POST, ["jobs", id, "cancel"]) => {
+            let job = find_job(d, id)?;
+            if d.jobs.cancel(job.snapshot().id) {
+                message(tr("msg.cancelling", &[]))
+            } else {
+                Err(ApiError(
+                    StatusCode::CONFLICT,
+                    "this job cannot be cancelled now".into(),
+                ))
+            }
+        }
         (Method::GET, ["jobs", id]) => {
             let job = find_job(d, id)?;
             ok(&job.snapshot())
@@ -613,6 +906,103 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
 
         _ => Err(ApiError(StatusCode::NOT_FOUND, format!("no API route {path}"))),
     }
+}
+
+/// `POST /sites/<name>/fix/<check>`: what the site page's Fix buttons do.
+async fn fix_check(
+    d: &Dashboard,
+    layout: &phpev_core::layout::Layout,
+    name: &str,
+    check: &str,
+) -> Result<Response<Body>, ApiError> {
+    let (l, n) = (layout.clone(), name.to_string());
+    let (dir, resolved) = blocking(move || crate::site_fix::site(&l, &n)).await?;
+    let done = |message: String| {
+        ok(&FixResult {
+            message: Some(message),
+            job: None,
+        })
+    };
+    match check {
+        "dependencies" | "env" | "app_key" => {
+            let l = layout.clone();
+            let check = check.to_owned();
+            let title = match check.as_str() {
+                "dependencies" => format!("composer install in {name}"),
+                _ => format!("Application key for {name}"),
+            };
+            let job = d
+                .jobs
+                .start_cancellable(title, move |rep, cancel| match check.as_str() {
+                    "dependencies" => crate::site_fix::composer_install(&l, &dir, &resolved, rep, cancel),
+                    other => crate::site_fix::app_key(&dir, &resolved, other == "env", rep, cancel),
+                });
+            ok(&FixResult {
+                message: None,
+                job: Some(job),
+            })
+        }
+        "extensions" => {
+            let (l, version) = (layout.clone(), resolved.version.clone());
+            let (enabled, unavailable) =
+                blocking(move || crate::site_fix::enable_extensions(&l, &dir, &version)).await?;
+            if !enabled.is_empty() {
+                // Workers loaded the old php.ini; the pool restarts on the next request.
+                d.daemon.pools.stop_version(&resolved.version).await;
+            }
+            match (enabled.is_empty(), unavailable.is_empty()) {
+                (false, true) => done(format!("Turned on {}", enabled.join(", "))),
+                (false, false) => done(format!(
+                    "Turned on {}; not part of this PHP build: {}",
+                    enabled.join(", "),
+                    unavailable.join(", ")
+                )),
+                (true, false) => Err(ApiError(
+                    StatusCode::CONFLICT,
+                    format!("Not part of this PHP build (PECL): {}", unavailable.join(", ")),
+                )),
+                (true, true) => done("Every required extension is already on".into()),
+            }
+        }
+        "mariadb" => {
+            let msg = d.daemon.db_start().await?;
+            d.daemon.remember_db(true);
+            done(msg)
+        }
+        "defender" => {
+            let l = layout.clone();
+            blocking(move || crate::site_fix::defender(&l, &dir)).await?;
+            done("Excluded from Defender scans".into())
+        }
+        db if db == "database" || db.starts_with("database:") => {
+            let connection = db.strip_prefix("database:").unwrap_or("").to_owned();
+            let server = running_mariadb(d).await?;
+            let l = layout.clone();
+            let created = blocking(move || {
+                let name = crate::site_page::local_database(&l, &dir, &connection)?;
+                phpev_core::mariadb::exec_sql(
+                    &l,
+                    &server.version,
+                    server.port,
+                    &format!("CREATE DATABASE IF NOT EXISTS `{name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"),
+                )?;
+                Ok(name)
+            })
+            .await?;
+            done(format!("Created database {created}"))
+        }
+        other => Err(ApiError(StatusCode::NOT_FOUND, format!("nothing to fix for `{other}`"))),
+    }
+}
+
+/// The MariaDB server the daemon runs, or a clear error when it is stopped.
+async fn running_mariadb(d: &Dashboard) -> Result<phpev_core::ipc::Service, ApiError> {
+    d.daemon.status().await.mariadb.ok_or_else(|| {
+        ApiError(
+            StatusCode::CONFLICT,
+            "MariaDB is not running; start it on the Services page".into(),
+        )
+    })
 }
 
 fn find_job(d: &Dashboard, id: &str) -> Result<Arc<crate::jobs::Job>, ApiError> {
@@ -814,29 +1204,42 @@ pub(crate) fn site_url(layout: &phpev_core::layout::Layout, site: &sites::Site) 
     Ok(format!("{scheme}://{}{port}", site.host(&config.tld)))
 }
 
+fn update_info(layout: &phpev_core::layout::Layout) -> UpdateInfo {
+    let state = update::load(layout);
+    let on = Config::load(&layout.config_file()).is_ok_and(|c| c.ui.check_updates());
+    UpdateInfo {
+        current: update::CURRENT.into(),
+        available: state.available().filter(|_| on).map(str::to_owned),
+        latest: state.latest,
+        url: state.url,
+        checked_at: state.checked_at,
+    }
+}
+
 fn site_list(layout: &phpev_core::layout::Layout) -> io::Result<Vec<SiteInfo>> {
     let config = Config::load(&layout.config_file())?;
-    sites::all(&config)
-        .iter()
-        .map(|s| {
-            Ok(SiteInfo {
-                url: site_url(layout, s)?,
-                name: s.name.clone(),
-                kind: if s.kind == sites::Kind::Linked {
-                    "linked"
-                } else {
-                    "parked"
-                }
-                .into(),
-                path: s.path.display().to_string(),
-                php_pinned: s.php.clone(),
-                php: shim::resolve(layout.root(), &s.path)
-                    .map(|r| r.version)
-                    .map_err(|e| e.to_string()),
-                secure: s.secure,
-            })
-        })
-        .collect()
+    sites::all(&config).iter().map(|s| site_info(layout, s)).collect()
+}
+
+fn site_info(layout: &phpev_core::layout::Layout, s: &sites::Site) -> io::Result<SiteInfo> {
+    Ok(SiteInfo {
+        url: site_url(layout, s)?,
+        name: s.name.clone(),
+        kind: if s.kind == sites::Kind::Linked {
+            "linked"
+        } else {
+            "parked"
+        }
+        .into(),
+        path: s.path.display().to_string(),
+        php_pinned: s.php.clone(),
+        php: shim::resolve(layout.root(), &s.path)
+            .map(|r| r.version)
+            .map_err(|e| e.to_string()),
+        secure: s.secure,
+        framework: phpev_core::project::detect(&s.path),
+        requests_10m: 0,
+    })
 }
 
 /// With a TLD other than localhost, keep the hosts file in sync (UAC). A
@@ -853,5 +1256,88 @@ async fn sync_hosts_if_needed(layout: &phpev_core::layout::Layout) {
     .await;
     if let Ok(Err(e)) = result {
         log_warn!("hosts file not updated: {e}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::assets::lookup;
+
+    #[test]
+    fn index_and_entry_files_are_embedded() {
+        for path in [
+            "/",
+            "/index.html",
+            "/app.js",
+            "/styles/tokens.css",
+            "/styles/app.css",
+            "/i18n/en.json",
+            "/favicon.ico",
+            "/mark.svg",
+        ] {
+            assert!(lookup(path).is_some(), "{path} is not embedded");
+        }
+        assert_eq!(lookup("/app.js").unwrap().1, "text/javascript; charset=utf-8");
+        assert!(lookup("/nope.js").is_none());
+    }
+
+    /// Every `from '…'` in the dashboard's modules points at an embedded file,
+    /// so a renamed or moved module fails here instead of in the window.
+    #[test]
+    fn module_imports_resolve() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("dashboard");
+        let mut stack = vec![root.clone()];
+        let mut checked = 0;
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    if !path.ends_with("vendor") {
+                        stack.push(path);
+                    }
+                    continue;
+                }
+                if path.extension().is_none_or(|e| e != "js") {
+                    continue;
+                }
+                let url_dir = format!(
+                    "/{}",
+                    path.parent()
+                        .unwrap()
+                        .strip_prefix(&root)
+                        .unwrap()
+                        .to_string_lossy()
+                        .replace('\\', "/")
+                );
+                let text = std::fs::read_to_string(&path).unwrap();
+                for spec in text.split(" from '").skip(1).filter_map(|s| s.split('\'').next()) {
+                    let url = resolve(&url_dir, spec);
+                    assert!(
+                        lookup(&url).is_some(),
+                        "{}: import '{spec}' ({url}) is not embedded",
+                        path.display()
+                    );
+                    checked += 1;
+                }
+            }
+        }
+        assert!(checked > 10, "only {checked} imports found");
+    }
+
+    fn resolve(dir: &str, spec: &str) -> String {
+        if spec.starts_with('/') {
+            return spec.to_owned();
+        }
+        let mut parts: Vec<&str> = dir.split('/').filter(|p| !p.is_empty()).collect();
+        for part in spec.split('/') {
+            match part {
+                "." => {}
+                ".." => {
+                    parts.pop();
+                }
+                p => parts.push(p),
+            }
+        }
+        format!("/{}", parts.join("/"))
     }
 }

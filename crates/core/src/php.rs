@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 use std::io;
+use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
@@ -11,6 +12,8 @@ use crate::layout::{ascii_short_path, Layout};
 use crate::net::{self, Http, Progress};
 use crate::registry::{self, Hive};
 use crate::{elevate, trust, version};
+
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 pub const RELEASES_URL: &str = "https://downloads.php.net/~windows/releases/releases.json";
 const DOWNLOAD_BASE: &str = "https://downloads.php.net/~windows/releases/";
@@ -377,6 +380,8 @@ pub fn modules(layout: &Layout, version: &str) -> io::Result<Vec<String>> {
         .arg("-c")
         .arg(&ini)
         .arg("-m")
+        // The daemon has no console: without this each call flashes a window.
+        .creation_flags(CREATE_NO_WINDOW)
         .output()?;
     let stdout = String::from_utf8_lossy(&out.stdout);
     let stderr = String::from_utf8_lossy(&out.stderr);

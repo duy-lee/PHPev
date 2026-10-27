@@ -1,0 +1,112 @@
+/* PHPev design tokens: the only place colours, type and shapes are defined.
+   Light by default; dark from the system setting, or forced with
+   <html data-theme="light|dark">. Text colours pass 4.5:1 on ground and surface. */
+
+:root {
+  --ground: #F3F5F8;
+  --surface: #FFFFFF;
+  --soft: #F7F8FA;
+  --hover: rgba(27, 34, 48, .045);
+  --hair: rgba(27, 34, 48, .07);
+  --hair-strong: rgba(27, 34, 48, .13);
+  --ink: #1B2230;
+  --ink-2: #465065;
+  --muted: #636C7F;
+  --accent: #2F6BF0;          /* the logo's blue, deepened for white text */
+  --accent-strong: #1E54D1;
+  --accent-soft: #EBF1FE;
+  --on-accent: #FFFFFF;
+  --ok: #167A43;
+  --ok-soft: #E8F5EE;
+  --warn: #A85A0B;
+  --warn-soft: #FDF3E4;
+  --danger: #BE3A2E;
+  --danger-soft: #FCEDEB;
+  --chart-fill: rgba(47, 107, 240, .12);
+  --shadow: 0 1px 2px rgba(27, 34, 48, .04), 0 4px 14px rgba(27, 34, 48, .05);
+  --shadow-raised: 0 1px 2px rgba(27, 34, 48, .08), 0 1px 6px rgba(27, 34, 48, .05);
+  --shadow-overlay: 0 22px 56px rgba(27, 34, 48, .18);
+  --scrim: rgba(20, 24, 32, .32);
+  --fw-laravel: #FCE9E5;   --fw-laravel-ink: #B4402E;
+  --fw-symfony: #EEF0F3;   --fw-symfony-ink: #3B4252;
+  --fw-wordpress: #E6EEFD; --fw-wordpress-ink: #2457C9;
+  --fw-php: #ECEAF7;       --fw-php-ink: #4F4A93;
+  --fw-static: #E8F4EE;    --fw-static-ink: #1F7048;
+
+  --font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
+
+  --radius-card: 16px;
+  --radius-control: 10px;
+  --radius-pill: 999px;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #14171D;
+    --surface: #1C2029;
+    --soft: #20252F;
+    --hover: rgba(255, 255, 255, .05);
+    --hair: rgba(255, 255, 255, .07);
+    --hair-strong: rgba(255, 255, 255, .13);
+    --ink: #EDF0F5;
+    --ink-2: #C2C9D6;
+    --muted: #97A0B2;
+    --accent: #7AA5FF;
+    --accent-strong: #9DBCFF;
+    --accent-soft: #1E2B45;
+    --on-accent: #10131A;
+    --ok: #5FD497;
+    --ok-soft: #173226;
+    --warn: #F2B866;
+    --warn-soft: #33281A;
+    --danger: #FF8A7E;
+    --danger-soft: #3A1F1F;
+    --chart-fill: rgba(122, 165, 255, .16);
+    --shadow: 0 1px 2px rgba(0, 0, 0, .25), 0 6px 18px rgba(0, 0, 0, .18);
+    --shadow-raised: 0 1px 2px rgba(0, 0, 0, .35);
+    --shadow-overlay: 0 22px 56px rgba(0, 0, 0, .5);
+    --scrim: rgba(0, 0, 0, .5);
+    --fw-laravel: #3A211C;   --fw-laravel-ink: #FF9A86;
+    --fw-symfony: #2A2F38;   --fw-symfony-ink: #C9D1DE;
+    --fw-wordpress: #1E2B45; --fw-wordpress-ink: #8DB2FF;
+    --fw-php: #2A2740;       --fw-php-ink: #B9B3F0;
+    --fw-static: #173226;    --fw-static-ink: #7FD9A6;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground: #14171D;
+  --surface: #1C2029;
+  --soft: #20252F;
+  --hover: rgba(255, 255, 255, .05);
+  --hair: rgba(255, 255, 255, .07);
+  --hair-strong: rgba(255, 255, 255, .13);
+  --ink: #EDF0F5;
+  --ink-2: #C2C9D6;
+  --muted: #97A0B2;
+  --accent: #7AA5FF;
+  --accent-strong: #9DBCFF;
+  --accent-soft: #1E2B45;
+  --on-accent: #10131A;
+  --ok: #5FD497;
+  --ok-soft: #173226;
+  --warn: #F2B866;
+  --warn-soft: #33281A;
+  --danger: #FF8A7E;
+  --danger-soft: #3A1F1F;
+  --chart-fill: rgba(122, 165, 255, .16);
+  --shadow: 0 1px 2px rgba(0, 0, 0, .25), 0 6px 18px rgba(0, 0, 0, .18);
+  --shadow-raised: 0 1px 2px rgba(0, 0, 0, .35);
+  --shadow-overlay: 0 22px 56px rgba(0, 0, 0, .5);
+  --scrim: rgba(0, 0, 0, .5);
+  --fw-laravel: #3A211C;   --fw-laravel-ink: #FF9A86;
+  --fw-symfony: #2A2F38;   --fw-symfony-ink: #C9D1DE;
+  --fw-wordpress: #1E2B45; --fw-wordpress-ink: #8DB2FF;
+  --fw-php: #2A2740;       --fw-php-ink: #B9B3F0;
+  --fw-static: #173226;    --fw-static-ink: #7FD9A6;
+  color-scheme: dark;
+}

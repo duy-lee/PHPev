@@ -214,6 +214,25 @@ impl Metrics {
         inner.ring.push_back(r);
     }
 
+    /// PHP requests per host over the last `window` seconds (Home's site cards).
+    pub fn host_counts(&self, window: u32) -> HashMap<String, u64> {
+        let since = (now_ms() / 1000).saturating_sub(u64::from(window.clamp(1, KEEP_SECONDS as u32)));
+        let inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        inner
+            .by_host
+            .iter()
+            .map(|(host, series)| {
+                let count = series
+                    .0
+                    .iter()
+                    .filter(|s| s.sec >= since)
+                    .map(|s| u64::from(s.php.count))
+                    .sum();
+                (host.clone(), count)
+            })
+            .collect()
+    }
+
     /// Statistics for the last `window` complete seconds (≤ 600), optionally for
     /// one host and with or without static files. The running second is left out:
     /// its partial count would show as a dip at the end of every chart.

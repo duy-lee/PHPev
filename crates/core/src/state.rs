@@ -2,6 +2,7 @@
 
 use std::io;
 use std::path::PathBuf;
+use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 
@@ -13,6 +14,13 @@ use crate::layout::Layout;
 pub struct State {
     /// MariaDB was running when the daemon last stopped (or the user ran `db start`).
     pub mariadb_running: bool,
+    /// Newer-release check (see `update`).
+    #[serde(skip_serializing_if = "is_default")]
+    pub update: crate::update::UpdateState,
+}
+
+fn is_default<T: Default + PartialEq>(v: &T) -> bool {
+    *v == T::default()
 }
 
 fn path(layout: &Layout) -> PathBuf {
@@ -30,5 +38,15 @@ impl State {
     pub fn save(&self, layout: &Layout) -> io::Result<()> {
         let json = serde_json::to_vec_pretty(self).map_err(io::Error::other)?;
         write_atomic(&path(layout), &json)
+    }
+
+    /// Load, change, save, with one writer at a time in this process.
+    pub fn modify<R>(layout: &Layout, f: impl FnOnce(&mut State) -> R) -> io::Result<R> {
+        static LOCK: Mutex<()> = Mutex::new(());
+        let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let mut state = State::load(layout);
+        let result = f(&mut state);
+        state.save(layout)?;
+        Ok(result)
     }
 }

@@ -29,10 +29,50 @@ pub struct Config {
     /// Show the notification-area icon (on unless turned off).
     #[serde(skip_serializing_if = "is_true")]
     pub tray: bool,
+    /// Project folders PHPev excluded from Defender scanning that are not
+    /// linked sites (those carry `Site::defender_excluded`), e.g. parked ones.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub defender_excluded_dirs: Vec<PathBuf>,
+    /// Dashboard choices.
+    #[serde(skip_serializing_if = "Ui::is_default")]
+    pub ui: Ui,
 }
 
 fn is_true(b: &bool) -> bool {
     *b
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Ui {
+    /// The code editor "Open in editor" uses (`vscode`, `phpstorm`, …), once chosen.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub editor: Option<String>,
+    /// `light` or `dark`; the Windows setting when unset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub theme: Option<String>,
+    /// Look for a newer PHPev release once a day (on unless turned off).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub check_updates: Option<bool>,
+    /// `en` or `vi`; the Windows display language when unset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
+}
+
+impl Ui {
+    pub fn check_updates(&self) -> bool {
+        self.check_updates != Some(false)
+    }
+
+    fn is_default(&self) -> bool {
+        *self == Ui::default()
+    }
+}
+
+fn same_path(a: &Path, b: &Path) -> bool {
+    a.to_string_lossy()
+        .trim_end_matches('\\')
+        .eq_ignore_ascii_case(b.to_string_lossy().trim_end_matches('\\'))
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -70,6 +110,8 @@ impl Default for Config {
             sites: Vec::new(),
             defender_excluded: false,
             tray: true,
+            defender_excluded_dirs: Vec::new(),
+            ui: Ui::default(),
         }
     }
 }
@@ -86,6 +128,25 @@ impl Default for Ports {
 }
 
 impl Config {
+    /// True if PHPev added a Defender exclusion for project folder `dir`.
+    pub fn is_defender_excluded(&self, dir: &Path) -> bool {
+        self.sites
+            .iter()
+            .any(|s| s.defender_excluded && same_path(&s.path, dir))
+            || self.defender_excluded_dirs.iter().any(|d| same_path(d, dir))
+    }
+
+    /// Remembers a Defender exclusion added for project folder `dir`.
+    pub fn mark_defender_excluded(&mut self, dir: &Path) {
+        match self.sites.iter_mut().find(|s| same_path(&s.path, dir)) {
+            Some(site) => site.defender_excluded = true,
+            None if !self.defender_excluded_dirs.iter().any(|d| same_path(d, dir)) => {
+                self.defender_excluded_dirs.push(dir.to_owned())
+            }
+            None => {}
+        }
+    }
+
     /// Loads the config; a missing file yields the defaults.
     pub fn load(path: &Path) -> io::Result<Self> {
         match std::fs::read_to_string(path) {

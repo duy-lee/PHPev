@@ -56,7 +56,8 @@ pub fn uninstall(mut purge: bool, yes: bool, from_installer: bool) -> io::Result
             .sites
             .iter()
             .filter(|s| s.defender_excluded)
-            .map(|s| s.path.clone()),
+            .map(|s| s.path.clone())
+            .chain(config.defender_excluded_dirs.iter().cloned()),
     );
     let needs_admin = hosts_block || system_path || !defender.is_empty();
     let ca_der = ca::stored_der(&layout);

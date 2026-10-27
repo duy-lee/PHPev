@@ -44,6 +44,18 @@ impl Http {
         serde_json::from_reader(reader).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("{url}: {e}")))
     }
 
+    /// Like `get_json`, but `None` when the server answers 404.
+    pub fn get_json_opt<T: DeserializeOwned>(&self, url: &str) -> io::Result<Option<T>> {
+        match self.agent.get(url).call() {
+            Ok(r) => serde_json::from_reader(r.into_reader())
+                .map(Some)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("{url}: {e}"))),
+            Err(ureq::Error::Status(404, _)) => Ok(None),
+            Err(ureq::Error::Status(code, _)) => Err(io::Error::other(format!("GET {url}: HTTP {code}"))),
+            Err(ureq::Error::Transport(t)) => Err(io::Error::other(format!("GET {url}: {t}"))),
+        }
+    }
+
     pub fn get_text(&self, url: &str) -> io::Result<String> {
         self.get(url)?.into_string()
     }

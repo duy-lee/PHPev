@@ -63,7 +63,7 @@ pub fn query_param(uri: &http::Uri, key: &str) -> Option<String> {
     })
 }
 
-fn percent_decode(s: &str) -> String {
+pub fn percent_decode(s: &str) -> String {
     let bytes = s.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
@@ -79,4 +79,17 @@ fn percent_decode(s: &str) -> String {
         i += 1;
     }
     String::from_utf8_lossy(&out).into_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::percent_decode;
+
+    #[test]
+    fn decodes_path_segments() {
+        assert_eq!(percent_decode("database%3AMAIN"), "database:MAIN");
+        assert_eq!(percent_decode("my%20site"), "my site");
+        assert_eq!(percent_decode("caf%C3%A9"), "café");
+        assert_eq!(percent_decode("100%"), "100%");
+    }
 }

@@ -168,6 +168,8 @@ pub fn server_args(layout: &Layout, version: &str, port: u16) -> Vec<std::ffi::O
         format!("--port={port}").into(),
         "--bind-address=127.0.0.1".into(),
         "--innodb-log-file-size=16M".into(),
+        // Dumps with big rows or long INSERTs import without "packet too big".
+        crate::dbdump::MAX_PACKET.into(),
         log,
     ]
 }
@@ -215,6 +217,99 @@ pub fn exec_sql(layout: &Layout, version: &str, port: u16, sql: &str) -> io::Res
     } else {
         Err(io::Error::other(String::from_utf8_lossy(&out.stderr).trim().to_owned()))
     }
+}
+
+/// Runs a query as root and returns its rows (tab-separated batch output).
+pub fn query(layout: &Layout, version: &str, port: u16, sql: &str) -> io::Result<Vec<Vec<String>>> {
+    let exe = version_dir(layout, version).join(r"bin\mariadb.exe");
+    let out = Command::new(exe)
+        .args([
+            "--no-defaults",
+            "--user=root",
+            "--host=127.0.0.1",
+            &format!("--port={port}"),
+            "--batch",
+            "--skip-column-names",
+            "-e",
+            sql,
+        ])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()?;
+    if !out.status.success() {
+        return Err(io::Error::other(String::from_utf8_lossy(&out.stderr).trim().to_owned()));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(|l| l.split('\t').map(str::to_owned).collect())
+        .collect())
+}
+
+/// One table of a database, as the dashboard lists it.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TableInfo {
+    pub name: String,
+    /// InnoDB's estimate, exact for small tables.
+    pub rows: u64,
+    /// Data and indexes.
+    pub bytes: u64,
+}
+
+/// Every database on the server.
+pub fn database_names(layout: &Layout, version: &str, port: u16) -> io::Result<Vec<String>> {
+    Ok(query(layout, version, port, "SHOW DATABASES")?
+        .into_iter()
+        .filter_map(|r| r.into_iter().next())
+        .collect())
+}
+
+pub fn database_exists(layout: &Layout, version: &str, port: u16, db: &str) -> io::Result<bool> {
+    if !is_safe_db_name(db) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("unsupported database name `{db}`"),
+        ));
+    }
+    let rows = query(
+        layout,
+        version,
+        port,
+        &format!("SELECT 1 FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = '{db}'"),
+    )?;
+    Ok(!rows.is_empty())
+}
+
+/// Tables of `db`, largest first; `None` if the database does not exist.
+pub fn tables(layout: &Layout, version: &str, port: u16, db: &str) -> io::Result<Option<Vec<TableInfo>>> {
+    if !is_safe_db_name(db) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("unsupported database name `{db}`"),
+        ));
+    }
+    if !database_exists(layout, version, port, db)? {
+        return Ok(None);
+    }
+    let rows = query(
+        layout,
+        version,
+        port,
+        &format!(
+            "SELECT TABLE_NAME, IFNULL(TABLE_ROWS, 0), IFNULL(DATA_LENGTH, 0) + IFNULL(INDEX_LENGTH, 0) \
+             FROM information_schema.TABLES WHERE TABLE_SCHEMA = '{db}' ORDER BY 3 DESC, 1"
+        ),
+    )?;
+    Ok(Some(
+        rows.into_iter()
+            .filter_map(|r| match r.as_slice() {
+                [name, rows, bytes] => Some(TableInfo {
+                    name: name.clone(),
+                    rows: rows.parse().unwrap_or(0),
+                    bytes: bytes.parse().unwrap_or(0),
+                }),
+                _ => None,
+            })
+            .collect(),
+    ))
 }
 
 /// A database name PHPev will put into SQL: letters, digits, `_`, `$`, `-`

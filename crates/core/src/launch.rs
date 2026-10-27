@@ -47,14 +47,43 @@ pub fn open_url(url: &str) -> io::Result<()> {
     )
 }
 
-/// Opens `url` in its own app-style window (`msedge --app`),
-/// or in the default browser when Edge is missing. Returns whether Edge was used.
-pub fn open_app_window(url: &str) -> io::Result<bool> {
+/// Opens `url` in its own app-style window (`msedge --app`) with the Edge
+/// profile in `profile`, or in the default browser when Edge is missing.
+/// Returns whether Edge was used.
+///
+/// The separate profile keeps the window out of the user's Edge: none of their
+/// extensions, sync or tabs load with it, and their browser does not grow with
+/// it. Measured on Home: about 145 MB whether the user's Edge runs or not (the
+/// page itself is ~35 MB; the rest is Edge's own processes). Software rendering
+/// saves the GPU process (~45 MB) and is plenty for this page; background work
+/// Edge does for a browsing profile is turned off as well. Unknown feature
+/// names are ignored by Edge, so the list can only fall out of date, not break.
+pub fn open_app_window(url: &str, profile: &Path) -> io::Result<bool> {
     check_http(url)?;
-    match edge_exe() {
-        Some(edge) => spawn(Command::new(edge).arg(format!("--app={url}")), 0).map(|()| true),
-        None => open_url(url).map(|()| false),
-    }
+    let Some(edge) = edge_exe() else {
+        return open_url(url).map(|()| false);
+    };
+    let mut cmd = Command::new(edge);
+    cmd.arg(format!("--user-data-dir={}", profile.display()))
+        .args([
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--disable-extensions",
+            "--disable-sync",
+            "--disable-background-networking",
+            "--disable-component-update",
+            "--disable-default-apps",
+            "--renderer-process-limit=1",
+            "--disable-gpu",
+            "--disable-gpu-compositing",
+            "--disable-crash-reporter",
+            concat!(
+                "--disable-features=msEntityExtraction,msEdgeShoppingUI,msEdgeCollections,",
+                "msUndersideButton,Translate,OptimizationHints,MediaRouter"
+            ),
+        ])
+        .arg(format!("--app={url}"));
+    spawn(&mut cmd, 0).map(|()| true)
 }
 
 /// Microsoft Edge, which ships with Windows 10/11 (but can be removed in some regions).
@@ -73,6 +102,15 @@ pub fn edge_exe() -> Option<PathBuf> {
                 .map(|dir| PathBuf::from(dir).join(r"Microsoft\Edge\Application\msedge.exe")),
         )
         .find(|p| p.is_file())
+}
+
+/// Starts `program` (an .exe, never a script: cmd would interpret `&` and
+/// the like in the folder name) with folder `dir` as its argument.
+pub fn open_with(program: &Path, dir: &Path) -> io::Result<()> {
+    if !program.extension().is_some_and(|e| e.eq_ignore_ascii_case("exe")) {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "not a program"));
+    }
+    spawn(Command::new(program).arg(dir), 0)
 }
 
 pub fn open_folder(dir: &Path) -> io::Result<()> {
@@ -106,7 +144,7 @@ mod tests {
     #[test]
     fn refuses_non_http() {
         assert!(open_url("file:///C:/Windows").is_err());
-        assert!(open_app_window("javascript:alert(1)").is_err());
+        assert!(open_app_window("javascript:alert(1)", Path::new("x")).is_err());
     }
 
     #[test]
