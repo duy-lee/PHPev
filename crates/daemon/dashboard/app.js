@@ -5,7 +5,7 @@ import { html, render, useState, useEffect } from '/vendor/htm-preact-standalone
 import { t, setStrings } from './i18n.js';
 import { api, useApi } from './api.js';
 import { Icon } from './icons.js';
-import { Toasts } from './ui/feedback.js';
+import { Toasts, showToast } from './ui/feedback.js';
 import { DialogHost } from './ui/dialog.js';
 import { JobDialog } from './ui/job-dialog.js';
 import { Palette } from './ui/palette.js';
@@ -155,6 +155,17 @@ function App() {
 }
 
 applyTheme(prefs.get('theme'));
+
+// The window runs in its own Edge profile; links that would open a tab there go to the
+// default browser instead, with the user's logins and extensions.
+const external = (e) => {
+  const a = e.target.closest?.('a[target="_blank"]');
+  if (!a || (e.type === 'auxclick' && e.button !== 1)) return;
+  e.preventDefault();
+  api('POST', '/open-url', { url: a.href }).catch((err) => showToast(t('common.error', { message: err.message }), true));
+};
+document.addEventListener('click', external);
+document.addEventListener('auxclick', external);
 
 // The daemon knows the chosen language (or the Windows one); English if it cannot answer.
 const strings = (lang) => fetch(`/i18n/${lang}.json`).then((r) => (r.ok ? r.json() : Promise.reject()));

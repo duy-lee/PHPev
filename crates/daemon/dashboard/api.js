@@ -26,8 +26,14 @@ export function useApi(path, everyMs) {
   useEffect(() => {
     load();
     if (!everyMs) return;
+    // Nothing is fetched while the window is minimised or hidden; on return, at once.
     const timer = setInterval(() => document.visibilityState === 'visible' && load(), everyMs);
-    return () => clearInterval(timer);
+    const onShow = () => document.visibilityState === 'visible' && load();
+    document.addEventListener('visibilitychange', onShow);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onShow);
+    };
   }, [load, everyMs]);
   return [state, load];
 }

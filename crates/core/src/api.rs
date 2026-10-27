@@ -420,6 +420,12 @@ pub struct UpdateInfo {
     pub checked_at: u64,
 }
 
+/// A link the dashboard hands to the default browser (http/https only).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct UrlRequest {
+    pub url: String,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TldRequest {
     pub tld: String,

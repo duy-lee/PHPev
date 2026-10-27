@@ -703,6 +703,12 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             message(d.daemon.db_use(&mariadb::major_of(&r.version)).await?)
         }
 
+        // The window has its own Edge profile: links open in the user's browser instead.
+        (Method::POST, ["open-url"]) => {
+            let r: UrlRequest = body(req).await?;
+            launch::open_url(&r.url)?;
+            message("opened")
+        }
         (Method::GET, ["ui"]) => {
             let config = Config::load(&layout.config_file())?;
             ok(&UiInfo {

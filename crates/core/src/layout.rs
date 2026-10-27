@@ -85,6 +85,11 @@ impl Layout {
         self.root.join(r"cache\downloads")
     }
 
+    /// Edge profile of the dashboard window, apart from the user's own browsing.
+    pub fn dashboard_profile_dir(&self) -> PathBuf {
+        self.root.join(r"cache\dashboard")
+    }
+
     pub fn config_file(&self) -> PathBuf {
         self.root.join("config.toml")
     }

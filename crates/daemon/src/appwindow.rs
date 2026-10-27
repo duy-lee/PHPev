@@ -73,7 +73,7 @@ pub fn open_dashboard(daemon: &Daemon, browser: bool) -> io::Result<Opened> {
     if last.is_some_and(|t| t.elapsed() < STARTING) {
         return Ok(Opened::Starting);
     }
-    let edge = launch::open_app_window(&url)?;
+    let edge = launch::open_app_window(&url, &daemon.layout.dashboard_profile_dir())?;
     *last = Some(Instant::now());
     drop(last);
     if edge && !WATCHING.swap(true, Ordering::AcqRel) {
