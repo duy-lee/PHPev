@@ -120,7 +120,7 @@ pub fn parse_releases(json: &str) -> io::Result<Vec<Release>> {
         };
         out.push(Release {
             line: line.clone(),
-            version: without_rebuild(version).to_owned(),
+            version: version.to_owned(),
             zip: build.zip.path,
             sha256: build.zip.sha256,
             toolset: key.trim_start_matches("nts-").trim_end_matches("-x64").to_owned(),
@@ -129,16 +129,6 @@ pub fn parse_releases(json: &str) -> io::Result<Vec<Release>> {
     }
     out.sort_by(|a, b| version::cmp(&b.version, &a.version));
     Ok(out)
-}
-
-/// `8.4.27-1` → `8.4.27`: windows.php.net numbers rebuilds of the same PHP
-/// release; the PHP version (what `php -v` reports and the install folder) has
-/// no suffix. Only the zip name keeps it.
-fn without_rebuild(version: &str) -> &str {
-    match version.rsplit_once('-') {
-        Some((base, n)) if !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) => base,
-        _ => version,
-    }
 }
 
 /// Current builds from releases.json, then the archived lines it no longer lists.
@@ -682,21 +672,24 @@ mod tests {
     }
 
     #[test]
-    fn rebuild_suffix_is_not_part_of_the_version() {
+    fn rebuilds_keep_their_number_and_sort_first() {
         let json = r#"{
             "8.2": {"version": "8.2.35-1",
                     "nts-vs16-x64": {"zip": {"path": "php-8.2.35-1-nts-Win32-vs16-x64.zip", "size": "1", "sha256": "aa"}}},
             "8.4": {"version": "8.4.27-1",
                     "nts-vs17-x64": {"zip": {"path": "php-8.4.27-1-nts-Win32-vs17-x64.zip", "size": "1", "sha256": "bb"}}},
             "8.1": {"version": "8.1.34",
-                    "nts-vs16-x64": {"zip": {"path": "php-8.1.34-nts-Win32-vs16-x64.zip", "size": "1", "sha256": "cc"}}}
+                    "nts-vs16-x64": {"zip": {"path": "php-8.1.34-nts-Win32-vs16-x64.zip", "size": "1", "sha256": "cc"}}},
+            "8.3": {"version": "8.3.36_p2",
+                    "nts-vs16-x64": {"zip": {"path": "php-8.3.36_p2-nts-Win32-vs16-x64.zip", "size": "1", "sha256": "dd"}}}
         }"#;
         let r = parse_releases(json).unwrap();
         let versions: Vec<&str> = r.iter().map(|r| r.version.as_str()).collect();
-        assert_eq!(versions, ["8.4.27", "8.2.35", "8.1.34"]);
-        assert_eq!(r[0].zip, "php-8.4.27-1-nts-Win32-vs17-x64.zip");
-        assert_eq!(resolve(&r, "8.4").unwrap().version, "8.4.27");
-        assert_eq!(without_rebuild("8.5.0-RC1"), "8.5.0-RC1");
+        // Shown as published, whatever the suffix, newest first.
+        assert_eq!(versions, ["8.4.27-1", "8.3.36_p2", "8.2.35-1", "8.1.34"]);
+        assert_eq!(resolve(&r, "8.3").unwrap().version, "8.3.36_p2");
+        assert_eq!(resolve(&r, "8.4").unwrap().version, "8.4.27-1");
+        assert_eq!(resolve(&r, "8.4.27").unwrap().version, "8.4.27-1");
     }
 
     #[test]
