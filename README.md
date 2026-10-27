@@ -82,10 +82,13 @@ Apache stack. PHPev aims for the Herd experience with three priorities:
 - **Automatic domains**: `park` a folder and every sub-folder becomes `http://<name>.localhost`;
   `link` a single project. No hosts file edits and no admin rights for `.localhost`.
 - **HTTPS per site** with a local certificate authority that is limited to local TLDs.
-- **Web dashboard** (in its own app window) with sites, PHP versions and extensions, services,
-  **live performance charts** (requests/s, p50/p95/p99 latency, slowest routes, CPU/RAM per process)
-  and **live logs** (PHPev, PHP, MariaDB and each Laravel app's `storage/logs`).
-- **Tray icon** to open the dashboard and sites, start/stop MariaDB and quit.
+- **Dashboard** in its own window, light or dark, in English or Vietnamese: a page per site
+  (PHP version, HTTPS, extensions, logs, database import and export, health checks with Fix
+  buttons, open in your editor), PHP versions and extensions, services, **live performance charts**
+  (requests/s, p50/p95/p99 latency, slowest routes, CPU/RAM per process), **live logs** and
+  Settings (ports, TLD, parked folders, disk use and more).
+- **Tray icon** to open the dashboard and sites, start/stop MariaDB and quit; it also tells you
+  when a new PHPev release is out.
 - **Safe by default**: every download is verified by SHA-256, admin rights are asked only for
   optional features, and actions with side effects ask before they run.
 
@@ -95,13 +98,14 @@ Apache stack. PHPev aims for the Herd experience with three priorities:
 |---|---|
 | OS | Windows 10 (1809 or later) or Windows 11, x64 |
 | Disk | ~90 MB per PHP version, ~60 MB per MariaDB version (plus your databases) |
-| Internet | Only to download PHP, MariaDB and Composer the first time |
+| Internet | To download PHP, MariaDB and Composer the first time, and one update check a day (can be turned off) |
 | Admin rights | Not needed for normal use (see [Security](#security) for the optional exceptions) |
 | Free ports | 80 and 443 (sites), 3306 (MariaDB), 7600 (dashboard); all configurable |
 
 Nothing has to be installed beforehand: the executables are built with a static C runtime, and
 PHPev installs the Visual C++ runtime that PHP needs if it is missing. Microsoft Edge (preinstalled
-on Windows) is used for the dashboard window when available; otherwise your default browser opens.
+on Windows) is used for the dashboard window when available, with a profile of its own; otherwise
+your default browser opens.
 
 ## Installation
 
@@ -338,20 +342,35 @@ The dashboard runs on `http://127.0.0.1:7600` and has these pages:
 
 | Page | What you can do |
 |---|---|
-| **Overview** | Service status, uptime and RAM, router/HTTPS, MariaDB, PHP pools, `doctor` warnings |
-| **Sites** | Link/unlink, HTTPS on/off, change PHP version, open the site, its folder or a terminal |
+| **Home** | What runs and what needs attention, your sites, services and memory; three getting-started steps on a fresh install |
+| **Sites** | A page per site: *Overview* (PHP version, HTTPS, Composer, extensions, workers, health with Fix buttons, unlink), *Requests*, *Logs* and *Database* (connection details, tables, import and export of `.sql`). Open the site, its folder, a terminal or your editor |
 | **PHP** | Install versions (with progress) or add a PHP folder, set the default, enable/disable extensions, restart workers |
 | **Services** | Start/stop MariaDB, switch or install versions |
 | **Performance** | Live requests/s, p50/p95 latency, latency histogram, status codes, slowest routes, CPU/RAM of each process, per site, with or without static files |
 | **Logs** | Follow the PHPev, PHP, MariaDB and Laravel (`storage/logs/*.log`) logs live, with a filter |
+| **Settings** | Start at sign-in, tray icon, theme, language, update check, code editor; TLD and parked folders; ports; HTTPS; Defender, hosts file and checks; disk use and clean-up; about |
+
+`Ctrl K` finds a site or a page. The menu and the site list can be collapsed; the dashboard
+remembers it.
 
 Performance data is kept in memory only (the last 10 minutes of per-second aggregates and the last
 2,000 requests). Query strings are never stored, and IDs in URLs are grouped (`/users/42` →
 `/users/{n}`).
 
+**The window** uses an Edge profile of its own (`cache\dashboard` in the PHPev folder) without
+extensions, sync or a GPU process, so it takes about 120 MB and does not make your own Edge
+heavier. Links in it open in your default browser.
+
+**Language:** English or Vietnamese, following the Windows display language unless you pick one in
+Settings. The `phpev` command stays in English.
+
+**Updates:** once a day PHPev asks GitHub whether a newer release exists (nothing about your
+computer is sent) and shows it on Home and in the tray, with *Skip this version*. Turn it off in
+Settings or with `check_updates = false` under `[ui]` in `config.toml`.
+
 The **tray icon** opens the dashboard with a left click. The right-click menu has *Open dashboard*,
-*Sites*, *Start/Stop MariaDB*, *Start with Windows* and *Exit PHPev*. The dashboard window closes
-by itself when PHPev stops.
+*Update available* (when there is one), *Sites*, *Start/Stop MariaDB*, *Start with Windows* and
+*Exit PHPev*. The dashboard window closes by itself when PHPev stops.
 
 ### Background service
 
@@ -400,7 +419,8 @@ Run `phpev <command> --help` for every option.
 
 Settings live in `%USERPROFILE%\.phpev\config.toml`. The CLI and the dashboard update it for you,
 but it is plain TOML and safe to edit by hand. Site changes apply on the next request; port
-changes apply after `phpev stop` and `phpev start`.
+changes made by hand apply after `phpev stop` and `phpev start` (from the dashboard's Settings,
+PHPev restarts by itself).
 
 ```toml
 php = "8.4"           # default PHP version
@@ -414,6 +434,12 @@ http = 80
 https = 443
 mariadb = 3306
 dashboard = 7600
+
+[ui]                  # dashboard choices; all optional
+theme = "dark"        # light | dark (default: follow Windows)
+language = "vi"       # en | vi (default: follow Windows)
+check_updates = false # default: on
+editor = "vscode"     # used by "Open in editor"
 
 [[sites]]
 name = "shop"
@@ -439,7 +465,8 @@ Files and folders:
 ├── data\mariadb\   databases, one folder per major version
 ├── certs\          local certificate authority
 ├── logs\           daemon.log, php-<version>.log, mariadb-<version>.err
-├── cache\          downloads in progress
+├── state.json      what to restore at start, and the last update check
+├── cache\          downloads, and the dashboard window's Edge profile
 └── config.toml
 ```
 
@@ -496,6 +523,8 @@ These are single-machine numbers. Please open an issue with yours.
 fixed set of API actions.
 - **Downloads** (PHP, MariaDB, Composer) come from the official sources and are verified by
   SHA-256 before they are used.
+- **Network**: besides those downloads, PHPev makes one request a day to the GitHub releases API
+  to look for a new version; it sends no identifier and can be turned off.
 - **Admin rights** are requested (one UAC prompt each) only for optional actions: writing the hosts
   file, Defender exclusions, putting the shims before another PHP on the system PATH, and installing
   the Visual C++ runtime.
