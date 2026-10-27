@@ -26,8 +26,10 @@ export function Php({ startJob }) {
   const [extOpen, setExtOpen] = useState(null);
   const [addPath, setAddPath] = useState('');
   if (!data) return html`<div class="page-head"><h1>${t('php.title')}</h1></div><${Loading} error=${error} />`;
+  // From the installed list (refreshed every 5 s), so removing or adding a version updates it at once.
+  const isInstalled = (version) => data.installed.some((v) => v.version === version);
   const loadAvailable = () => api('GET', '/php/available').then(setAvailable, (e) => showToast(t('common.error', { message: e.message }), true));
-  const install = (version) => api('POST', '/php/install', { version }).then((r) => startJob(r.job, () => { reload(); loadAvailable(); }), (e) => showToast(e.message, true));
+  const install = (version) => api('POST', '/php/install', { version }).then((r) => startJob(r.job, reload), (e) => showToast(e.message, true));
   const browse = () => api('POST', '/php/pick-folder').then((r) => r.path && setAddPath(r.path), (e) => showToast(e.message, true));
   const add = () => api('POST', '/php/add', { path: addPath.trim() }).then((r) => startJob(r.job, () => { setAddPath(''); reload(); }), (e) => showToast(e.message, true));
   const remove = async (v) => {
@@ -81,7 +83,7 @@ export function Php({ startJob }) {
         ? html`<p class="small muted" style="margin: 0; padding: 0 22px 18px">${t('php.available_hint')}</p>`
         : available.map((a) => html`<${SetRow} icon="download" title=${`PHP ${a.version}`} desc=${a.archived ? t('php.eol_hint') : t('php.line', { line: a.line })}>
             ${a.archived && html`<span class="pill warn">${t('php.eol')}</span>`}
-            ${a.installed
+            ${isInstalled(a.version)
               ? html`<span class="pill ok">${t('common.installed')}</span>`
               : html`<button class="btn sm" onClick=${() => install(a.version)}>${t('common.install')}</button>`}
           </${SetRow}>`)}
