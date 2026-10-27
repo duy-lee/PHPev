@@ -4,6 +4,49 @@ All notable changes to PHPev are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/). Until 1.0, minor versions may contain breaking changes.
 
+## [1.0.0-rc.1] - 2026-10-27
+
+The first release candidate of 1.0: a new dashboard. Please try it and report problems before
+1.0.0.
+
+### Install
+
+Download `phpev-1.0.0-rc.1-setup.exe` below and run it. It installs over an earlier version;
+your PHP versions, databases and settings stay in the PHPev home and are not touched.
+
+Or use the zip: download `phpev-1.0.0-rc.1-windows-x64.zip`, right-click it → **Properties** →
+**Unblock**, extract it, run `.\phpev.exe setup` in that folder, then open a new terminal.
+
+The files are not code-signed yet, so Windows may warn about them (**More info → Run anyway**).
+
+### Added
+
+- **New dashboard**, light and dark: a collapsible menu, a site list you can hide, Ctrl K to find
+  sites and pages, and in-app dialogs.
+- **Home** with what runs, your sites, services, memory and health, and three getting-started
+  steps on a fresh install.
+- **Site page** with tabs: Overview (PHP version, HTTPS, Composer, extensions, workers, health
+  with Fix buttons), Requests, Logs, and Database with import (progress, Cancel) and export.
+  **Open in editor** for VS Code, PhpStorm and other editors found on the computer.
+- **Settings**: start at sign-in, tray icon, theme, language, update check and code editor; the
+  TLD and parked folders; ports (PHPev restarts by itself); HTTPS; Defender, hosts file and
+  checks; disk use with clean-up of downloads and logs.
+- **Update check**: once a day PHPev asks GitHub for a newer release and shows it on Home and in
+  the tray, with "Skip this version". It can be turned off in Settings.
+- **Vietnamese** for the dashboard and the tray menu. It follows the Windows language unless you
+  pick one in Settings. The `phpev` command stays in English.
+
+### Changed
+
+- The dashboard window runs in its own Edge profile (no extensions, sync or GPU process): about
+  120 MB, apart from your own Edge. Links from it open in your default browser.
+
+### Fixed
+
+- **PHP 8.2 to 8.5 can be installed again.** windows.php.net now names rebuilds like `8.4.27-1`
+  (often security fixes); PHPev lists them newest first and installs them next to the release
+  they replace. If `phpev php install 8.4` said "not available", update to this version.
+
 ## [0.1.2] - 2026-10-26
 
 ### Install
@@ -100,6 +143,7 @@ See the [README](https://github.com/duy-lee/PHPev#readme) for the full guide.
 - Only MariaDB is supported (no MySQL); no Xdebug toggle, Node.js, Redis or mail catcher yet.
 - Tested mainly on Windows 11. Please report problems on other setups.
 
+[1.0.0-rc.1]: https://github.com/duy-lee/PHPev/releases/tag/v1.0.0-rc.1
 [0.1.2]: https://github.com/duy-lee/PHPev/releases/tag/v0.1.2
 [0.1.1]: https://github.com/duy-lee/PHPev/releases/tag/v0.1.1
 [0.1.0]: https://github.com/duy-lee/PHPev/releases/tag/v0.1.0
