@@ -14,14 +14,22 @@ use phpev_core::layout::Layout;
 use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
 
 pub const ARG: &str = "--open-dashboard";
+/// Started by a daemon that is about to stop to apply new settings (ports):
+/// waits for it to exit, then starts PHPev again and reopens the dashboard.
+pub const RESTART_ARG: &str = "--restart";
 
 const DAEMON_EXE: &str = "phpev-daemon.exe";
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
 const ERROR_ACCESS_DENIED: i32 = 5;
 
-pub fn open_dashboard() -> ExitCode {
-    match run() {
+pub fn open_dashboard(restart: bool) -> ExitCode {
+    let result = if restart {
+        wait_stopped().and_then(|()| run())
+    } else {
+        run()
+    };
+    match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             let text = wide(&format!("PHPev could not open its dashboard:\n\n{e}"));
@@ -37,6 +45,20 @@ pub fn open_dashboard() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+fn wait_stopped() -> io::Result<()> {
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while ipc::is_running() {
+        if Instant::now() > deadline {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "PHPev did not stop to apply the new settings; run `phpev stop` and `phpev start`",
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    Ok(())
 }
 
 fn run() -> io::Result<()> {
@@ -81,7 +103,7 @@ fn run() -> io::Result<()> {
 }
 
 /// Starts the service outside any job of the caller (an installer may run us in one).
-fn spawn(mut cmd: Command) -> io::Result<()> {
+pub(crate) fn spawn(mut cmd: Command) -> io::Result<()> {
     cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
     match cmd.creation_flags(CREATE_BREAKAWAY_FROM_JOB).spawn() {
         Err(e) if e.raw_os_error() == Some(ERROR_ACCESS_DENIED) => cmd.creation_flags(0).spawn().map(|_| ()),

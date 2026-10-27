@@ -3,7 +3,7 @@
 // touching the daemon. Strings come from /i18n/<lang>.json.
 import { html, render, useState, useEffect } from '/vendor/htm-preact-standalone.mjs';
 import { t, setStrings } from './i18n.js';
-import { useApi } from './api.js';
+import { api, useApi } from './api.js';
 import { Icon } from './icons.js';
 import { Toasts } from './ui/feedback.js';
 import { DialogHost } from './ui/dialog.js';
@@ -16,6 +16,8 @@ import { Php } from './pages/php.js';
 import { Services } from './pages/services.js';
 import { Performance } from './pages/performance.js';
 import { Logs } from './pages/logs.js';
+import { Settings } from './pages/settings.js';
+import { applyTheme } from './ui/theme.js';
 
 // Page registry: a new feature = one entry here + its API endpoints.
 const PAGES = [
@@ -25,6 +27,7 @@ const PAGES = [
   { id: 'services', label: 'nav.services', icon: 'database', view: Services },
   { id: 'performance', label: 'nav.performance', icon: 'chart', view: Performance },
   { id: 'logs', label: 'nav.logs', icon: 'logs', view: Logs },
+  { id: 'settings', label: 'nav.settings', icon: 'settings', view: Settings },
 ];
 
 // The menu collapses on its own in a narrow window.
@@ -71,7 +74,7 @@ function Sidebar({ active, mini, onToggle, go }) {
     <div class="brand">
       ${mini
         ? html`<img class="mark" src="/mark.svg" alt=${t('app.title')} />`
-        : html`<picture><source srcset="/logo-dark.svg" media="(prefers-color-scheme: dark)" /><img src="/logo-light.svg" alt=${t('app.title')} /></picture><span class="grow"></span>`}
+        : html`<img class="logo-light" src="/logo-light.svg" alt=${t('app.title')} /><img class="logo-dark" src="/logo-dark.svg" alt=${t('app.title')} /><span class="grow"></span>`}
       <button class="icon-btn ghost sm" aria-label=${label} title=${label} aria-expanded=${mini ? 'false' : 'true'} onClick=${onToggle}>
         <${Icon} name=${mini ? 'expand-right' : 'collapse-left'} size=${16} /></button>
     </div>
@@ -146,6 +149,9 @@ function App() {
     <${Toasts} />
   </div>`;
 }
+
+applyTheme(prefs.get('theme'));
+api('GET', '/settings').then((s) => applyTheme(s.theme), () => {});
 
 const lang = (navigator.language || 'en').slice(0, 2);
 fetch(`/i18n/${lang}.json`)

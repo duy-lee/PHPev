@@ -234,7 +234,7 @@ impl From<io::Error> for ApiError {
         let status = match e.kind() {
             io::ErrorKind::NotFound => StatusCode::NOT_FOUND,
             io::ErrorKind::InvalidInput | io::ErrorKind::InvalidData => StatusCode::BAD_REQUEST,
-            io::ErrorKind::AlreadyExists => StatusCode::CONFLICT,
+            io::ErrorKind::AlreadyExists | io::ErrorKind::AddrInUse => StatusCode::CONFLICT,
             io::ErrorKind::PermissionDenied => StatusCode::FORBIDDEN,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
@@ -712,6 +712,125 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             let wanted = r.version.clone();
             let (_, _previous) = blocking(move || ops::set_active_mariadb(&l, &wanted)).await?;
             message(d.daemon.db_use(&mariadb::major_of(&r.version)).await?)
+        }
+
+        // ---- settings
+        (Method::GET, ["settings"]) => {
+            let l = layout.clone();
+            ok(&blocking(move || crate::settings::info(&l)).await?)
+        }
+        (Method::GET, ["settings", "storage"]) => {
+            let l = layout.clone();
+            ok(&blocking(move || Ok(crate::settings::storage(&l))).await?)
+        }
+        (Method::POST, ["settings", "storage", id, "clean"]) => {
+            let (l, id) = (layout.clone(), id.to_string());
+            let freed = blocking(move || crate::settings::clean(&l, &id)).await?;
+            message(format!("Freed {:.1} MB", freed as f64 / 1_048_576.0))
+        }
+        (Method::PUT, ["settings", "general"]) => {
+            let r: GeneralSettings = body(req).await?;
+            let l = layout.clone();
+            blocking(move || crate::settings::set_general(&l, &r)).await?;
+            message("Saved")
+        }
+        (Method::PUT, ["settings", "ports"]) => {
+            let wanted: config::Ports = body(req).await?;
+            let l = layout.clone();
+            let changed = blocking(move || {
+                let current = Config::load(&l.config_file())?.ports;
+                crate::settings::check_ports(&current, &wanted)?;
+                if current == wanted {
+                    return Ok(false);
+                }
+                config::update(&l.config_file(), |c| c.ports = wanted)?;
+                Ok(true)
+            })
+            .await?;
+            if !changed {
+                return ok(&SettingsApplied {
+                    message: "Nothing changed".into(),
+                    restarting: false,
+                });
+            }
+            d.daemon.restart()?;
+            ok(&SettingsApplied {
+                message: "Ports saved; PHPev restarts to use them".into(),
+                restarting: true,
+            })
+        }
+        (Method::PUT, ["settings", "tld"]) => {
+            let r: TldRequest = body(req).await?;
+            let l = layout.clone();
+            // May show the UAC prompt (hosts file) and the CA trust dialog.
+            let change = blocking(move || ops::set_tld(&l, &r.tld, &mut ops::Quiet)).await?;
+            let mut text = format!("Sites now end in .{}", change.new);
+            if let Some(e) = &change.hosts_error {
+                text = format!("{text}, but the hosts file was not updated ({e})");
+            }
+            if change.old != change.new && change.https_in_use {
+                // HTTPS certificates are issued for the old names.
+                d.daemon.restart()?;
+                return ok(&SettingsApplied {
+                    message: format!("{text}; PHPev restarts for HTTPS"),
+                    restarting: true,
+                });
+            }
+            d.daemon.router.lock().unwrap_or_else(|e| e.into_inner()).tld = change.new;
+            ok(&SettingsApplied {
+                message: text,
+                restarting: false,
+            })
+        }
+        (Method::POST, ["settings", "parked"]) => {
+            let r: PathRequest = body(req).await?;
+            let l = layout.clone();
+            let added = blocking(move || ops::park(&l, Path::new(r.path.trim()))).await?;
+            sync_hosts_if_needed(&layout).await;
+            message(if added { "Folder parked" } else { "Already parked" })
+        }
+        (Method::POST, ["settings", "parked", "remove"]) => {
+            let r: PathRequest = body(req).await?;
+            let l = layout.clone();
+            blocking(move || ops::unpark(&l, Path::new(r.path.trim()))).await?;
+            sync_hosts_if_needed(&layout).await;
+            message("Folder no longer parked")
+        }
+        (Method::POST, ["settings", "parked", "pick"]) => {
+            let path = blocking(|| {
+                crate::folderpick::pick_folder(
+                    "Choose the folder whose sub-folders become sites",
+                    crate::appwindow::window(),
+                )
+            })
+            .await?;
+            ok(&PickedFolder { path })
+        }
+        (Method::POST, ["settings", "hosts"]) => {
+            let l = layout.clone();
+            let n = blocking(move || {
+                let config = Config::load(&l.config_file())?;
+                ops::write_hosts(&config, ops::needs_hosts(&config))
+            })
+            .await?;
+            message(format!("Hosts file updated ({n} sites)"))
+        }
+        (Method::POST, ["settings", "defender"]) => {
+            let l = layout.clone();
+            blocking(move || crate::settings::defender_exclude_home(&l)).await?;
+            message("PHPev folder excluded from Defender scans")
+        }
+        (Method::POST, ["settings", "open-home"]) => {
+            let l = layout.clone();
+            blocking(move || {
+                let before = crate::foreground::windows();
+                launch::open_folder(l.root())?;
+                let name = l.root().file_name().map(|n| n.to_string_lossy().into_owned());
+                crate::foreground::raise_new_window(before, name);
+                Ok(())
+            })
+            .await?;
+            message("opened")
         }
 
         // ---- performance (M9)

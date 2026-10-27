@@ -13,7 +13,7 @@ use phpev_core::{ops, sites};
 
 use crate::daemon;
 use crate::progress::Terminal;
-use crate::sites::{absolute, auto_hosts, write_hosts};
+use crate::sites::{absolute, auto_hosts};
 
 #[derive(Subcommand)]
 pub enum CaCommand {
@@ -146,18 +146,7 @@ pub fn tld(new: Option<String>) -> io::Result<ExitCode> {
         println!("{}", config.tld);
         return Ok(ExitCode::SUCCESS);
     };
-    let new = new.trim_start_matches('.').to_ascii_lowercase();
-    if new.is_empty()
-        || new.len() > 63
-        || !new
-            .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
-    {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "a TLD is one label: a-z, 0-9, -",
-        ));
-    }
+    let new = ops::normalize_tld(&new)?;
     if new == config.tld {
         println!("TLD is already .{new}");
         return Ok(ExitCode::SUCCESS);
@@ -165,21 +154,12 @@ pub fn tld(new: Option<String>) -> io::Result<ExitCode> {
     if new == "local" {
         println!("note: .local is also used by mDNS (printers, LAN devices); PHPev writes both 127.0.0.1 and ::1 entries to keep lookups fast.");
     }
-    let old = config.tld.clone();
-    config::update(&layout.config_file(), |c| c.tld = new.clone())?;
-    println!("TLD changed: .{old} → .{new}");
-
-    let updated = Config::load(&layout.config_file())?;
-    if new == "localhost" {
-        if let Err(e) = write_hosts(&updated, false) {
-            println!("warning: could not remove PHPev hosts entries ({e})");
-        }
-    } else {
-        auto_hosts(&layout);
+    let change = ops::set_tld(&layout, &new, &mut Terminal::default())?;
+    println!("TLD changed: .{} → .{}", change.old, change.new);
+    if let Some(e) = &change.hosts_error {
+        println!("warning: hosts file not updated ({e}); run `phpev hosts sync` later");
     }
-    if ca::exists(&layout) && updated.sites.iter().any(|s| s.secure) {
-        // A non-built-in TLD needs a CA certificate permitting it.
-        ops::ensure_trusted_ca(&layout, &new, &mut Terminal::default())?;
+    if change.https_in_use {
         println!("Restart PHPev so HTTPS uses the new names: phpev stop && phpev start");
     }
     Ok(ExitCode::SUCCESS)

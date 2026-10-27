@@ -48,6 +48,9 @@ pub struct Ui {
     /// The code editor "Open in editor" uses (`vscode`, `phpstorm`, …), once chosen.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub editor: Option<String>,
+    /// `light` or `dark`; the Windows setting when unset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub theme: Option<String>,
 }
 
 impl Ui {

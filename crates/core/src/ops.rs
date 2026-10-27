@@ -583,6 +583,97 @@ pub fn site_dir(layout: &Layout, name: &str) -> io::Result<PathBuf> {
     Ok(find_site(layout, name)?.path)
 }
 
+// ---------------------------------------------------------------- parked folders and TLD
+
+fn same_dir(a: &Path, b: &Path) -> bool {
+    a.to_string_lossy()
+        .trim_end_matches('\\')
+        .eq_ignore_ascii_case(b.to_string_lossy().trim_end_matches('\\'))
+}
+
+/// Parks `dir` (absolute, existing): each sub-folder becomes a site.
+/// Returns false if it was already parked.
+pub fn park(layout: &Layout, dir: &Path) -> io::Result<bool> {
+    if !dir.is_absolute() || !dir.is_dir() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("{} is not an existing folder", dir.display()),
+        ));
+    }
+    config::update(&layout.config_file(), |c| {
+        let new = !c.parked.iter().any(|p| same_dir(p, dir));
+        if new {
+            c.parked.push(dir.to_owned());
+        }
+        new
+    })
+}
+
+/// Stops parking `dir`. Returns false if it was not parked.
+pub fn unpark(layout: &Layout, dir: &Path) -> io::Result<bool> {
+    config::update(&layout.config_file(), |c| {
+        let before = c.parked.len();
+        c.parked.retain(|p| !same_dir(p, dir));
+        before != c.parked.len()
+    })
+}
+
+/// `tld` without a leading dot, lower case, if it is a single DNS label.
+pub fn normalize_tld(tld: &str) -> io::Result<String> {
+    let tld = tld.trim().trim_start_matches('.').to_ascii_lowercase();
+    if tld.is_empty()
+        || tld.len() > 63
+        || tld.starts_with('-')
+        || !tld
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "a TLD is one label: a-z, 0-9, -",
+        ));
+    }
+    Ok(tld)
+}
+
+/// What [`set_tld`] changed.
+pub struct TldChange {
+    pub old: String,
+    pub new: String,
+    /// The hosts file could not be updated (the change itself is saved).
+    pub hosts_error: Option<String>,
+    /// HTTPS is in use: the daemon must restart to serve the new names.
+    pub https_in_use: bool,
+}
+
+/// Changes the TLD. Leaving `localhost` writes the sites into the hosts file
+/// and going back removes them (both through UAC); a TLD the CA does not
+/// cover yet changes its name constraints, hence a new trust prompt.
+pub fn set_tld(layout: &Layout, wanted: &str, r: &mut dyn Report) -> io::Result<TldChange> {
+    let new = normalize_tld(wanted)?;
+    let old = config::update(&layout.config_file(), |c| std::mem::replace(&mut c.tld, new.clone()))?;
+    let config = Config::load(&layout.config_file())?;
+    let mut change = TldChange {
+        https_in_use: ca::exists(layout) && config.sites.iter().any(|s| s.secure),
+        old,
+        new,
+        hosts_error: None,
+    };
+    if change.old == change.new {
+        return Ok(change);
+    }
+    if needs_hosts(&config) || change.old != "localhost" {
+        r.info("Windows will ask for permission to update the hosts file");
+        if let Err(e) = write_hosts(&config, needs_hosts(&config)) {
+            change.hosts_error = Some(e.to_string());
+        }
+    }
+    if change.https_in_use {
+        ensure_trusted_ca(layout, &change.new, r)?;
+    }
+    Ok(change)
+}
+
 // ---------------------------------------------------------------- hosts file
 
 /// True when sites need hosts entries (any TLD other than `localhost`).

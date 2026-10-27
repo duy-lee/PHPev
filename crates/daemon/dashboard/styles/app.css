@@ -267,3 +267,21 @@ progress { width: 100%; height: 8px; accent-color: var(--accent); }
   .search-btn .search-label, .search-btn .kbd { display: none; }
   .charts { grid-template-columns: 1fr; }
 }
+
+/* ------------------------------------------------------------ settings */
+
+.content > .tabs { align-self: flex-start; max-width: 100%; overflow-x: auto; }
+.storage-size { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; width: 140px; }
+.storage-size .meter { width: 100%; }
+
+/* The logo follows the chosen theme, not only the Windows one. */
+.side .brand .logo-dark { display: none; }
+:root[data-theme="dark"] .side .brand .logo-light { display: none; }
+:root[data-theme="dark"] .side .brand .logo-dark { display: block; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .side .brand .logo-light { display: none; }
+  :root:not([data-theme="light"]) .side .brand .logo-dark { display: block; }
+}
+.storage-act { width: 92px; display: flex; justify-content: flex-end; }
+details > summary::-webkit-details-marker { display: none; }
+details[open] > summary svg:last-child { transform: rotate(180deg); }

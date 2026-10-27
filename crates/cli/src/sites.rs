@@ -40,13 +40,7 @@ fn same_path(a: &Path, b: &Path) -> bool {
 pub fn park(dir: Option<PathBuf>) -> io::Result<ExitCode> {
     let layout = Layout::resolve()?;
     let dir = absolute(dir)?;
-    let added = config::update(&layout.config_file(), |c| {
-        let new = !c.parked.iter().any(|p| same_path(p, &dir));
-        if new {
-            c.parked.push(dir.clone());
-        }
-        new
-    })?;
+    let added = ops::park(&layout, &dir)?;
     println!("{} {}", if added { "Parked" } else { "Already parked:" }, dir.display());
     let config = Config::load(&layout.config_file())?;
     let found: Vec<_> = sites::all(&config)
@@ -69,11 +63,7 @@ pub fn park(dir: Option<PathBuf>) -> io::Result<ExitCode> {
 pub fn unpark(dir: Option<PathBuf>) -> io::Result<ExitCode> {
     let layout = Layout::resolve()?;
     let dir = absolute(dir)?;
-    let removed = config::update(&layout.config_file(), |c| {
-        let before = c.parked.len();
-        c.parked.retain(|p| !same_path(p, &dir));
-        before != c.parked.len()
-    })?;
+    let removed = ops::unpark(&layout, &dir)?;
     println!(
         "{} {}",
         if removed { "Unparked" } else { "Was not parked:" },

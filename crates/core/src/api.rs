@@ -356,3 +356,60 @@ pub struct LogChunk {
     pub lines: Vec<String>,
     pub reset: bool,
 }
+
+/// Everything the Settings page shows (`GET /settings`).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SettingsInfo {
+    pub version: String,
+    /// Starts at Windows sign-in.
+    pub autostart: bool,
+    pub tray: bool,
+    /// `light`, `dark` or `system`.
+    pub theme: String,
+    pub tld: String,
+    pub parked: Vec<String>,
+    pub ports: crate::config::Ports,
+    /// The local certificate authority exists (HTTPS was turned on once).
+    pub ca_exists: bool,
+    pub ca_trusted: bool,
+    pub secure_sites: Vec<String>,
+    /// The PHPev home is excluded from Defender scanning.
+    pub defender_excluded: bool,
+    pub checks: Vec<Check>,
+    pub home: String,
+    pub config_file: String,
+}
+
+/// `PUT /settings/general`: only the fields sent change.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct GeneralSettings {
+    pub autostart: Option<bool>,
+    pub tray: Option<bool>,
+    pub theme: Option<String>,
+    /// Id of an installed editor (`GET /editors`).
+    pub editor: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct TldRequest {
+    pub tld: String,
+}
+
+/// Result of a change that may restart PHPev (ports, TLD).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SettingsApplied {
+    pub message: String,
+    /// PHPev restarts to apply it; the dashboard reopens by itself.
+    pub restarting: bool,
+}
+
+/// One folder of the Storage section (`GET /settings/storage`).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct StorageItem {
+    /// `php`, `mariadb`, `databases`, `composer`, `downloads`, `logs`.
+    pub id: String,
+    pub path: String,
+    pub bytes: u64,
+    /// "Clean up" can empty it (download cache, old logs).
+    pub clearable: bool,
+}
