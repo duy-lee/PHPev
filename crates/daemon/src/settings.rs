@@ -20,6 +20,7 @@ pub fn info(layout: &Layout) -> io::Result<SettingsInfo> {
         autostart: autostart::is_enabled().unwrap_or(false),
         tray: config.tray,
         theme: config.ui.theme.clone().unwrap_or_else(|| "system".into()),
+        check_updates: config.ui.check_updates(),
         tld: config.tld.clone(),
         parked: config.parked.iter().map(|p| p.display().to_string()).collect(),
         ports: config.ports.clone(),
@@ -37,7 +38,8 @@ pub fn info(layout: &Layout) -> io::Result<SettingsInfo> {
     })
 }
 
-/// Saves what `r` names; the tray icon follows at once.
+/// Saves what `r` names; the tray icon follows at once, and turning the
+/// update check on runs it if one is due.
 pub fn set_general(layout: &Layout, r: &GeneralSettings) -> io::Result<()> {
     let theme = match r.theme.as_deref() {
         None => None,
@@ -61,7 +63,7 @@ pub fn set_general(layout: &Layout, r: &GeneralSettings) -> io::Result<()> {
     if let Some(on) = r.autostart {
         autostart::set(layout, on)?;
     }
-    if r.tray.is_some() || theme.is_some() || r.editor.is_some() {
+    if r.tray.is_some() || theme.is_some() || r.editor.is_some() || r.check_updates.is_some() {
         config::update(&layout.config_file(), |c| {
             if let Some(id) = &r.editor {
                 c.ui.editor = Some(id.clone());
@@ -71,6 +73,10 @@ pub fn set_general(layout: &Layout, r: &GeneralSettings) -> io::Result<()> {
             }
             if let Some(theme) = theme {
                 c.ui.theme = theme;
+            }
+            if let Some(on) = r.check_updates {
+                // Unset means on.
+                c.ui.check_updates = (!on).then_some(false);
             }
         })?;
     }

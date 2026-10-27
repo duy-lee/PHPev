@@ -366,6 +366,8 @@ pub struct SettingsInfo {
     pub tray: bool,
     /// `light`, `dark` or `system`.
     pub theme: String,
+    /// Look for a newer release once a day.
+    pub check_updates: bool,
     pub tld: String,
     pub parked: Vec<String>,
     pub ports: crate::config::Ports,
@@ -388,6 +390,21 @@ pub struct GeneralSettings {
     pub theme: Option<String>,
     /// Id of an installed editor (`GET /editors`).
     pub editor: Option<String>,
+    pub check_updates: Option<bool>,
+}
+
+/// The saved result of the daily release check.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct UpdateInfo {
+    pub current: String,
+    /// Newest published release, if one was found.
+    pub latest: Option<String>,
+    /// A release to offer: newer, not skipped and the check is on.
+    pub available: Option<String>,
+    /// Release page of `latest`.
+    pub url: Option<String>,
+    /// Unix time of the last check; 0 = never.
+    pub checked_at: u64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

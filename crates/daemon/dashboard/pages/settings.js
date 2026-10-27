@@ -29,6 +29,9 @@ function General({ s, reload }) {
     <${SetRow} icon="tray" title=${t('settings.tray')} desc=${t('settings.tray_hint')}>
       <${Switch} label=${t('settings.tray')} checked=${s.tray} onChange=${(on) => save({ tray: on })} />
     </${SetRow}>
+    <${SetRow} icon="download" title=${t('settings.updates')} desc=${t('settings.updates_hint')}>
+      <${Switch} label=${t('settings.updates')} checked=${s.check_updates} onChange=${(on) => save({ check_updates: on })} />
+    </${SetRow}>
     <${SetRow} icon="theme" title=${t('settings.theme')} desc=${t('settings.theme_hint')}>
       <${Picker} label=${t('settings.theme')} value=${s.theme} onChange=${theme}
         options=${[{ value: 'system', label: t('settings.theme_system') }, { value: 'light', label: t('settings.theme_light') }, { value: 'dark', label: t('settings.theme_dark') }]} />

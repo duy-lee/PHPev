@@ -27,6 +27,7 @@ mod site_page;
 mod supervise;
 mod tls;
 mod tray;
+mod updates;
 
 use std::io;
 use std::process::ExitCode;
@@ -140,6 +141,7 @@ async fn run(layout: Layout) -> io::Result<()> {
 
     daemon.start_router().await;
     daemon.clone().start_dashboard().await;
+    updates::spawn(daemon.clone());
 
     let reaper = daemon.clone();
     tokio::spawn(async move {
@@ -242,9 +244,7 @@ impl Daemon {
     }
 
     pub(crate) fn remember_db(&self, running: bool) {
-        let mut state = State::load(&self.layout);
-        state.mariadb_running = running;
-        if let Err(e) = state.save(&self.layout) {
+        if let Err(e) = State::modify(&self.layout, |s| s.mariadb_running = running) {
             log_warn!("could not save state.json: {e}");
         }
     }

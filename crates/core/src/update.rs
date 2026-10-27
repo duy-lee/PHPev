@@ -1,0 +1,124 @@
+//! Newer PHPev releases: one GET to the GitHub releases API a day, nothing
+//! about the computer is sent. The answer is kept in `state.json`.
+
+use std::io;
+
+use serde::{Deserialize, Serialize};
+
+use crate::clock;
+use crate::layout::Layout;
+use crate::net::Http;
+use crate::state::State;
+use crate::version;
+
+const LATEST_URL: &str = "https://api.github.com/repos/duy-lee/PHPev/releases/latest";
+/// Seconds between two checks.
+pub const INTERVAL: u64 = 24 * 60 * 60;
+
+pub const CURRENT: &str = env!("CARGO_PKG_VERSION");
+
+/// The last answer from GitHub, plus what the user did with it.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct UpdateState {
+    /// Unix time of the last successful check; 0 = never.
+    pub checked_at: u64,
+    /// Newest published release (`0.2.0`), if any.
+    pub latest: Option<String>,
+    /// Its release page.
+    pub url: Option<String>,
+    /// "Skip this version": no banner or menu entry for it.
+    pub skipped: Option<String>,
+    /// The tray balloon was shown for this version.
+    pub notified: Option<String>,
+}
+
+impl UpdateState {
+    pub fn due(&self, now: u64) -> bool {
+        self.checked_at == 0 || now < self.checked_at || now - self.checked_at >= INTERVAL
+    }
+
+    /// The release to offer: newer than this build and not skipped.
+    pub fn available(&self) -> Option<&str> {
+        let latest = self.latest.as_deref()?;
+        (is_newer(latest, CURRENT) && self.skipped.as_deref() != Some(latest)).then_some(latest)
+    }
+}
+
+/// `latest` is a higher version than `current` (both `x.y.z`, a leading `v` is ignored).
+pub fn is_newer(latest: &str, current: &str) -> bool {
+    let (latest, current) = (latest.trim_start_matches('v'), current.trim_start_matches('v'));
+    version::parts(latest).is_some() && version::cmp(latest, current).is_gt()
+}
+
+#[derive(Deserialize)]
+struct Release {
+    tag_name: String,
+    html_url: String,
+}
+
+/// Asks GitHub for the newest release (drafts and pre-releases are not
+/// returned) and saves the answer. Blocking.
+pub fn check(layout: &Layout) -> io::Result<UpdateState> {
+    let release: Option<Release> = Http::new()?.get_json_opt(LATEST_URL)?;
+    modify(layout, |u| {
+        u.checked_at = clock::now_secs();
+        u.latest = release.as_ref().map(|r| r.tag_name.trim_start_matches('v').to_owned());
+        u.url = release.map(|r| r.html_url);
+    })
+}
+
+/// Changes the saved update state (skip, notified).
+pub fn modify(layout: &Layout, f: impl FnOnce(&mut UpdateState)) -> io::Result<UpdateState> {
+    State::modify(layout, |s| {
+        f(&mut s.update);
+        s.update.clone()
+    })
+}
+
+/// The saved state, without asking GitHub.
+pub fn load(layout: &Layout) -> UpdateState {
+    State::load(layout).update
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn newer_versions() {
+        assert!(is_newer("0.2.0", "0.1.2"));
+        assert!(is_newer("v0.1.10", "0.1.9"));
+        assert!(!is_newer("0.1.2", "0.1.2"));
+        assert!(!is_newer("0.1.1", "0.1.2"));
+        assert!(!is_newer("nightly", "0.1.2"));
+    }
+
+    #[test]
+    fn due_once_a_day() {
+        let s = UpdateState {
+            checked_at: 1_000_000,
+            ..Default::default()
+        };
+        assert!(UpdateState::default().due(5));
+        assert!(!s.due(1_000_000 + INTERVAL - 1));
+        assert!(s.due(1_000_000 + INTERVAL));
+        // Clock moved back: check again.
+        assert!(s.due(999_000));
+    }
+
+    #[test]
+    fn skipped_version_is_not_offered() {
+        let mut s = UpdateState {
+            latest: Some("99.0.0".into()),
+            ..Default::default()
+        };
+        assert_eq!(s.available(), Some("99.0.0"));
+        s.skipped = Some("99.0.0".into());
+        assert_eq!(s.available(), None);
+        s.latest = Some("99.0.1".into());
+        assert_eq!(s.available(), Some("99.0.1"));
+        s.latest = Some(CURRENT.into());
+        assert_eq!(s.available(), None);
+    }
+}

@@ -23,7 +23,7 @@ use hyper_util::rt::TokioIo;
 use phpev_core::api::{self, *};
 use phpev_core::config::Config;
 use phpev_core::net::Http;
-use phpev_core::{config, doctor, mariadb, ops, php, shim, sites, version};
+use phpev_core::{config, doctor, mariadb, ops, php, shim, sites, update, version};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use tokio::net::TcpListener;
@@ -714,6 +714,17 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             message(d.daemon.db_use(&mariadb::major_of(&r.version)).await?)
         }
 
+        // ---- update check
+        (Method::GET, ["update"]) => {
+            let l = layout.clone();
+            ok(&blocking(move || Ok(update_info(&l))).await?)
+        }
+        (Method::POST, ["update", "skip"]) => {
+            let l = layout.clone();
+            blocking(move || update::modify(&l, |u| u.skipped = u.latest.clone())).await?;
+            message("You will be told about the next version")
+        }
+
         // ---- settings
         (Method::GET, ["settings"]) => {
             let l = layout.clone();
@@ -730,8 +741,12 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
         }
         (Method::PUT, ["settings", "general"]) => {
             let r: GeneralSettings = body(req).await?;
+            let check = r.check_updates == Some(true);
             let l = layout.clone();
             blocking(move || crate::settings::set_general(&l, &r)).await?;
+            if check {
+                crate::updates::check_soon(&layout);
+            }
             message("Saved")
         }
         (Method::PUT, ["settings", "ports"]) => {
@@ -1186,6 +1201,18 @@ pub(crate) fn site_url(layout: &phpev_core::layout::Layout, site: &sites::Site) 
         )
     };
     Ok(format!("{scheme}://{}{port}", site.host(&config.tld)))
+}
+
+fn update_info(layout: &phpev_core::layout::Layout) -> UpdateInfo {
+    let state = update::load(layout);
+    let on = Config::load(&layout.config_file()).is_ok_and(|c| c.ui.check_updates());
+    UpdateInfo {
+        current: update::CURRENT.into(),
+        available: state.available().filter(|_| on).map(str::to_owned),
+        latest: state.latest,
+        url: state.url,
+        checked_at: state.checked_at,
+    }
 }
 
 fn site_list(layout: &phpev_core::layout::Layout) -> io::Result<Vec<SiteInfo>> {

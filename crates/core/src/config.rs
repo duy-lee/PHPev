@@ -51,9 +51,16 @@ pub struct Ui {
     /// `light` or `dark`; the Windows setting when unset.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub theme: Option<String>,
+    /// Look for a newer PHPev release once a day (on unless turned off).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub check_updates: Option<bool>,
 }
 
 impl Ui {
+    pub fn check_updates(&self) -> bool {
+        self.check_updates != Some(false)
+    }
+
     fn is_default(&self) -> bool {
         *self == Ui::default()
     }

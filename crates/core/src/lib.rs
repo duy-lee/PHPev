@@ -33,6 +33,7 @@ pub mod shim;
 pub mod sites;
 pub mod state;
 pub mod trust;
+pub mod update;
 pub mod version;
 mod wide;
 pub mod winsync;

@@ -135,11 +135,21 @@ function Health({ checks }) {
   </section>`;
 }
 
+function UpdateBanner({ update, reload }) {
+  return html`<section class="card update-banner">
+    <${SetRow} icon="download" title=${t('home.update_title', { version: update.available })} desc=${t('home.update_hint', { current: update.current })}>
+      <button class="btn quiet sm" onClick=${() => act(api('POST', '/update/skip'), reload)}>${t('home.update_skip')}</button>
+      <a class="btn sm" href=${update.url} target="_blank" rel="noreferrer">${t('home.update_open')}<${Icon} name="open" size=${14} /></a>
+    </${SetRow}>
+  </section>`;
+}
+
 export function Home() {
   const [{ data: overview, error }, reloadOverview] = useApi('/overview', 5000);
   const [{ data: sites }, reloadSites] = useApi('/sites', 5000);
   const [{ data: php }] = useApi('/php', 15000);
   const [{ data: mariadb }] = useApi('/mariadb', 15000);
+  const [{ data: update }, reloadUpdate] = useApi('/update', 600000);
   const [order, setOrder] = useState(prefs.get('homeSort') ?? 'recent');
   const [linking, setLinking] = useState(false);
   if (!overview || !sites) return html`<div class="page-head"><h1>${t('nav.home')}</h1></div><${Loading} error=${error} />`;
@@ -171,6 +181,7 @@ export function Home() {
       </div>
     </div>
 
+    ${update?.available && html`<${UpdateBanner} update=${update} reload=${reloadUpdate} />`}
     ${fresh && html`<${GetStarted} hasPhp=${hasPhp} hasDb=${hasDb} hasSites=${sites.length > 0} onLink=${() => setLinking(true)} />`}
 
     <div class="cols">

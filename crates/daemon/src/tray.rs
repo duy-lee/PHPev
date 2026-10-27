@@ -8,17 +8,17 @@
 
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicPtr, AtomicU32, Ordering};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use phpev_core::config::Config;
-use phpev_core::{autostart, launch, sites};
+use phpev_core::{autostart, launch, sites, update};
 use tokio::runtime::Handle;
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::HiDpi::{SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2};
 use windows_sys::Win32::UI::Shell::{
-    Shell_NotifyIconW, NIF_ICON, NIF_INFO, NIF_MESSAGE, NIF_TIP, NIIF_WARNING, NIM_ADD, NIM_DELETE, NIM_MODIFY,
-    NOTIFYICONDATAW,
+    Shell_NotifyIconW, NIF_ICON, NIF_INFO, NIF_MESSAGE, NIF_TIP, NIIF_INFO, NIIF_WARNING, NIM_ADD, NIM_DELETE,
+    NIM_MODIFY, NIN_BALLOONUSERCLICK, NOTIFYICONDATAW,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreatePopupMenu, DestroyMenu, GetCursorPos, GetSystemMetrics, LoadIconW, LoadImageW, PostMessageW,
@@ -40,6 +40,7 @@ const CMD_DASHBOARD: usize = 1;
 const CMD_DB_TOGGLE: usize = 2;
 const CMD_AUTOSTART: usize = 3;
 const CMD_EXIT: usize = 4;
+const CMD_UPDATE: usize = 5;
 const CMD_SITE: usize = 100;
 /// Sites listed in the menu at most (the dashboard lists all).
 const MAX_SITES: usize = 30;
@@ -51,6 +52,8 @@ struct Ctx {
 
 static CTX: OnceLock<Ctx> = OnceLock::new();
 static WINDOW: AtomicPtr<c_void> = AtomicPtr::new(std::ptr::null_mut());
+/// Page a click on the current balloon opens (the release page of an update).
+static BALLOON_URL: Mutex<Option<String>> = Mutex::new(None);
 /// Explorer broadcasts this after it restarts; the icon must then be added again.
 static TASKBAR_CREATED: AtomicU32 = AtomicU32::new(0);
 
@@ -94,6 +97,12 @@ pub fn handle(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Option<LR
             match lparam as u32 {
                 WM_LBUTTONUP => open_dashboard(),
                 WM_RBUTTONUP | WM_CONTEXTMENU => show_menu(hwnd),
+                NIN_BALLOONUSERCLICK => {
+                    let url = BALLOON_URL.lock().unwrap_or_else(|e| e.into_inner()).take();
+                    if let Some(url) = url {
+                        open(&url);
+                    }
+                }
                 _ => {}
             }
             Some(0)
@@ -175,16 +184,38 @@ fn icon() -> HICON {
 
 /// A balloon next to the icon, for errors of actions started from the menu.
 fn notify(title: &str, text: &str) {
+    balloon(title, text, NIIF_WARNING, None);
+}
+
+/// Tells about a newer release; a click on the balloon opens its page.
+/// False when there is no icon to show it on.
+pub fn notify_update(version: &str, url: &str) -> bool {
+    balloon(
+        &format!("PHPev {version} is available"),
+        "Click to see what is new and download it.",
+        NIIF_INFO,
+        Some(url),
+    )
+}
+
+fn balloon(title: &str, text: &str, kind: u32, url: Option<&str>) -> bool {
     let hwnd = WINDOW.load(Ordering::Acquire);
-    if hwnd.is_null() {
-        return;
+    if hwnd.is_null() || !enabled() {
+        return false;
     }
+    *BALLOON_URL.lock().unwrap_or_else(|e| e.into_inner()) = url.map(str::to_owned);
     let mut nid = base(hwnd);
     nid.uFlags = NIF_INFO;
-    nid.dwInfoFlags = NIIF_WARNING;
+    nid.dwInfoFlags = kind;
     copy(&mut nid.szInfoTitle, title);
     copy(&mut nid.szInfo, text);
-    unsafe { Shell_NotifyIconW(NIM_MODIFY, &nid) };
+    unsafe { Shell_NotifyIconW(NIM_MODIFY, &nid) != 0 }
+}
+
+fn open(url: &str) {
+    if let Err(e) = launch::open_url(url) {
+        notify("PHPev", &format!("Could not open {url}: {e}"));
+    }
 }
 
 fn open_dashboard() {
@@ -199,10 +230,23 @@ fn show_menu(hwnd: HWND) {
     let Some(ctx) = CTX.get() else { return };
     let config = config(ctx).unwrap_or_default();
     let mut site_urls = Vec::new();
+    let update = update::load(&ctx.daemon.layout);
+    let release = update
+        .available()
+        .filter(|_| config.ui.check_updates())
+        .zip(update.url.as_deref());
     unsafe {
         let menu = CreatePopupMenu();
         append(menu, MF_STRING, CMD_DASHBOARD, "Open dashboard");
         SetMenuDefaultItem(menu, CMD_DASHBOARD as u32, 0);
+        if let Some((version, _)) = release {
+            append(
+                menu,
+                MF_STRING,
+                CMD_UPDATE,
+                &format!("Update available: PHPev {version}"),
+            );
+        }
 
         let sites_menu = CreatePopupMenu();
         for site in sites::all(&config).iter().take(MAX_SITES) {
@@ -250,11 +294,11 @@ fn show_menu(hwnd: HWND) {
         ) as usize;
         PostMessageW(hwnd, WM_NULL, 0, 0);
         DestroyMenu(menu); // also destroys the submenu
-        run(ctx, cmd, &site_urls);
+        run(ctx, cmd, &site_urls, release.map(|(_, url)| url));
     }
 }
 
-fn run(ctx: &Ctx, cmd: usize, site_urls: &[String]) {
+fn run(ctx: &Ctx, cmd: usize, site_urls: &[String], release_url: Option<&str>) {
     match cmd {
         0 => {}
         CMD_DASHBOARD => open_dashboard(),
@@ -282,14 +326,17 @@ fn run(ctx: &Ctx, cmd: usize, site_urls: &[String]) {
                 notify("PHPev", &format!("Could not change autostart: {e}"));
             }
         }
+        CMD_UPDATE => {
+            if let Some(url) = release_url {
+                open(url);
+            }
+        }
         CMD_EXIT => {
             let _ = ctx.daemon.shutdown.send(None);
         }
         n if n >= CMD_SITE => {
             if let Some(url) = site_urls.get(n - CMD_SITE) {
-                if let Err(e) = launch::open_url(url) {
-                    notify("PHPev", &format!("Could not open {url}: {e}"));
-                }
+                open(url);
             }
         }
         _ => {}
