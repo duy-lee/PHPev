@@ -123,7 +123,11 @@ button, input, select { font: inherit; color: inherit; }
 .field { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; border-radius: var(--radius-control); border: 1px solid var(--hair-strong); background: var(--surface); color: var(--muted); }
 .field input { border: 0; outline: 0; background: none; font-size: 13.5px; color: var(--ink); width: 100%; min-width: 0; }
 .field:focus-within { border-color: var(--accent); }
-select.select { max-width: 280px; height: 34px; padding: 0 12px; border-radius: var(--radius-pill); border: 1px solid var(--hair-strong); background: var(--surface); font-size: 13px; font-weight: 600; cursor: pointer; }
+select.select { max-width: 280px; height: 34px; padding: 0 36px 0 14px; border-radius: var(--radius-pill); border: 1px solid var(--hair-strong); font-size: 13px; font-weight: 600; cursor: pointer; appearance: none;
+  /* Own chevron, 16 px from the edge (the native arrow sits against the border). */
+  background: linear-gradient(45deg, transparent 50%, var(--muted) 50%) calc(100% - 20px) 50% / 5px 5px no-repeat,
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%) calc(100% - 15px) 50% / 5px 5px no-repeat, var(--surface); }
+select.select:hover { border-color: var(--muted); }
 .check { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; cursor: pointer; }
 .check input { width: 16px; height: 16px; accent-color: var(--accent); }
 
