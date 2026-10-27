@@ -52,8 +52,8 @@ export function SitesToolbar({ route }) {
   };
   const label = state.listHidden ? t('sites.show_list') : t('sites.hide_list');
   return html`<div class="row-flex" style="position: relative; flex-wrap: nowrap">
-    <button class="icon-btn" aria-label=${label} title=${label} aria-pressed=${state.listHidden ? 'false' : 'true'} onClick=${toggleList}>
-      <${Icon} name="panel-left" size=${16} /></button>
+    <button class="icon-btn toggle" aria-label=${label} title=${label} aria-pressed=${state.listHidden ? 'false' : 'true'} onClick=${toggleList}>
+      <${Icon} name="collapse-left" size=${16} /></button>
     <a href="#/sites" class="small muted" style="padding-left: 4px" onClick=${(e) => { e.preventDefault(); location.replace('#/sites'); }}>${t('nav.sites')}</a>
     ${name && html`<span class="muted" aria-hidden="true">/</span>
       <button class="crumb" aria-haspopup="menu" aria-expanded=${state.switcher ? 'true' : 'false'} onClick=${() => ui.set({ switcher: !state.switcher })}>
@@ -108,13 +108,13 @@ export function Sites({ route, startJob }) {
   // so the breadcrumb and the tabs know it.
   if (route[1] !== name) queueMicrotask(() => location.replace(siteHref(name, route[2])));
   return html`<div class="site-layout">
-    ${!state.listHidden && html`<nav class="site-list" aria-label=${t('nav.sites')}>
+    <nav class="site-list ${state.listHidden ? 'hidden' : ''}" aria-label=${t('nav.sites')} inert=${state.listHidden}>
       <div class="site-list-head">
         <h2 class="section-title">${t('nav.sites')}</h2><span class="small muted">${sites.length}</span><span class="grow"></span>
         <button class="icon-btn sm" aria-label=${t('sites.link_title')} title=${t('sites.link_title')} onClick=${() => ui.set({ linking: true })}><${Icon} name="plus" size=${15} /></button>
       </div>
       ${sites.map((s) => html`<${SiteRow} site=${s} current=${s.name === name} key=${s.name} />`)}
-    </nav>`}
+    </nav>
     <${SiteDetail} key=${name} name=${name} tab=${route[2] || 'overview'} sub=${route[3]} onChanged=${reload} startJob=${startJob} />
   </div>${linking}`;
 }

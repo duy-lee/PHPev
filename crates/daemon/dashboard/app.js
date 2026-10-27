@@ -66,17 +66,17 @@ function useDaemonWatch() {
   return stopped;
 }
 
-function Sidebar({ active, mini, onToggle, go }) {
+function Sidebar({ active, mini, opening, onToggle, go }) {
   const [{ data: db }] = useApi('/mariadb', 5000);
   const [{ data: overview }] = useApi('/overview');
   const label = mini ? t('nav.expand') : t('nav.collapse');
-  return html`<nav class="side ${mini ? 'mini' : ''}" aria-label=${t('nav.main')}>
+  return html`<nav class="side ${mini ? 'mini' : ''} ${opening ? 'opening' : ''}" aria-label=${t('nav.main')}>
     <div class="brand">
       ${mini
         ? html`<img class="mark" src="/mark.svg" alt=${t('app.title')} />`
         : html`<img class="logo-light" src="/logo-light.svg" alt=${t('app.title')} /><img class="logo-dark" src="/logo-dark.svg" alt=${t('app.title')} /><span class="grow"></span>`}
-      <button class="icon-btn ghost sm" aria-label=${label} title=${label} aria-expanded=${mini ? 'false' : 'true'} onClick=${onToggle}>
-        <${Icon} name=${mini ? 'expand-right' : 'collapse-left'} size=${16} /></button>
+      <button class="icon-btn ghost sm toggle" aria-label=${label} title=${label} aria-expanded=${mini ? 'false' : 'true'} onClick=${onToggle}>
+        <${Icon} name="collapse-left" size=${16} /></button>
     </div>
     ${PAGES.map((p) => html`<a href="#/${p.id}" class="nav-i ${p.id === active ? 'on' : ''}" aria-current=${p.id === active ? 'page' : undefined}
       aria-label=${mini ? t(p.label) : undefined} title=${mini ? t(p.label) : undefined} onClick=${(e) => go(e, p.id)}>
@@ -128,12 +128,16 @@ function App() {
   const startJob = (id, after) => setJob({ id, after });
   // A narrow window collapses the menu unless the user opened it explicitly.
   const mini = narrow ? prefs.get('navCollapsed') !== '0' : collapsed;
+  const [opening, setOpening] = useState(false);
   const toggle = () => {
     prefs.set('navCollapsed', mini ? '0' : '1');
     setCollapsed(!mini);
+    // Marks the moment the menu opens, so the labels fade in then and only then.
+    setOpening(mini);
+    if (mini) setTimeout(() => setOpening(false), 400);
   };
   return html`<div class="shell">
-    <${Sidebar} active=${active.id} mini=${mini} onToggle=${toggle} go=${go} />
+    <${Sidebar} active=${active.id} mini=${mini} opening=${opening} onToggle=${toggle} go=${go} />
     <main class="content">
       <div class="toolbar">
         ${active.toolbar && html`<${active.toolbar} route=${route} />`}
