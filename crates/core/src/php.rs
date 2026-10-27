@@ -667,6 +667,27 @@ mod tests {
     }
 
     #[test]
+    fn rebuilds_keep_their_number_and_sort_first() {
+        let json = r#"{
+            "8.2": {"version": "8.2.35-1",
+                    "nts-vs16-x64": {"zip": {"path": "php-8.2.35-1-nts-Win32-vs16-x64.zip", "size": "1", "sha256": "aa"}}},
+            "8.4": {"version": "8.4.27-1",
+                    "nts-vs17-x64": {"zip": {"path": "php-8.4.27-1-nts-Win32-vs17-x64.zip", "size": "1", "sha256": "bb"}}},
+            "8.1": {"version": "8.1.34",
+                    "nts-vs16-x64": {"zip": {"path": "php-8.1.34-nts-Win32-vs16-x64.zip", "size": "1", "sha256": "cc"}}},
+            "8.3": {"version": "8.3.36_p2",
+                    "nts-vs16-x64": {"zip": {"path": "php-8.3.36_p2-nts-Win32-vs16-x64.zip", "size": "1", "sha256": "dd"}}}
+        }"#;
+        let r = parse_releases(json).unwrap();
+        let versions: Vec<&str> = r.iter().map(|r| r.version.as_str()).collect();
+        // Shown as published, whatever the suffix, newest first.
+        assert_eq!(versions, ["8.4.27-1", "8.3.36_p2", "8.2.35-1", "8.1.34"]);
+        assert_eq!(resolve(&r, "8.3").unwrap().version, "8.3.36_p2");
+        assert_eq!(resolve(&r, "8.4").unwrap().version, "8.4.27-1");
+        assert_eq!(resolve(&r, "8.4.27").unwrap().version, "8.4.27-1");
+    }
+
+    #[test]
     fn resolves_line_or_exact_version() {
         let r = parse_releases(SAMPLE).unwrap();
         assert_eq!(resolve(&r, "8.4").unwrap().version, "8.4.27");
