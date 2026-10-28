@@ -82,10 +82,12 @@ kèm cả một Apache. PHPev hướng tới trải nghiệm như Herd, với ba
 - **Domain tự động**: `park` một thư mục thì mọi thư mục con thành `http://<tên>.localhost`;
   `link` cho từng project. Domain `.localhost` không cần sửa file hosts, không cần quyền admin.
 - **HTTPS theo từng site**, bằng một CA nội bộ chỉ được phép cấp cert cho các TLD local.
-- **Dashboard web** (mở trong cửa sổ app riêng): quản lý site, version PHP và extension, dịch vụ;
-  **biểu đồ hiệu năng realtime** (req/s, độ trễ p50/p95/p99, route chậm nhất, CPU/RAM từng process)
-  và **xem log realtime** (PHPev, PHP, MariaDB và `storage/logs` của từng app Laravel).
-- **Icon tray** để mở dashboard và site, bật/tắt MariaDB, thoát.
+- **Dashboard** trong cửa sổ riêng, nền sáng hoặc tối, tiếng Anh hoặc tiếng Việt: mỗi site một trang
+  (version PHP, HTTPS, extension, log, import và export database, kiểm tra sức khỏe kèm nút Fix, mở
+  bằng editor), version PHP và extension, dịch vụ, **biểu đồ hiệu năng realtime** (req/s, độ trễ
+  p50/p95/p99, route chậm nhất, CPU/RAM từng process), **log realtime** và Settings (port, TLD, thư
+  mục park, dung lượng đĩa và nhiều thứ khác).
+- **Icon tray** để mở dashboard và site, bật/tắt MariaDB, thoát; đồng thời báo khi có bản PHPev mới.
 - **An toàn mặc định**: mọi file tải về đều được kiểm tra SHA-256; chỉ xin quyền admin cho các tính
   năng tùy chọn; thao tác có tác dụng phụ đều hỏi trước khi chạy.
 
@@ -95,13 +97,13 @@ kèm cả một Apache. PHPev hướng tới trải nghiệm như Herd, với ba
 |---|---|
 | Hệ điều hành | Windows 10 (1809 trở lên) hoặc Windows 11, x64 |
 | Dung lượng | ~90 MB mỗi version PHP, ~60 MB mỗi version MariaDB (chưa kể database) |
-| Internet | Chỉ cần lần đầu để tải PHP, MariaDB, Composer |
+| Internet | Lần đầu để tải PHP, MariaDB, Composer, và mỗi ngày một lần kiểm tra cập nhật (tắt được) |
 | Quyền admin | Không cần khi dùng bình thường (các ngoại lệ tùy chọn ở mục [Bảo mật](#bảo-mật)) |
 | Port trống | 80 và 443 (site), 3306 (MariaDB), 7600 (dashboard); đều đổi được |
 
 Không cần cài gì trước: các file exe được build với C runtime tĩnh, còn Visual C++ runtime mà PHP
-cần thì PHPev tự cài nếu máy chưa có. Dashboard mở bằng Microsoft Edge (có sẵn trên Windows);
-không có Edge thì mở bằng trình duyệt mặc định.
+cần thì PHPev tự cài nếu máy chưa có. Dashboard mở bằng Microsoft Edge (có sẵn trên Windows) với
+một profile riêng; không có Edge thì mở bằng trình duyệt mặc định.
 
 ## Cài đặt
 
@@ -330,18 +332,33 @@ Dashboard chạy ở `http://127.0.0.1:7600`, gồm các trang:
 
 | Trang | Làm được gì |
 |---|---|
-| **Overview** | Trạng thái dịch vụ, uptime và RAM, router/HTTPS, MariaDB, pool PHP, cảnh báo của `doctor` |
-| **Sites** | Link/unlink, bật/tắt HTTPS, đổi version PHP, mở site, mở thư mục hoặc terminal |
+| **Home** | Cái gì đang chạy và cái gì cần xử lý, site, dịch vụ và RAM; ba bước bắt đầu khi mới cài |
+| **Sites** | Mỗi site một trang: *Overview* (version PHP, HTTPS, Composer, extension, worker, sức khỏe kèm nút Fix, unlink), *Requests*, *Logs* và *Database* (thông tin kết nối, bảng, import và export `.sql`). Mở site, thư mục, terminal hoặc editor |
 | **PHP** | Cài version (có tiến độ) hoặc thêm thư mục PHP có sẵn, đặt mặc định, bật/tắt extension, restart worker |
 | **Services** | Bật/tắt MariaDB, đổi hoặc cài version |
 | **Performance** | Realtime: req/s, độ trễ p50/p95, histogram độ trễ, mã trạng thái, route chậm nhất, CPU/RAM từng process; lọc theo site, có/không tính file tĩnh |
 | **Logs** | Theo dõi realtime log của PHPev, PHP, MariaDB và Laravel (`storage/logs/*.log`), có ô lọc |
+| **Settings** | Chạy khi đăng nhập, icon tray, giao diện, ngôn ngữ, kiểm tra cập nhật, editor; TLD và thư mục park; port; HTTPS; Defender, file hosts và các kiểm tra; dung lượng đĩa và dọn dẹp; thông tin |
+
+`Ctrl K` để tìm site hoặc trang. Menu và danh sách site thu gọn được; dashboard nhớ lựa chọn này.
 
 Dữ liệu hiệu năng chỉ nằm trong RAM (số liệu gộp theo giây của 10 phút gần nhất và 2 000 request gần
 nhất). Query string không bao giờ được lưu, và ID trong URL được gom nhóm (`/users/42` → `/users/{n}`).
 
-**Icon tray**: click trái để mở dashboard. Menu chuột phải gồm *Open dashboard*, *Sites*,
-*Start/Stop MariaDB*, *Start with Windows* và *Exit PHPev*. Cửa sổ dashboard tự đóng khi PHPev dừng.
+**Cửa sổ dashboard** dùng một profile Edge riêng (`cache\dashboard` trong thư mục PHPev), không có
+extension, sync hay GPU process, nên chỉ tốn khoảng 120 MB và không làm Edge của bạn nặng thêm. Link
+trong cửa sổ mở bằng trình duyệt mặc định.
+
+**Ngôn ngữ:** tiếng Anh hoặc tiếng Việt, theo ngôn ngữ hiển thị của Windows trừ khi bạn chọn trong
+Settings. Lệnh `phpev` vẫn dùng tiếng Anh.
+
+**Cập nhật:** mỗi ngày một lần PHPev hỏi GitHub xem có bản mới không (không gửi thông tin gì về máy
+bạn) và hiện ở Home và tray, kèm *Skip this version*. Tắt trong Settings hoặc đặt
+`check_updates = false` trong `[ui]` của `config.toml`.
+
+**Icon tray**: click trái để mở dashboard. Menu chuột phải gồm *Open dashboard*, *Update available*
+(khi có bản mới), *Sites*, *Start/Stop MariaDB*, *Start with Windows* và *Exit PHPev*. Cửa sổ
+dashboard tự đóng khi PHPev dừng.
 
 ### Dịch vụ chạy nền
 
@@ -389,8 +406,9 @@ Chạy `phpev <lệnh> --help` để xem đầy đủ tùy chọn.
 ## Cấu hình
 
 Cấu hình nằm ở `%USERPROFILE%\.phpev\config.toml`. CLI và dashboard tự cập nhật file này, nhưng đây
-là TOML thuần nên sửa tay cũng an toàn. Thay đổi về site có hiệu lực ở request kế tiếp; đổi port thì
-cần `phpev stop` rồi `phpev start`.
+là TOML thuần nên sửa tay cũng an toàn. Thay đổi về site có hiệu lực ở request kế tiếp; đổi port
+bằng tay thì cần `phpev stop` rồi `phpev start` (đổi trong Settings của dashboard thì PHPev tự khởi
+động lại).
 
 ```toml
 php = "8.4"           # version PHP mặc định
@@ -404,6 +422,12 @@ http = 80
 https = 443
 mariadb = 3306
 dashboard = 7600
+
+[ui]                  # lựa chọn của dashboard; đều tùy chọn
+theme = "dark"        # light | dark (mặc định: theo Windows)
+language = "vi"       # en | vi (mặc định: theo Windows)
+check_updates = false # mặc định: bật
+editor = "vscode"     # dùng cho "Open in editor"
 
 [[sites]]
 name = "shop"
@@ -429,7 +453,8 @@ Thư mục:
 ├── data\mariadb\   database, mỗi major version một thư mục
 ├── certs\          CA nội bộ
 ├── logs\           daemon.log, php-<version>.log, mariadb-<version>.err
-├── cache\          file đang tải
+├── state.json      những gì cần khôi phục khi khởi động, và lần kiểm tra cập nhật gần nhất
+├── cache\          file tải về, và profile Edge của cửa sổ dashboard
 └── config.toml
 ```
 
@@ -483,6 +508,8 @@ từ tray mất khoảng **0,6 s**.
   `SameSite=Strict`. Có kiểm tra `Host` và `Origin`, yêu cầu JSON cho thao tác thay đổi (chống CSRF),
   gửi Content-Security-Policy chặt. Không có web shell: dashboard chỉ gọi được một tập API cố định.
 - **File tải về** (PHP, MariaDB, Composer) lấy từ nguồn chính thức và được kiểm tra SHA-256 trước khi dùng.
+- **Mạng**: ngoài các lần tải về đó, mỗi ngày PHPev gửi một request tới API releases của GitHub để
+  tìm bản mới; không gửi định danh nào và tắt được.
 - **Quyền admin** chỉ được xin (mỗi lần một UAC) cho các thao tác tùy chọn: ghi file hosts,
   exclusion Defender, đưa shim lên trước một PHP khác trong System PATH, cài Visual C++ runtime.
 - **CA nội bộ** bị giới hạn bằng name constraints ở các TLD local và chỉ được tin cho user hiện tại.
