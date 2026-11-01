@@ -38,8 +38,8 @@ use crate::Daemon;
 use phpev_core::launch;
 
 const COOKIE: &str = "phpev_session";
-/// Largest JSON body the API accepts.
-const MAX_BODY: usize = 64 * 1024;
+/// Largest JSON body the API accepts (a full php.ini is about 75 KB).
+const MAX_BODY: usize = 256 * 1024;
 
 pub struct Dashboard {
     daemon: Arc<Daemon>,
@@ -688,6 +688,19 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             d.daemon.pools.stop_version(v).await;
             let key = if r.enabled { "msg.ext_on" } else { "msg.ext_off" };
             message(tr(key, &[("ext", &ext), ("version", &v)]))
+        }
+        (Method::GET, ["php", v, "ini"]) => {
+            let (l, v) = (layout.clone(), v.to_string());
+            let (text, stamp) = blocking(move || ops::read_php_ini(&l, &v)).await?;
+            ok(&PhpIni { text, stamp })
+        }
+        (Method::PUT, ["php", v, "ini"]) => {
+            let r: PhpIni = body(req).await?;
+            let (l, v2) = (layout.clone(), v.to_string());
+            blocking(move || ops::save_php_ini(&l, &v2, &r.text, &r.stamp)).await?;
+            // Workers loaded the old php.ini; the pool restarts on the next request.
+            d.daemon.pools.stop_version(v).await;
+            message(tr("msg.php_ini_saved", &[("version", v)]))
         }
         (Method::DELETE, ["php", v]) => {
             let (l, v2) = (layout.clone(), v.to_string());

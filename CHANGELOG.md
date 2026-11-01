@@ -18,6 +18,9 @@ All notable changes to PHPev are documented here. The format follows
   makes one the default and shows which sites use each one.
 - **Default Composer**: `phpev composer use <version>` (or ★ under Services › Composer) picks the
   Composer that sites without their own version run, like the default PHP.
+- **Edit php.ini in the dashboard**: **Details** under a PHP version now has two tabs,
+  *Extensions* and *php.ini*. Saving checks the file with that PHP first and refuses one it
+  rejects, keeps the previous file as `php.ini.bak`, and restarts the version's workers.
 
 ### Changed
 
