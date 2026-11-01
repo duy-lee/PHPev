@@ -211,6 +211,16 @@ phpev tld test       # sites become http://<name>.test
 phpev tld localhost  # back to the default (PHPev's hosts entries are removed)
 ```
 
+**`.htaccess` rewrite rules.** Projects written for Apache keep their URLs: the router reads the
+`RewriteEngine`, `RewriteBase`, `RewriteCond` and `RewriteRule` lines of `.htaccess` files in the
+document root and its sub-folders, as mod_rewrite does (the deepest `.htaccess` decides, rules run
+again after an internal rewrite, `REQUEST_URI` stays the one the browser sent). Supported flags:
+`L`, `END`, `R`, `NC`, `OR`, `QSA`, `QSD`, `F`, `G`, `S`, `E`. When a site has active rules, a
+missing file is a 404 instead of going to `index.php`. Lines PHPev cannot use (`RewriteMap`, an
+unknown flag, a pattern with backreferences) are skipped and written to `logs\daemon.log`.
+`php_value` and `php_flag` lines are ignored: put those settings in a `.user.ini` file in the
+document root, which PHP reads itself.
+
 ### Importing an existing project
 
 ```powershell
@@ -662,7 +672,8 @@ Phase 1 (everything above) is complete. Planned next:
 - [x] Windows installer (`setup.exe`), listed in Settings → Apps
 - [ ] Code-signed releases, `winget` and Scoop packages
 - [ ] Xdebug on/off per PHP version
-- [ ] Optional nginx or Apache backend per site (for `.htaccess` and nginx rewrite rules)
+- [x] `.htaccess` rewrite rules (mod_rewrite subset)
+- [ ] Optional nginx or Apache backend per site (for the rest of `.htaccess` and nginx rewrite rules)
 - [ ] More services: mail catcher, Redis, queue workers, Node.js version management
 
 Ideas and votes are welcome in [issues](https://github.com/duy-lee/PHPev/issues).

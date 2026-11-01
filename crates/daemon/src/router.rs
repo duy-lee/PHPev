@@ -24,6 +24,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 
 use crate::fastcgi::{self, Event, Params};
+use crate::htaccess::{self, Outcome};
 use crate::http_util::{empty, escape, full, internal, text, Body, ChannelBody};
 use crate::log::log_warn;
 use crate::metrics::{self, Metrics, Record};
@@ -51,6 +52,7 @@ pub struct Router {
     /// `.php-version` files and `bin\php`; doing it per request would put
     /// several blocking file-system calls on the hot path.
     versions: Mutex<HashMap<PathBuf, (String, Instant)>>,
+    htaccess: htaccess::Cache,
 }
 
 /// How long a resolved PHP version is reused before `.php-version` is re-read.
@@ -84,6 +86,7 @@ impl Router {
             metrics,
             cache: Mutex::new(cache),
             versions: Mutex::new(HashMap::new()),
+            htaccess: htaccess::Cache::default(),
         }
     }
 
@@ -251,10 +254,53 @@ async fn handle(router: &Router, req: Request<Incoming>, remote: SocketAddr, htt
     }
 
     let docroot = site.docroot();
-    let Some(rel) = sanitize(req.uri().path()) else {
+    let Some(mut rel) = sanitize(req.uri().path()) else {
         return text(StatusCode::NOT_FOUND, "Not Found");
     };
-    match route(&docroot, &rel) {
+
+    // `.htaccess` rewrite rules run first; REQUEST_URI stays the original.
+    let mut query = None;
+    let mut env = Vec::new();
+    let mut fallback = true;
+    let mut path = rel.join("/");
+    if !rel.is_empty() && req.uri().path().ends_with('/') {
+        path.push('/');
+    }
+    let facts = htaccess::Request {
+        method: req.method().as_str(),
+        path_and_query: req.uri().path_and_query().map_or("/", |pq| pq.as_str()),
+        protocol: http_version(req.version()),
+        host: &host,
+        https,
+        port,
+        remote,
+        headers: req.headers(),
+    };
+    match htaccess::rewrite(&router.htaccess, &docroot, &path, req.uri().query(), &facts) {
+        Outcome::NoRules => {}
+        Outcome::Serve { path, query: q, env: e } => {
+            // Like Apache: with rewrite rules a missing file is a 404, not the front controller.
+            fallback = false;
+            let Some(r) = segments(&path) else {
+                return text(StatusCode::NOT_FOUND, "Not Found");
+            };
+            rel = r;
+            query = q;
+            env = e;
+        }
+        Outcome::Redirect { status, location } => {
+            return Response::builder()
+                .status(status)
+                .header(header::LOCATION, location)
+                .body(empty())
+                .unwrap_or_else(|_| internal());
+        }
+        Outcome::Status(status) => {
+            return text(status, status.canonical_reason().unwrap_or("Error"));
+        }
+    }
+
+    match route(&docroot, &rel, fallback) {
         Target::Static(file) => serve_static(&req, &file).await,
         Target::Php {
             script,
@@ -270,6 +316,8 @@ async fn handle(router: &Router, req: Request<Incoming>, remote: SocketAddr, htt
                 script: &script,
                 script_name,
                 path_info,
+                query,
+                env,
                 host: &host,
                 remote,
                 https,
@@ -310,6 +358,15 @@ fn request_host(req: &Request<Incoming>) -> String {
     host.to_ascii_lowercase()
 }
 
+fn http_version(v: http::Version) -> &'static str {
+    match v {
+        http::Version::HTTP_09 => "HTTP/0.9",
+        http::Version::HTTP_10 => "HTTP/1.0",
+        http::Version::HTTP_2 => "HTTP/2.0",
+        _ => "HTTP/1.1",
+    }
+}
+
 // ---------------------------------------------------------------- routing
 
 #[derive(Debug, PartialEq, Eq)]
@@ -333,7 +390,11 @@ enum Target {
 /// path check is needed per request. Symlinks/junctions inside the docroot are
 /// followed on purpose: Laravel's `public/storage` points outside `public/`.
 fn sanitize(path: &str) -> Option<Vec<String>> {
-    let decoded = percent_decode(path)?;
+    segments(&percent_decode(path)?)
+}
+
+/// `sanitize` for an already decoded path (the result of a rewrite).
+fn segments(decoded: &str) -> Option<Vec<String>> {
     let mut out = Vec::new();
     for seg in decoded.split('/') {
         if seg.is_empty() || seg == "." {
@@ -368,8 +429,8 @@ fn percent_decode(s: &str) -> Option<String> {
 /// Front-controller routing (Laravel and plain PHP):
 /// existing file → static, or run it if `.php`; `/x.php/extra` → run x.php with
 /// PATH_INFO; directory → its index.php / index.html; otherwise the
-/// docroot's index.php.
-fn route(docroot: &Path, rel: &[String]) -> Target {
+/// docroot's index.php (only with `fallback`; off when `.htaccess` rules decide).
+fn route(docroot: &Path, rel: &[String], fallback: bool) -> Target {
     let mut path = docroot.to_path_buf();
     for (i, seg) in rel.iter().enumerate() {
         path.push(seg);
@@ -407,7 +468,7 @@ fn route(docroot: &Path, rel: &[String]) -> Target {
         }
     }
     let front = docroot.join("index.php");
-    if front.is_file() {
+    if fallback && front.is_file() {
         return Target::Php {
             script: front,
             script_name: "/index.php".into(),
@@ -519,6 +580,10 @@ struct PhpRequest<'a> {
     script: &'a Path,
     script_name: String,
     path_info: String,
+    /// Query string after a rewrite; `None` keeps the request's.
+    query: Option<String>,
+    /// `E=` variables set by rewrite rules.
+    env: Vec<(String, String)>,
     host: &'a str,
     remote: SocketAddr,
     https: bool,
@@ -753,7 +818,10 @@ fn php_params(parts: &http::request::Parts, ctx: &PhpRequest<'_>, content_length
         .add("REQUEST_SCHEME", if ctx.https { "https" } else { "http" })
         .add("REQUEST_METHOD", parts.method.as_str())
         .add("REQUEST_URI", request_uri)
-        .add("QUERY_STRING", uri.query().unwrap_or(""))
+        .add(
+            "QUERY_STRING",
+            ctx.query.as_deref().unwrap_or_else(|| uri.query().unwrap_or("")),
+        )
         .add("DOCUMENT_ROOT", docroot.as_bytes())
         .add("DOCUMENT_URI", &ctx.script_name)
         .add("SCRIPT_NAME", &ctx.script_name)
@@ -774,6 +842,9 @@ fn php_params(parts: &http::request::Parts, ctx: &PhpRequest<'_>, content_length
         );
     if !ctx.path_info.is_empty() {
         p.add("PATH_INFO", &ctx.path_info);
+    }
+    for (name, value) in &ctx.env {
+        p.add(name, value);
     }
     if let Some(ct) = parts.headers.get(header::CONTENT_TYPE) {
         p.add("CONTENT_TYPE", ct.as_bytes());
@@ -877,7 +948,7 @@ mod tests {
             std::fs::write(root.join(f), "").unwrap();
         }
         let doc = root.join("public");
-        let r = |p: &str| route(&doc, &sanitize(p).unwrap());
+        let r = |p: &str| route(&doc, &sanitize(p).unwrap(), true);
 
         assert_eq!(r("/css/app.css"), Target::Static(doc.join(r"css\app.css")));
         assert!(matches!(r("/users/42"), Target::Php { script_name, .. } if script_name == "/index.php"));
@@ -886,6 +957,12 @@ mod tests {
             if script_name == "/info.php" && path_info == "/a/b"));
         assert!(matches!(r("/admin/"), Target::Php { script_name, .. } if script_name == "/admin/index.php"));
         assert_eq!(r("/docs"), Target::Static(doc.join(r"docs\index.html")));
+        // Without the fallback (rewrite rules decided), a missing file is not found.
+        assert_eq!(route(&doc, &sanitize("/users/42").unwrap(), false), Target::NotFound);
+        assert!(matches!(
+            route(&doc, &sanitize("/").unwrap(), false),
+            Target::Php { .. }
+        ));
         std::fs::remove_dir_all(&root).unwrap();
     }
 }
