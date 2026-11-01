@@ -11,6 +11,7 @@ mod endsession;
 mod fastcgi;
 mod folderpick;
 mod foreground;
+mod htaccess;
 mod http_util;
 mod i18n;
 mod job;

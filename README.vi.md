@@ -206,6 +206,15 @@ phpev tld test       # site thành http://<tên>.test
 phpev tld localhost  # quay về mặc định (các dòng hosts của PHPev được gỡ)
 ```
 
+**Rewrite rule trong `.htaccess`.** Project viết cho Apache giữ nguyên URL: router đọc các dòng
+`RewriteEngine`, `RewriteBase`, `RewriteCond` và `RewriteRule` trong file `.htaccess` ở document
+root và các thư mục con, giống mod_rewrite (`.htaccess` sâu nhất quyết định, rule chạy lại sau mỗi
+lần rewrite nội bộ, `REQUEST_URI` giữ nguyên như trình duyệt gửi). Hỗ trợ các cờ `L`, `END`, `R`,
+`NC`, `OR`, `QSA`, `QSD`, `F`, `G`, `S`, `E`. Khi site có rule đang bật, file không tồn tại trả về
+404 thay vì chạy `index.php`. Dòng nào PHPev không dùng được (`RewriteMap`, cờ lạ, pattern có
+backreference) sẽ bị bỏ qua và ghi vào `logs\daemon.log`. Các dòng `php_value` và `php_flag` không
+có tác dụng: hãy đặt các thiết lập đó vào file `.user.ini` ở document root, PHP tự đọc file này.
+
 ### Import project có sẵn
 
 ```powershell
@@ -644,7 +653,8 @@ Phase 1 (mọi thứ ở trên) đã hoàn tất. Dự kiến tiếp theo:
 - [x] Trình cài đặt Windows (`setup.exe`), có trong Settings → Apps
 - [ ] Ký số bản phát hành, gói `winget` và Scoop
 - [ ] Bật/tắt Xdebug theo version PHP
-- [ ] Backend nginx hoặc Apache tùy chọn cho từng site (cho `.htaccess` và rewrite rule kiểu nginx)
+- [x] Rewrite rule trong `.htaccess` (một phần mod_rewrite)
+- [ ] Backend nginx hoặc Apache tùy chọn cho từng site (cho phần còn lại của `.htaccess` và rewrite rule kiểu nginx)
 - [ ] Thêm dịch vụ: mail catcher, Redis, queue worker, quản lý version Node.js
 
 Mời bạn góp ý và bình chọn ở [issues](https://github.com/duy-lee/PHPev/issues).

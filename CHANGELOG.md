@@ -8,6 +8,10 @@ All notable changes to PHPev are documented here. The format follows
 
 ### Added
 
+- **`.htaccess` rewrite rules**: `RewriteEngine`, `RewriteBase`, `RewriteCond` and `RewriteRule`
+  in the document root and its sub-folders work as with Apache's mod_rewrite, so plain-PHP
+  projects written for Apache keep their URLs, images and styles. With active rules, a missing
+  file is a 404 instead of going to `index.php`. Lines PHPev cannot use are skipped and logged.
 - **Composer version per site**: `phpev composer pin <version>` (or `phpev link --composer`, or
   the site page of the dashboard) makes a site run its own Composer, e.g. 2.2 on one site and 2.8
   on another, whatever their PHP versions. Picked versions are downloaded once and shared;
