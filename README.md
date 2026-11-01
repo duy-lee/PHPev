@@ -304,15 +304,34 @@ mysqldump shop > shop.sql            # export
 
 ### Composer
 
+Composer versions are installed side by side and shared by the sites. One of them is the
+default; a site runs the default unless you pick another version for it.
+
 ```powershell
-phpev composer install       # download composer.phar if missing
-phpev composer self-update   # update to the latest stable release
-composer --version           # runs with the PHP version of the current folder
+phpev composer install               # the newest Composer (the first one installed becomes the default)
+phpev composer install 2.2           # another version, e.g. for PHP before 7.2.5
+phpev composer use 2.8               # make 2.8.x the default; installs it if needed
+phpev composer self-update           # install the newest Composer and make it the default
+phpev composer list --available      # installed and downloadable versions
+phpev composer remove 2.8.12         # once no site uses it (and it is not the default)
+
+phpev composer pin 2.2               # the site of the current folder runs 2.2.x
+phpev composer pin 2.8 --site shop   # another site
+phpev link --composer 2.8            # pin while linking
+phpev composer unpin                 # back to the default
+phpev composer which                 # which Composer runs here, and why
+composer --version                   # runs with the PHP and Composer of the current folder
 ```
 
-Composer 2.3 and later need PHP 7.2.5. While a PHP older than that is installed, PHPev also keeps
-Composer 2.2 LTS (`bin\composer\composer-2.2.phar`), and `composer` uses it automatically in
-projects on that PHP.
+`composer` in a terminal follows the folder: inside a site it runs the site's PHP and Composer
+(also in sub-folders), elsewhere the default PHP and the default Composer. Composer 2.3 and later
+need PHP 7.2.5: a version too new for the PHP is refused with a message, never swapped for another,
+so pick 2.2 for sites on older PHP. `composer self-update` is refused too, because each version is
+shared: use `phpev composer self-update`. In the dashboard, pick a site's version on its page under
+**Composer**, and install, remove or make a version the default (★) under **Services › Composer**.
+
+Upgrading from 1.0.0-rc.1 moves the old `composer.phar` and `composer-2.2.phar` into versions,
+makes the newest the default and pins 2.2 for the sites on PHP before 7.2.5 that ran it.
 
 ### HTTPS
 
@@ -345,12 +364,12 @@ The dashboard runs on `http://127.0.0.1:7600` and has these pages:
 | **Home** | What runs and what needs attention, your sites, services and memory; three getting-started steps on a fresh install |
 | **Sites** | A page per site: *Overview* (PHP version, HTTPS, Composer, extensions, workers, health with Fix buttons, unlink), *Requests*, *Logs* and *Database* (connection details, tables, import and export of `.sql`). Open the site, its folder, a terminal or your editor |
 | **PHP** | Install versions (with progress) or add a PHP folder, set the default, enable/disable extensions, restart workers |
-| **Services** | Start/stop MariaDB, switch or install versions |
+| **Services** | A card and a page per service: *MariaDB* (start/stop, switch or install versions) and *Composer* (install or remove versions, make one the default with ★, see which sites use them) |
 | **Performance** | Live requests/s, p50/p95 latency, latency histogram, status codes, slowest routes, CPU/RAM of each process, per site, with or without static files |
 | **Logs** | Follow the PHPev, PHP, MariaDB and Laravel (`storage/logs/*.log`) logs live, with a filter |
 | **Settings** | Start at sign-in, tray icon, theme, language, update check, code editor; TLD and parked folders; ports; HTTPS; Defender, hosts file and checks; disk use and clean-up; about |
 
-`Ctrl K` finds a site or a page. The menu and the site list can be collapsed; the dashboard
+`Ctrl K` finds a site, a page or a service. The menu and the site list can be collapsed; the dashboard
 remembers it.
 
 Performance data is kept in memory only (the last 10 minutes of per-second aggregates and the last
@@ -398,7 +417,8 @@ down cleanly when Windows logs off or shuts down.
 | `phpev doctor [--fix-path] [--defender-exclude]` | Check for problems (PATH order, ports, runtime, CA, …) |
 | `phpev php list\|install\|add\|remove\|use\|ini\|which\|warm` | Manage PHP versions |
 | `phpev db list\|install\|remove\|start\|stop\|use` | Manage MariaDB |
-| `phpev composer install\|self-update` | Manage Composer |
+| `phpev composer install\|use\|self-update\|list\|remove` | Manage Composer versions and the default |
+| `phpev composer pin <version>\|unpin [--site <name>]` | Pick the Composer version of a site |
 | `phpev start\|stop\|status` | Control the background service |
 | `phpev autostart on\|off` | Start the service at log in |
 | `phpev dashboard [--browser]` | Open the dashboard |

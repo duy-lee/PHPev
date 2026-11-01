@@ -44,6 +44,11 @@ pub struct Resolved {
     pub version: String,
     pub dir: PathBuf,
     pub source: Source,
+    /// Composer version picked for the linked site containing `cwd` (`2.8`),
+    /// whatever decided the PHP version.
+    pub composer: Option<String>,
+    /// The default Composer (`phpev composer use`), for a folder without a picked one.
+    pub composer_default: Option<String>,
 }
 
 #[derive(Debug)]
@@ -86,7 +91,7 @@ pub fn resolve(home: &Path, cwd: &Path) -> Result<Resolved, Error> {
     let cache = Cache::parse(&cache);
     let (wanted, source) = if let Some((file, wanted)) = find_version_file(cwd) {
         (wanted, Source::VersionFile(file))
-    } else if let Some((site, wanted)) = cache.site_for(cwd) {
+    } else if let Some((site, wanted)) = site_for(&cache.sites, cwd) {
         (wanted.to_owned(), Source::Site(site.to_owned()))
     } else if let Some(default) = cache.default {
         (default.to_owned(), Source::Default)
@@ -100,6 +105,8 @@ pub fn resolve(home: &Path, cwd: &Path) -> Result<Resolved, Error> {
             dir: php_dir.join(v),
             wanted,
             source,
+            composer: site_for(&cache.composer, cwd).map(|(_, v)| v.to_owned()),
+            composer_default: cache.composer_default.map(str::to_owned),
         }),
         None => Err(Error::NotInstalled { wanted, source }),
     }
@@ -175,11 +182,15 @@ fn parse_version_file(text: &str) -> Option<String> {
 }
 
 /// Parsed `shims.cache`: tab-separated `default <ver>`, `site <path> <ver>`,
-/// `mariadb <major>` and `mariadb-port <port>` lines.
+/// `composer <path> <ver>`, `composer-default <ver>`, `mariadb <major>` and
+/// `mariadb-port <port>` lines.
 #[derive(Debug, Default)]
 struct Cache<'a> {
     default: Option<&'a str>,
     sites: Vec<(&'a Path, &'a str)>,
+    /// Composer versions picked per site.
+    composer: Vec<(&'a Path, &'a str)>,
+    composer_default: Option<&'a str>,
     mariadb: Option<&'a str>,
     mariadb_port: Option<u16>,
 }
@@ -192,6 +203,8 @@ impl<'a> Cache<'a> {
             match (f.next(), f.next(), f.next()) {
                 (Some("default"), Some(v), None) => c.default = Some(v),
                 (Some("site"), Some(p), Some(v)) => c.sites.push((Path::new(p), v)),
+                (Some("composer"), Some(p), Some(v)) => c.composer.push((Path::new(p), v)),
+                (Some("composer-default"), Some(v), None) => c.composer_default = Some(v),
                 (Some("mariadb"), Some(v), None) => c.mariadb = Some(v),
                 (Some("mariadb-port"), Some(p), None) => c.mariadb_port = p.parse().ok(),
                 _ => {}
@@ -199,15 +212,15 @@ impl<'a> Cache<'a> {
         }
         c
     }
+}
 
-    /// The most specific (longest) site path containing `cwd`.
-    fn site_for(&self, cwd: &Path) -> Option<(&'a Path, &'a str)> {
-        self.sites
-            .iter()
-            .filter(|(p, _)| path_starts_with(cwd, p))
-            .max_by_key(|(p, _)| p.components().count())
-            .copied()
-    }
+/// The entry of the most specific (longest) site path containing `cwd`.
+fn site_for<'a>(sites: &[(&'a Path, &'a str)], cwd: &Path) -> Option<(&'a Path, &'a str)> {
+    sites
+        .iter()
+        .filter(|(p, _)| path_starts_with(cwd, p))
+        .max_by_key(|(p, _)| p.components().count())
+        .copied()
 }
 
 /// Case-insensitive, component-wise prefix test (Windows paths).
@@ -228,9 +241,15 @@ pub fn write_cache(config_file: &Path, config: &Config) -> io::Result<()> {
     if let Some(php) = &config.php {
         text.push_str(&format!("default\t{php}\n"));
     }
+    if let Some(composer) = &config.composer {
+        text.push_str(&format!("composer-default\t{composer}\n"));
+    }
     for site in &config.sites {
         if let Some(php) = &site.php {
             text.push_str(&format!("site\t{}\t{php}\n", site.path.display()));
+        }
+        if let Some(composer) = &site.composer {
+            text.push_str(&format!("composer\t{}\t{composer}\n", site.path.display()));
         }
     }
     if let Some(major) = &config.mariadb {
@@ -291,6 +310,7 @@ mod tests {
             name: "blog".into(),
             path: h.join(r"CODE\Blog"),
             php: Some("8.2".into()),
+            composer: Some("2.2".into()),
             secure: false,
             defender_excluded: false,
         });
@@ -298,13 +318,22 @@ mod tests {
         let r = resolve(&h, &project).unwrap();
         assert_eq!(r.version, "8.2.35");
         assert!(matches!(r.source, Source::Site(_)));
+        assert_eq!(r.composer.as_deref(), Some("2.2"));
 
-        // .php-version in a parent wins over everything.
+        // .php-version in a parent wins over everything; the site's Composer stays.
         std::fs::write(h.join(r"code\blog\.php-version"), "8.4\n").unwrap();
         let r = resolve(&h, &project).unwrap();
         assert_eq!(r.version, "8.4.27");
         assert_eq!(r.source, Source::VersionFile(h.join(r"code\blog\.php-version")));
         assert_eq!(r.dir, h.join(r"bin\php\8.4.27"));
+        assert_eq!(r.composer.as_deref(), Some("2.2"));
+        assert_eq!(resolve(&h, &h).unwrap().composer, None);
+
+        // The default Composer applies everywhere; a site's pick stays separate.
+        cfg.composer = Some("2.8".into());
+        write_cache(&h.join("config.toml"), &cfg).unwrap();
+        assert_eq!(resolve(&h, &h).unwrap().composer_default.as_deref(), Some("2.8"));
+        assert_eq!(resolve(&h, &project).unwrap().composer.as_deref(), Some("2.2"));
 
         std::fs::remove_dir_all(&h).unwrap();
     }

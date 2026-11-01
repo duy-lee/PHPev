@@ -4,6 +4,34 @@ All notable changes to PHPev are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/). Until 1.0, minor versions may contain breaking changes.
 
+## [Unreleased]
+
+### Added
+
+- **Composer version per site**: `phpev composer pin <version>` (or `phpev link --composer`, or
+  the site page of the dashboard) makes a site run its own Composer, e.g. 2.2 on one site and 2.8
+  on another, whatever their PHP versions. Picked versions are downloaded once and shared;
+  `phpev composer list|remove|unpin|which` manage them. A version too new for the site's PHP is
+  refused.
+- **Services page per service**: Services now lists each service as a card with its own page.
+  MariaDB keeps its controls; the new **Composer** page installs and removes Composer versions,
+  makes one the default and shows which sites use each one.
+- **Default Composer**: `phpev composer use <version>` (or ★ under Services › Composer) picks the
+  Composer that sites without their own version run, like the default PHP.
+
+### Changed
+
+- Every Composer is now an installed version: `composer.phar` and the separate 2.2 LTS phar are
+  gone. Upgrading moves them into versions, makes the newest the default and pins 2.2 for the
+  sites on PHP before 7.2.5 that ran it. A Composer too new for a site's PHP is now refused with a
+  message instead of being swapped for 2.2. `phpev composer self-update` installs the newest
+  version and makes it the default; `composer self-update` itself is refused.
+- The default PHP and MariaDB are marked and picked with a star, and versions are removed with a
+  trash button, the same on the PHP, MariaDB and Composer pages.
+- The PHP and Composer versions of a site, and the appearance, language and code editor in
+  Settings, are picked from a dropdown instead of a row of buttons, which stays tidy with many
+  versions.
+
 ## [1.0.0-rc.1] - 2026-10-27
 
 The first release candidate of 1.0: a new dashboard. Please try it and report problems before

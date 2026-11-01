@@ -13,6 +13,9 @@ use serde::{Deserialize, Serialize};
 pub struct Config {
     /// Default PHP version (e.g. `"8.4"`) when no project-specific one applies.
     pub php: Option<String>,
+    /// Default Composer version (e.g. `"2.8"`) for sites that do not pick one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub composer: Option<String>,
     /// Active MariaDB major version (e.g. `"11.4"`).
     pub mariadb: Option<String>,
     /// TLD used for parked/linked sites.
@@ -91,6 +94,10 @@ pub struct Site {
     pub path: PathBuf,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub php: Option<String>,
+    /// Composer version the `composer` shim runs for this site (`2.8` or
+    /// `2.8.12`); the default Composer when unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub composer: Option<String>,
     #[serde(default)]
     pub secure: bool,
     /// A Microsoft Defender exclusion was added for this folder by
@@ -103,6 +110,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             php: None,
+            composer: None,
             mariadb: None,
             tld: "localhost".into(),
             ports: Ports::default(),
@@ -221,6 +229,7 @@ mod tests {
                 name: "blog".into(),
                 path: r"C:\code\blog".into(),
                 php: None,
+                composer: Some("2.8".into()),
                 secure: true,
                 defender_excluded: false,
             }],

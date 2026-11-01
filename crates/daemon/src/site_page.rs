@@ -1,20 +1,14 @@
 //! Data for the dashboard's site page: what the project is, how PHPev runs it
 //! and whether it is ready. Blocking; call through `spawn_blocking`.
 
-use std::collections::HashMap;
 use std::io;
-use std::os::windows::process::CommandExt;
 use std::path::PathBuf;
-use std::sync::Mutex;
-use std::time::SystemTime;
 
-use phpev_core::api::{SiteDatabase, SiteDb, SiteDetail, SiteInfo};
+use phpev_core::api::{ComposerChoice, SiteDatabase, SiteDb, SiteDetail, SiteInfo};
 use phpev_core::config::Config;
 use phpev_core::layout::Layout;
 use phpev_core::shim::{self, Source};
-use phpev_core::{ca, composer, ipc, mariadb, php, project, version};
-
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+use phpev_core::{ca, composer, ipc, mariadb, php, project};
 
 pub fn detail(
     layout: &Layout,
@@ -67,6 +61,23 @@ pub fn detail(
         })
         .collect();
 
+    let picked = resolved.as_ref().map(|r| {
+        composer::pick(
+            &layout.composer_dir(),
+            &r.version,
+            r.composer.as_deref(),
+            r.composer_default.as_deref(),
+        )
+    });
+    let composer_versions: Vec<ComposerChoice> = composer::installed(&layout.composer_dir())
+        .into_iter()
+        .map(|c| ComposerChoice {
+            min_php: composer::min_php(&c).to_owned(),
+            runs: php_version.as_deref().is_some_and(|v| composer::runs_on(&c, v)),
+            version: c,
+        })
+        .collect();
+
     Ok(SiteDetail {
         php_source: match resolved.as_ref().map(|r| &r.source) {
             Some(Source::Site(_)) => "pinned",
@@ -79,9 +90,27 @@ pub fn detail(
         workers,
         workers_memory_kb,
         ca_trusted: ca::stored_der(layout).is_some_and(|der| ca::is_trusted(&der).unwrap_or(false)),
-        composer: resolved
-            .as_ref()
-            .and_then(|r| composer_version(layout, &r.dir, &r.version)),
+        composer: match &picked {
+            Some(Ok(p)) => Some(p.version.clone()),
+            _ => None,
+        },
+        composer_source: match &picked {
+            Some(Ok(p)) => Some(
+                match p.why {
+                    composer::Why::Site => "site",
+                    composer::Why::Default => "default",
+                    composer::Why::Newest => "newest",
+                }
+                .into(),
+            ),
+            _ => None,
+        },
+        // Composer never installed is "Not installed", not an error.
+        composer_error: match &picked {
+            Some(Err(e)) if !composer_versions.is_empty() => Some(e.clone()),
+            _ => None,
+        },
+        composer_versions,
         databases,
         checks,
         logs,
@@ -117,38 +146,6 @@ pub fn database(
         mariadb_running: db_server.is_some(),
         mariadb_version: db_server.map(|s| s.version.clone()),
     })
-}
-
-/// `composer --version` of the phar the shim would run, cached per phar and
-/// modification time (running PHP takes a moment).
-fn composer_version(layout: &Layout, php_dir: &std::path::Path, php_version: &str) -> Option<String> {
-    static CACHE: Mutex<Option<HashMap<PathBuf, (SystemTime, String)>>> = Mutex::new(None);
-    let phar = composer::phar_for(&layout.composer_dir(), php_version);
-    let modified = std::fs::metadata(&phar).and_then(|m| m.modified()).ok()?;
-    if let Some((when, v)) = CACHE.lock().ok()?.get_or_insert_with(HashMap::new).get(&phar) {
-        if *when == modified {
-            return Some(v.clone());
-        }
-    }
-    let out = std::process::Command::new(php_dir.join("php.exe"))
-        .env("PHPRC", php::php_path(php_dir).ok()?)
-        .arg(&phar)
-        .args(["--version", "--no-ansi", "--no-interaction"])
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
-        .ok()?;
-    // "Composer version 2.8.3 2024-11-17 13:13:04"
-    let text = String::from_utf8_lossy(&out.stdout);
-    let found = text
-        .split_whitespace()
-        .find(|w| version::parts(w).is_some_and(|p| p.len() >= 2))?
-        .to_owned();
-    CACHE
-        .lock()
-        .ok()?
-        .get_or_insert_with(HashMap::new)
-        .insert(phar, (modified, found.clone()));
-    Some(found)
 }
 
 /// The site's local database on connection `name`: (database name, server).

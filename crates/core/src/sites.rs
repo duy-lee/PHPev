@@ -19,6 +19,8 @@ pub struct Site {
     pub kind: Kind,
     /// PHP version pinned in config (linked sites only); `.php-version` still wins.
     pub php: Option<String>,
+    /// Composer version picked for the site (linked sites only).
+    pub composer: Option<String>,
     /// HTTPS enabled with `phpev secure` (linked sites only).
     pub secure: bool,
 }
@@ -89,6 +91,7 @@ pub fn all(config: &Config) -> Vec<Site> {
             path: s.path.clone(),
             kind: Kind::Linked,
             php: s.php.clone(),
+            composer: s.composer.clone(),
             secure: s.secure,
         })
         .collect();
@@ -100,6 +103,7 @@ pub fn all(config: &Config) -> Vec<Site> {
                     path,
                     kind: Kind::Parked,
                     php: None,
+                    composer: None,
                     secure: false,
                 });
             }
@@ -165,6 +169,7 @@ mod tests {
                 name: "plain".into(),
                 path: elsewhere.clone(),
                 php: Some("8.3".into()),
+                composer: None,
                 secure: false,
                 defender_excluded: false,
             }],

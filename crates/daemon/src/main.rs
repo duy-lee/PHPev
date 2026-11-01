@@ -118,6 +118,10 @@ async fn run(layout: Layout) -> io::Result<()> {
         }
     };
     log_info!("daemon started (pid {}), pipe {name}", std::process::id());
+    // The Composer phars of PHPev before 1.0 become versions.
+    if let Err(e) = phpev_core::ops::adopt_legacy_composer(&layout) {
+        log_warn!("could not move the old Composer files: {e}");
+    }
 
     let (shutdown_tx, mut shutdown_rx) = mpsc::unbounded_channel::<ShutdownRequest>();
     let daemon = Arc::new(Daemon {

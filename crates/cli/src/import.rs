@@ -15,7 +15,7 @@ use phpev_core::constraint::Constraint;
 use phpev_core::ipc::Request;
 use phpev_core::layout::Layout;
 use phpev_core::net::Http;
-use phpev_core::{composer, elevate, envfile, mariadb, php, project, shim, sites, version};
+use phpev_core::{composer, elevate, envfile, mariadb, ops, php, project, shim, sites, version};
 
 use crate::{daemon, runtimes};
 
@@ -80,15 +80,43 @@ pub fn import(opts: Options) -> io::Result<ExitCode> {
     // ---- 4. Composer dependencies
     if composer_json.is_some() {
         step("Composer");
-        let phar = composer::phar_for(&layout.composer_dir(), &php_version);
-        if !phar.is_file() && ask.confirm("Composer is not installed. Install it?") {
-            runtimes::composer_install(false)?;
+        ops::adopt_legacy_composer(&layout)?;
+        // A site imported again keeps the Composer version picked for it.
+        let pinned = Config::load(&layout.config_file())?
+            .sites
+            .into_iter()
+            .find(|s| same_path(&s.path, &dir))
+            .and_then(|s| s.composer);
+        let pick = || -> io::Result<Result<composer::Picked, String>> {
+            let default = Config::load(&layout.config_file())?.composer;
+            Ok(composer::pick(
+                &layout.composer_dir(),
+                &php_version,
+                pinned.as_deref(),
+                default.as_deref(),
+            ))
+        };
+        let mut picked = pick()?;
+        if composer::installed(&layout.composer_dir()).is_empty()
+            && ask.confirm("Composer is not installed. Install it?")
+        {
+            runtimes::composer_install(None)?;
+            picked = pick()?;
         }
+        let phar = match picked {
+            Ok(p) => Some(p.phar),
+            Err(e) => {
+                println!("  {e}");
+                None
+            }
+        };
         if dir.join(r"vendor\autoload.php").is_file() {
             println!("  vendor/ present");
-        } else if !phar.is_file() {
-            todo.push("install Composer, then run `composer install`".into());
-        } else if ask.confirm("vendor/ is missing. Run `composer install` now?") {
+        } else if phar.is_none() {
+            todo.push(
+                "get a Composer this PHP can run (phpev composer pin <version>), then run `composer install`".into(),
+            );
+        } else if let Some(phar) = phar.filter(|_| ask.confirm("vendor/ is missing. Run `composer install` now?")) {
             let ok = run_php(
                 &layout,
                 &php_version,
@@ -349,11 +377,13 @@ fn link_site(layout: &Layout, dir: &Path, name: &str, pin: Option<String>, exclu
         let previous = c.sites.iter().find(|s| s.name == name);
         let secure = previous.is_some_and(|s| s.secure);
         let defender_excluded = excluded || previous.is_some_and(|s| s.defender_excluded);
+        let composer = previous.and_then(|s| s.composer.clone());
         c.sites.retain(|s| s.name != name);
         c.sites.push(Site {
             name: name.to_owned(),
             path: dir.to_owned(),
             php: pin.clone(),
+            composer,
             secure,
             defender_excluded,
         });

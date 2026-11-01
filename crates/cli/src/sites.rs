@@ -75,7 +75,7 @@ pub fn unpark(dir: Option<PathBuf>) -> io::Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
-pub fn link(name: Option<String>, php_version: Option<String>) -> io::Result<ExitCode> {
+pub fn link(name: Option<String>, php_version: Option<String>, composer: Option<String>) -> io::Result<ExitCode> {
     let layout = Layout::resolve()?;
     let path = absolute(None)?;
     if let Some(v) = &php_version {
@@ -93,6 +93,9 @@ pub fn link(name: Option<String>, php_version: Option<String>) -> io::Result<Exi
         config.tld,
         path.display()
     );
+    if composer.is_some() {
+        crate::runtimes::pin_composer(&layout, &linked.name, composer)?;
+    }
     auto_hosts(&layout);
     Ok(ExitCode::SUCCESS)
 }
@@ -138,10 +141,15 @@ pub fn list() -> io::Result<ExitCode> {
             Err(_) => "PHP ?".to_owned(),
         };
         let kind = if s.kind == Kind::Linked { "linked" } else { "parked" };
+        let composer = s
+            .composer
+            .as_ref()
+            .map(|c| format!("  Composer {c}"))
+            .unwrap_or_default();
         let excluded = config.is_defender_excluded(&s.path);
         let defender = if excluded { "  (Defender exclusion)" } else { "" };
         println!(
-            "http://{}{port}  {kind}  {php}  {}{defender}",
+            "http://{}{port}  {kind}  {php}{composer}  {}{defender}",
             s.host(&config.tld),
             s.path.display()
         );

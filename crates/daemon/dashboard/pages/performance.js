@@ -4,7 +4,7 @@ import { api, res, useApi } from '../api.js';
 import { mb, uptime, fmtMs } from '../format.js';
 import { act, showToast } from '../ui/feedback.js';
 import { Chart } from '../ui/chart.js';
-import { Empty, Loading } from '../ui/controls.js';
+import { Select, Empty, Loading } from '../ui/controls.js';
 
 const HISTORY = 60; // seconds of process history kept in the browser
 
@@ -57,10 +57,8 @@ export function Performance() {
       <div class="grow"><h1>${t('perf.title')}</h1><p>${visible ? t('perf.live', { ago }) : t('perf.paused')}</p></div>
       <div class="row-flex">
         <label class="sr-only" for="perf-host">${t('perf.all_sites')}</label>
-        <select class="select" id="perf-host" value=${host} onChange=${(e) => { setHost(e.target.value); setProcHistory([]); }}>
-          <option value="">${t('perf.all_sites')}</option>
-          ${r.hosts.map((h) => html`<option value=${h}>${h}</option>`)}
-        </select>
+        <${Select} id="perf-host" label=${t('perf.all_sites')} value=${host} onChange=${(v) => { setHost(v); setProcHistory([]); }}
+          options=${[{ value: '', label: t('perf.all_sites') }, ...r.hosts.map((h) => ({ value: h }))]} />
         <label class="check"><input type="checkbox" checked=${withStatic} onChange=${(e) => setWithStatic(e.target.checked)} />${t('perf.include_static')}</label>
       </div>
     </div>

@@ -13,7 +13,7 @@ import { prefs } from './ui/prefs.js';
 import { Home } from './pages/home.js';
 import { Sites, SitesToolbar } from './pages/sites.js';
 import { Php } from './pages/php.js';
-import { Services } from './pages/services.js';
+import { Services, ServicesToolbar, SERVICES } from './pages/services.js';
 import { Performance } from './pages/performance.js';
 import { Logs } from './pages/logs.js';
 import { Settings } from './pages/settings.js';
@@ -24,11 +24,14 @@ const PAGES = [
   { id: 'home', label: 'nav.home', icon: 'home', view: Home },
   { id: 'sites', label: 'nav.sites', icon: 'globe', view: Sites, toolbar: SitesToolbar },
   { id: 'php', label: 'nav.php', icon: 'php', view: Php },
-  { id: 'services', label: 'nav.services', icon: 'database', view: Services },
+  { id: 'services', label: 'nav.services', icon: 'server', view: Services, toolbar: ServicesToolbar },
   { id: 'performance', label: 'nav.performance', icon: 'chart', view: Performance },
   { id: 'logs', label: 'nav.logs', icon: 'logs', view: Logs },
   { id: 'settings', label: 'nav.settings', icon: 'settings', view: Settings },
 ];
+
+// Ctrl K also finds the page of each service.
+const PALETTE_PAGES = [...PAGES, ...SERVICES.map((s) => ({ id: `services/${s.id}`, label: s.label, icon: s.icon }))];
 
 // The menu collapses on its own in a narrow window.
 const NARROW = '(max-width: 1100px)';
@@ -148,7 +151,7 @@ function App() {
       <${active.view} startJob=${startJob} route=${route} />
     </main>
     ${job && html`<${JobDialog} id=${job.id} onClose=${() => { job.after?.(); setJob(null); }} />`}
-    ${palette && html`<${Palette} pages=${PAGES} onClose=${() => setPalette(false)} onOpen=${(hash) => { setPalette(false); location.replace(hash); }} />`}
+    ${palette && html`<${Palette} pages=${PALETTE_PAGES} onClose=${() => setPalette(false)} onOpen=${(hash) => { setPalette(false); location.replace(hash); }} />`}
     <${DialogHost} />
     <${Toasts} />
   </div>`;

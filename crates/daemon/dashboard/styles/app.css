@@ -74,7 +74,7 @@ code { background: var(--soft); border: 1px solid var(--hair); padding: 0 5px; b
 
 .setrow { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; padding: 14px 22px; border-top: 1px solid var(--hair); }
 .card-head + .setrow, .setrow:first-child { border-top: 0; }
-.setrow .row-icon { width: 36px; height: 36px; border-radius: var(--radius-control); background: var(--soft); color: var(--ink-2); display: flex; align-items: center; justify-content: center; flex: none; }
+.setrow .row-icon, .scard .row-icon { width: 36px; height: 36px; border-radius: var(--radius-control); background: var(--soft); color: var(--ink-2); display: flex; align-items: center; justify-content: center; flex: none; }
 .setrow .row-text { flex: 1 1 0; min-width: 160px; }
 .setrow .row-text span { overflow-wrap: anywhere; }
 .setrow .row-text b { display: block; font-size: 14px; font-weight: 600; }
@@ -90,7 +90,7 @@ code { background: var(--soft); border: 1px solid var(--hair); padding: 0 5px; b
 button, input, select { font: inherit; color: inherit; }
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 0 16px; border-radius: var(--radius-pill); border: 1px solid var(--hair-strong); background: var(--surface); color: var(--ink); font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; }
 .btn:hover { background: var(--soft); }
-.btn:disabled { opacity: .5; cursor: default; }
+.btn:disabled, .icon-btn:disabled { opacity: .5; cursor: default; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .btn.primary:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
 .btn.quiet { border-color: transparent; background: var(--soft); color: var(--ink-2); }
@@ -103,6 +103,9 @@ button, input, select { font: inherit; color: inherit; }
 .icon-btn:hover { background: var(--soft); color: var(--ink); }
 .icon-btn.ghost { border-color: transparent; background: none; }
 .icon-btn.sm { width: 30px; height: 30px; }
+.icon-btn.star:hover { color: var(--accent); }
+.icon-btn.star.on { border-color: transparent; background: var(--accent-soft); color: var(--accent); cursor: default; }
+.icon-btn.star.on .icon { fill: currentColor; }
 
 .pill { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px; border-radius: var(--radius-pill); font-size: 11.5px; font-weight: 600; white-space: nowrap; background: var(--soft); color: var(--ink-2); border: 1px solid var(--hair); }
 .pill.ok { background: var(--ok-soft); color: var(--ok); border-color: transparent; }
@@ -120,12 +123,7 @@ button, input, select { font: inherit; color: inherit; }
 .switch[aria-checked="true"] span { background: #FFFFFF; }
 .switch:disabled { opacity: .5; cursor: default; }
 
-.picker, .tabs { display: inline-flex; gap: 4px; padding: 3px; border-radius: var(--radius-pill); }
-.picker { background: var(--soft); border: 1px solid var(--hair); flex-wrap: wrap; }
-.picker button { height: 28px; min-width: 44px; padding: 0 10px; border: 0; border-radius: var(--radius-pill); background: none; font-size: 13px; font-variant-numeric: tabular-nums; color: var(--ink-2); cursor: pointer; }
-.picker button:hover { color: var(--ink); }
-.picker button[aria-checked="true"] { background: var(--surface); color: var(--accent); font-weight: 600; box-shadow: var(--shadow-raised); }
-.tabs { padding: 4px; background: var(--hover); }
+.tabs { display: inline-flex; gap: 4px; padding: 4px; border-radius: var(--radius-pill); background: var(--hover); }
 .tabs button { height: 32px; padding: 0 16px; border: 0; border-radius: var(--radius-pill); background: none; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
 .tabs button:hover { color: var(--ink); }
 .tabs button[aria-selected="true"], .tabs button[aria-checked="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-raised); }
@@ -133,11 +131,20 @@ button, input, select { font: inherit; color: inherit; }
 .field { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; border-radius: var(--radius-control); border: 1px solid var(--hair-strong); background: var(--surface); color: var(--muted); }
 .field input { border: 0; outline: 0; background: none; font-size: 13.5px; color: var(--ink); width: 100%; min-width: 0; }
 .field:focus-within { border-color: var(--accent); }
-select.select { max-width: 280px; height: 34px; padding: 0 36px 0 14px; border-radius: var(--radius-pill); border: 1px solid var(--hair-strong); font-size: 13px; font-weight: 600; cursor: pointer; appearance: none;
-  /* Own chevron, 16 px from the edge (the native arrow sits against the border). */
-  background: linear-gradient(45deg, transparent 50%, var(--muted) 50%) calc(100% - 20px) 50% / 5px 5px no-repeat,
-    linear-gradient(135deg, var(--muted) 50%, transparent 50%) calc(100% - 15px) 50% / 5px 5px no-repeat, var(--surface); }
-select.select:hover { border-color: var(--muted); }
+button.select { display: inline-flex; align-items: center; gap: 8px; max-width: 240px; height: 34px; padding: 0 12px 0 14px; border-radius: var(--radius-pill); border: 1px solid var(--hair-strong); background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+button.select:hover, button.select[aria-expanded="true"] { border-color: var(--muted); }
+button.select .icon { flex: none; color: var(--muted); }
+.select-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dropdown { position: fixed; z-index: 40; max-width: 360px; max-height: 320px; overflow: hidden auto; padding: 6px; background: var(--surface); border: 1px solid var(--hair); border-radius: 14px; box-shadow: var(--shadow-overlay); outline: none; }
+.dropdown-item { display: flex; align-items: flex-start; gap: 8px; padding: 7px 12px 7px 8px; border-radius: var(--radius-control); font-size: 13px; color: var(--ink); cursor: pointer; }
+.dropdown-item.active { background: var(--hover); }
+.dropdown-item[aria-selected="true"] { color: var(--accent); font-weight: 600; }
+.dropdown-item[aria-disabled="true"] { color: var(--muted); cursor: default; }
+.dropdown-item .tick { display: flex; width: 15px; flex: none; padding-top: 1px; }
+.dropdown-item .grow { min-width: 0; }
+.dropdown-label { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dropdown-hint { display: block; font-size: 11.5px; font-weight: 400; color: var(--muted); }
+.dropdown-sep { height: 1px; margin: 6px 4px; background: var(--hair); }
 .check { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; cursor: pointer; }
 .check input { width: 16px; height: 16px; accent-color: var(--accent); }
 

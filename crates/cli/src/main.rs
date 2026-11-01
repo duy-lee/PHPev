@@ -94,6 +94,9 @@ enum Command {
         /// Pin a PHP version for this site (a `.php-version` file still wins)
         #[arg(long)]
         php: Option<String>,
+        /// Pin a Composer version for this site (`2.8` or `2.8.12`); installs it if needed
+        #[arg(long)]
+        composer: Option<String>,
     },
     /// Remove a linked site (default: the one for the current folder)
     Unlink { name: Option<String> },
@@ -210,10 +213,36 @@ enum DbCommand {
 
 #[derive(Subcommand)]
 enum ComposerCommand {
-    /// Download composer.phar if it is not installed yet
-    Install,
-    /// Replace composer.phar with the latest stable release
+    /// Install a Composer version (`2.8` or `2.8.12`; the newest without one).
+    /// The first one installed becomes the default
+    Install { version: Option<String> },
+    /// Install the newest Composer and make it the default
     SelfUpdate,
+    /// Make a Composer version (`2.8` or `2.8.12`) the default for sites that
+    /// do not pick one; installs it if needed
+    Use { version: String },
+    /// List installed (and with --available, downloadable) versions
+    List {
+        #[arg(long)]
+        available: bool,
+    },
+    /// Remove an installed version, e.g. `2.8.12`
+    Remove { version: String },
+    /// Run this Composer version (`2.8` or `2.8.12`) for a site; installs it if needed
+    Pin {
+        version: String,
+        /// Site name (default: the site of the current folder)
+        #[arg(long)]
+        site: Option<String>,
+    },
+    /// Go back to the default Composer
+    Unpin {
+        /// Site name (default: the site of the current folder)
+        #[arg(long)]
+        site: Option<String>,
+    },
+    /// Show which Composer `composer` would run in the current directory, and why
+    Which,
 }
 
 fn main() -> ExitCode {
@@ -258,8 +287,16 @@ fn main() -> ExitCode {
             DbCommand::Use { version } => daemon::db_use(&version),
         },
         Command::Composer { command } => match command {
-            ComposerCommand::Install => runtimes::composer_install(false),
-            ComposerCommand::SelfUpdate => runtimes::composer_install(true),
+            ComposerCommand::Install { version } => {
+                runtimes::composer_install(version.as_deref()).map(|_| ExitCode::SUCCESS)
+            }
+            ComposerCommand::SelfUpdate => runtimes::composer_self_update(),
+            ComposerCommand::Use { version } => runtimes::composer_use(&version),
+            ComposerCommand::List { available } => runtimes::composer_list(available),
+            ComposerCommand::Remove { version } => runtimes::composer_remove(&version),
+            ComposerCommand::Pin { version, site } => runtimes::composer_pin(site, Some(version)),
+            ComposerCommand::Unpin { site } => runtimes::composer_pin(site, None),
+            ComposerCommand::Which => runtimes::composer_which(),
         },
         Command::Start => daemon::start(),
         Command::Stop => daemon::stop(),
@@ -269,7 +306,7 @@ fn main() -> ExitCode {
         Command::Autostart { mode } => daemon::autostart(mode),
         Command::Park { dir } => sites::park(dir),
         Command::Unpark { dir } => sites::unpark(dir),
-        Command::Link { name, php } => sites::link(name, php),
+        Command::Link { name, php, composer } => sites::link(name, php, composer),
         Command::Unlink { name } => sites::unlink(name),
         Command::Sites => sites::list(),
         Command::Secure { name } => https::secure(name),
