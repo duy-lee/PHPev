@@ -258,7 +258,10 @@ Process con kế thừa lựa chọn này, nên `php artisan serve`, queue worke
 chạy cùng version. Đặt `PHPEV_SHIM_DEBUG=1` để shim in ra version đã chọn và lý do.
 
 Mỗi version có `php.ini` riêng do PHPev sinh ra, bật sẵn OPcache và cấu hình CA bundle để PHP gọi
-HTTPS được ngay. Bật/tắt extension ở trang PHP của dashboard hoặc sửa trực tiếp `php.ini`.
+HTTPS được ngay. Ở trang PHP của dashboard, nút **Details** của mỗi version mở hai tab: *Extensions*
+để bật/tắt extension, và *php.ini* để sửa file. Khi lưu, PHPev kiểm tra file bằng chính PHP đó trước
+(file mà PHP báo lỗi sẽ không được lưu), giữ file cũ thành `php.ini.bak` và khởi động lại các worker
+của version đó. Vẫn có thể sửa trực tiếp file `php.ini`.
 
 PHP 7.0 – 7.3 đã ngừng được hỗ trợ, không còn bản vá bảo mật; chỉ nên dùng cho project cũ. Các bản
 này lấy từ kho lưu trữ của windows.php.net, nơi không công bố mã checksum, nên PHPev chỉ cài bản cuối
@@ -354,7 +357,7 @@ Dashboard chạy ở `http://127.0.0.1:7600`, gồm các trang:
 |---|---|
 | **Home** | Cái gì đang chạy và cái gì cần xử lý, site, dịch vụ và RAM; ba bước bắt đầu khi mới cài |
 | **Sites** | Mỗi site một trang: *Overview* (version PHP, HTTPS, Composer, extension, worker, sức khỏe kèm nút Fix, unlink), *Requests*, *Logs* và *Database* (thông tin kết nối, bảng, import và export `.sql`). Mở site, thư mục, terminal hoặc editor |
-| **PHP** | Cài version (có tiến độ) hoặc thêm thư mục PHP có sẵn, đặt mặc định, bật/tắt extension, restart worker |
+| **PHP** | Cài version (có tiến độ) hoặc thêm thư mục PHP có sẵn, đặt mặc định, bật/tắt extension, sửa `php.ini`, restart worker |
 | **Services** | Mỗi dịch vụ một thẻ và một trang: *MariaDB* (bật/tắt, đổi hoặc cài version) và *Composer* (cài hoặc gỡ version, đặt bản mặc định bằng ★, xem site nào đang dùng) |
 | **Performance** | Realtime: req/s, độ trễ p50/p95, histogram độ trễ, mã trạng thái, route chậm nhất, CPU/RAM từng process; lọc theo site, có/không tính file tĩnh |
 | **Logs** | Theo dõi realtime log của PHPev, PHP, MariaDB và Laravel (`storage/logs/*.log`), có ô lọc |

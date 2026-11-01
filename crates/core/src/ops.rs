@@ -315,6 +315,71 @@ pub fn set_extension(layout: &Layout, version: &str, ext: &str, enabled: bool) -
     php::modules(layout, version).map(|_| ())
 }
 
+/// The php.ini of installed PHP `version` (exact), and a stamp that changes
+/// whenever the file does, for [`save_php_ini`].
+pub fn read_php_ini(layout: &Layout, version: &str) -> io::Result<(String, String)> {
+    let ini = php_ini_of(layout, version)?;
+    let text = String::from_utf8(std::fs::read(&ini)?).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("{} is not UTF-8 text", ini.display()),
+        )
+    })?;
+    Ok((text, stamp(&ini)?))
+}
+
+/// Replaces the php.ini of PHP `version` with `text`, unless the file changed
+/// since it was read (`stamp` from [`read_php_ini`]) or PHP rejects the new
+/// text. The previous file is kept as `php.ini.bak`. The version's workers
+/// must be restarted afterwards.
+pub fn save_php_ini(layout: &Layout, version: &str, text: &str, stamp_read: &str) -> io::Result<()> {
+    let ini = php_ini_of(layout, version)?;
+    if stamp(&ini)? != stamp_read {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("the php.ini of PHP {version} changed since it was opened; reload it first"),
+        ));
+    }
+    // Keep the file's line endings; a textarea sends `\n`.
+    let crlf = std::fs::read_to_string(&ini).is_ok_and(|t| t.contains("\r\n"));
+    let text = text.replace("\r\n", "\n");
+    let text = if crlf { text.replace('\n', "\r\n") } else { text };
+
+    let check = ini.with_extension("ini.check");
+    std::fs::write(&check, &text)?;
+    let checked = php::modules_with(layout, version, &check);
+    let _ = std::fs::remove_file(&check);
+    // The lines PHP complains about are those of the text being saved: name the real file.
+    checked.map_err(|e| {
+        io::Error::new(
+            e.kind(),
+            e.to_string().replace(&*check.to_string_lossy(), &ini.to_string_lossy()),
+        )
+    })?;
+    std::fs::copy(&ini, ini.with_extension("ini.bak"))?;
+    config::write_atomic(&ini, text.as_bytes())
+}
+
+fn php_ini_of(layout: &Layout, version: &str) -> io::Result<PathBuf> {
+    // `version` comes from a URL: only an installed version names a folder.
+    if !php::installed(layout).iter().any(|v| v == version) {
+        return Err(not_found(format!(
+            "PHP {version} is not installed (give the full version, e.g. 8.4.27)"
+        )));
+    }
+    Ok(php::version_dir(layout, version).join("php.ini"))
+}
+
+/// Size and modification time of `file`.
+fn stamp(file: &Path) -> io::Result<String> {
+    let meta = std::fs::metadata(file)?;
+    let modified = meta
+        .modified()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    Ok(format!("{}-{modified}", meta.len()))
+}
+
 // ---------------------------------------------------------------- MariaDB
 
 /// Installs the latest release of a MariaDB major and initializes its datadir;
@@ -1041,6 +1106,25 @@ mod tests {
         set_site_php(&layout, "new", Some("7.1".into())).unwrap();
         remove_composer(&layout, "2.8.12").unwrap();
         assert_eq!(composer::installed(&layout.composer_dir()), ["2.2.31"]);
+        let _ = std::fs::remove_dir_all(layout.root());
+    }
+
+    #[test]
+    fn php_ini_is_saved_only_over_the_text_that_was_read() {
+        let layout = home("php-ini", &["8.4.27"], &[], Config::default());
+        let ini = php::version_dir(&layout, "8.4.27").join("php.ini");
+        std::fs::write(&ini, "[PHP]\r\nmemory_limit=512M\r\n").unwrap();
+
+        assert!(read_php_ini(&layout, "8.4").is_err(), "only installed, full versions");
+        assert!(read_php_ini(&layout, r"..\8.4.27").is_err());
+        let (text, stamp) = read_php_ini(&layout, "8.4.27").unwrap();
+        assert_eq!(text, "[PHP]\r\nmemory_limit=512M\r\n");
+
+        // Changed elsewhere (an extension toggled) after it was read: refused, file untouched.
+        std::fs::write(&ini, "[PHP]\r\nmemory_limit=1G\r\n").unwrap();
+        let refused = save_php_ini(&layout, "8.4.27", "[PHP]\nmemory_limit=2G\n", &stamp).unwrap_err();
+        assert!(refused.to_string().contains("changed since"), "{refused}");
+        assert_eq!(std::fs::read_to_string(&ini).unwrap(), "[PHP]\r\nmemory_limit=1G\r\n");
         let _ = std::fs::remove_dir_all(layout.root());
     }
 

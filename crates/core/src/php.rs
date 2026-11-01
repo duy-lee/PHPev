@@ -374,8 +374,14 @@ pub fn verify(layout: &Layout, version: &str) -> io::Result<Vec<String>> {
 /// Loaded modules as `php -m` prints them (e.g. `Zend OPcache`, `SimpleXML`).
 /// Fails on startup warnings such as an extension DLL that cannot load.
 pub fn modules(layout: &Layout, version: &str) -> io::Result<Vec<String>> {
+    modules_with(layout, version, &version_dir(layout, version).join("php.ini"))
+}
+
+/// [`modules`] with the php.ini `ini` instead of the version's own, e.g. to
+/// check an edited one before it replaces it.
+pub fn modules_with(layout: &Layout, version: &str, ini: &Path) -> io::Result<Vec<String>> {
     let dir = version_dir(layout, version);
-    let ini = php_path(&dir.join("php.ini"))?;
+    let ini = php_path(ini)?;
     let out = std::process::Command::new(dir.join("php.exe"))
         .arg("-c")
         .arg(&ini)
@@ -389,7 +395,9 @@ pub fn modules(layout: &Layout, version: &str) -> io::Result<Vec<String>> {
     let problems: Vec<&str> = stdout
         .lines()
         .chain(stderr.lines())
-        .filter(|l| l.contains("Warning") || l.contains("Fatal") || l.contains("Unable to load"))
+        .filter(|l| {
+            l.contains("Warning") || l.contains("Fatal") || l.contains("Unable to load") || l.contains("syntax error")
+        })
         .collect();
     if !out.status.success() || !problems.is_empty() {
         return Err(io::Error::other(format!(
