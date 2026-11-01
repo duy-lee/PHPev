@@ -6,7 +6,7 @@ import { api, useApi } from '../api.js';
 import { act, showToast } from '../ui/feedback.js';
 import { confirmAction } from '../ui/dialog.js';
 import { Icon } from '../icons.js';
-import { SetRow, Switch, Picker, Tabs, Loading } from '../ui/controls.js';
+import { SetRow, Switch, Select, Tabs, Loading } from '../ui/controls.js';
 import { applyTheme } from '../ui/theme.js';
 
 const SECTIONS = ['general', 'sites', 'ports', 'https', 'windows', 'storage', 'about'];
@@ -16,7 +16,7 @@ const size = (bytes) =>
   bytes >= 1073741824 ? `${(bytes / 1073741824).toFixed(1)} GB` : `${(bytes / 1048576).toFixed(1)} MB`;
 
 function General({ s, reload }) {
-  const [{ data: editors }] = useApi('/editors');
+  const [{ data: editors }, reloadEditors] = useApi('/editors');
   const save = (change) => act(api('PUT', '/settings/general', change), reload);
   const theme = (value) => {
     applyTheme(value);
@@ -35,17 +35,20 @@ function General({ s, reload }) {
       <${Switch} label=${t('settings.updates')} checked=${s.check_updates} onChange=${(on) => save({ check_updates: on })} />
     </${SetRow}>
     <${SetRow} icon="theme" title=${t('settings.theme')} desc=${t('settings.theme_hint')}>
-      <${Picker} label=${t('settings.theme')} value=${s.theme} onChange=${theme}
+      <${Select} label=${t('settings.theme')} value=${s.theme} onChange=${theme}
         options=${[{ value: 'system', label: t('settings.theme_system') }, { value: 'light', label: t('settings.theme_light') }, { value: 'dark', label: t('settings.theme_dark') }]} />
     </${SetRow}>
     <${SetRow} icon="globe" title=${t('settings.language')} desc=${t('settings.language_hint')}>
-      <${Picker} label=${t('settings.language')} value=${s.language} onChange=${language}
+      <${Select} label=${t('settings.language')} value=${s.language} onChange=${language}
         options=${[{ value: 'system', label: t('settings.theme_system') }, { value: 'en', label: 'English' }, { value: 'vi', label: 'Tiếng Việt' }]} />
     </${SetRow}>
     <${SetRow} icon="editor" title=${t('settings.editor')}
       desc=${editors?.editors.length ? t('settings.editor_hint') : t('site.no_editor', { list: editors?.supported.join(', ') ?? '' })}>
-      ${editors?.editors.length > 0 && html`<${Picker} label=${t('settings.editor')} value=${editors.chosen}
-        options=${editors.editors.map((e) => ({ value: e.id, label: e.name }))} onChange=${(id) => save({ editor: id })} />`}
+      ${editors?.editors.length > 0 && html`<${Select} label=${t('settings.editor')} value=${editors.chosen ?? ''}
+        options=${[
+          ...(editors.chosen ? [] : [{ value: '', label: t('settings.editor_choose'), disabled: true }]),
+          ...editors.editors.map((e) => ({ value: e.id, label: e.name })),
+        ]} onChange=${(id) => act(api('PUT', '/settings/general', { editor: id }), () => { reload(); reloadEditors(); })} />`}
     </${SetRow}>
   </section>`;
 }

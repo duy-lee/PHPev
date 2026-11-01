@@ -59,7 +59,6 @@ pub fn install_php(http: &Http, layout: &Layout, wanted: &str, r: &mut dyn Repor
     }
     let modules = php::verify(layout, &release.version)?;
     r.info(&format!("verified: {} extensions loaded", modules.len()));
-    ensure_composer_lts(http, layout, &release.version, r);
     default_php_if_none(layout, &release.line, r)?;
     Ok(release.version.clone())
 }
@@ -110,7 +109,6 @@ pub fn add_php(http: &Http, layout: &Layout, src: &Path, r: &mut dyn Report) -> 
         Err(e) => r.info(&format!("warning: {e}")),
     }
     let line = build.version.splitn(3, '.').take(2).collect::<Vec<_>>().join(".");
-    ensure_composer_lts(http, layout, &build.version, r);
     default_php_if_none(layout, &line, r)?;
     Ok(build.version)
 }
@@ -124,20 +122,6 @@ fn ensure_cacert(http: &Http, layout: &Layout, r: &mut dyn Report) -> io::Result
         ca::update_php_bundle(layout, Some(authority.pem()))?;
     }
     Ok(())
-}
-
-/// Composer 2.3+ does not run on PHP before 7.2.5: when Composer is in use,
-/// fetch the 2.2 LTS phar the `composer` shim runs with such a PHP.
-/// A failed download is only a warning: `phpev composer install` retries it.
-fn ensure_composer_lts(http: &Http, layout: &Layout, version: &str, r: &mut dyn Report) {
-    if composer::needs_lts(version) && composer::is_installed(layout) && !composer::lts_path(layout).is_file() {
-        r.info("PHP before 7.2.5 needs Composer 2.2 LTS; installing it");
-        if let Err(e) = composer::install_lts(http, layout, &mut |d, t| r.progress(composer::LTS_PHAR, d, t)) {
-            r.info(&format!(
-                "warning: Composer 2.2 LTS: {e} (run `phpev composer install` later)"
-            ));
-        }
-    }
 }
 
 fn default_php_if_none(layout: &Layout, line: &str, r: &mut dyn Report) -> io::Result<()> {
@@ -217,10 +201,6 @@ pub fn remove_php(layout: &Layout, version: &str, r: &mut dyn Report) -> io::Res
     if rest == 0 && config.php.is_some() {
         config::update(&layout.config_file(), |c| c.php = None)?;
         r.info("no PHP left; cleared the default");
-    }
-    if composer::lts_path(layout).is_file() && !composer::lts_wanted(layout) {
-        std::fs::remove_file(composer::lts_path(layout))?;
-        r.info("removed Composer 2.2 LTS (no PHP before 7.2.5 left)");
     }
     Ok(())
 }
@@ -453,6 +433,189 @@ pub fn remove_mariadb(layout: &Layout, wanted: &str, delete_data: bool, r: &mut 
     Ok(plan.version)
 }
 
+// ---------------------------------------------------------------- Composer
+
+/// Installs Composer `wanted` (`2.8` for the newest 2.8.x, or `2.8.12`; `None`
+/// for the newest release). The first Composer installed becomes the default.
+/// Returns the installed version.
+pub fn install_composer(http: &Http, layout: &Layout, wanted: Option<&str>, r: &mut dyn Report) -> io::Result<String> {
+    let released = composer::released(http)?;
+    let found = match wanted {
+        Some(w) => version::best_match(w, released.iter().map(String::as_str)).ok_or_else(|| {
+            not_found(format!(
+                "no Composer release matches {w} (see phpev composer list --available)"
+            ))
+        })?,
+        None => released
+            .first()
+            .ok_or_else(|| not_found("no Composer release found".into()))?,
+    }
+    .to_owned();
+    if composer::version_dir(layout, &found).join(composer::PHAR).is_file() {
+        r.info(&format!("Composer {found} is already installed"));
+    } else {
+        r.info(&format!("Composer {found}"));
+        composer::install_version(http, layout, &found, &mut |d, t| r.progress(composer::PHAR, d, t))?;
+    }
+    let made_default = config::update(&layout.config_file(), |c| {
+        let none = c.composer.is_none();
+        if none {
+            c.composer = Some(found.clone());
+        }
+        none
+    })?;
+    if made_default {
+        r.info(&format!("Composer {found} is the default"));
+    }
+    Ok(found)
+}
+
+/// Makes Composer `wanted` (`2.8` or `2.8.12`, installed) the default for
+/// sites that do not pick one. Returns the version it matches.
+pub fn set_default_composer(layout: &Layout, wanted: &str) -> io::Result<String> {
+    let installed = composer::installed(&layout.composer_dir());
+    let found = version::best_match(wanted, installed.iter().map(String::as_str))
+        .ok_or_else(|| not_found(format!("Composer {wanted} is not installed — install it first")))?
+        .to_owned();
+    config::update(&layout.config_file(), |c| c.composer = Some(wanted.to_owned()))?;
+    Ok(found)
+}
+
+/// The default Composer (exact version), if it is installed.
+pub fn default_composer(layout: &Layout) -> io::Result<Option<String>> {
+    let installed = composer::installed(&layout.composer_dir());
+    Ok(Config::load(&layout.config_file())?
+        .composer
+        .as_deref()
+        .and_then(|w| version::best_match(w, installed.iter().map(String::as_str)))
+        .map(str::to_owned))
+}
+
+/// Sites whose picked Composer only `version` provides.
+pub fn sites_using_composer(layout: &Layout, version: &str) -> io::Result<Vec<String>> {
+    let installed = composer::installed(&layout.composer_dir());
+    let rest: Vec<&str> = installed.iter().map(String::as_str).filter(|v| *v != version).collect();
+    let config = Config::load(&layout.config_file())?;
+    Ok(config
+        .sites
+        .iter()
+        .filter(|s| {
+            s.composer.as_deref().is_some_and(|w| {
+                version::best_match(w, installed.iter().map(String::as_str)) == Some(version)
+                    && version::best_match(w, rest.iter().copied()).is_none()
+            })
+        })
+        .map(|s| s.name.clone())
+        .collect())
+}
+
+/// Removes Composer `version` (exact, as `phpev composer list` shows it),
+/// unless a site still needs it. Refused while it is the default, unless it is
+/// the last one left (the default is then cleared).
+pub fn remove_composer(layout: &Layout, version: &str) -> io::Result<()> {
+    let dir = composer::version_dir(layout, version);
+    let installed = composer::installed(&layout.composer_dir());
+    if !installed.iter().any(|v| v == version) {
+        return Err(not_found(format!(
+            "Composer {version} is not installed (give the full version, as `phpev composer list` shows it)"
+        )));
+    }
+    let using = sites_using_composer(layout, version)?;
+    if !using.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "Composer {version} is used by {}; pick another Composer for them first",
+                using.join(", ")
+            ),
+        ));
+    }
+    let last = installed.len() == 1;
+    if !last && default_composer(layout)?.as_deref() == Some(version) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("Composer {version} is the default; make another version the default first"),
+        ));
+    }
+    std::fs::remove_dir_all(dir)?;
+    if last {
+        config::update(&layout.config_file(), |c| c.composer = None)?;
+    }
+    Ok(())
+}
+
+/// PHPev before 1.0 kept the automatic Composer as `composer.phar` (latest)
+/// and `composer-2.2.phar` (for PHP before 7.2.5) next to the version
+/// folders. Turns them into versions, makes the latest one the default if
+/// none is set, and pins the 2.2 one for the sites it ran for, so they keep
+/// running it. Does nothing once done.
+pub fn adopt_legacy_composer(layout: &Layout) -> io::Result<()> {
+    let dir = layout.composer_dir();
+    let mut adopted: Vec<String> = Vec::new();
+    for name in composer::LEGACY_PHARS {
+        let file = dir.join(name);
+        if !file.is_file() {
+            continue;
+        }
+        // Unreadable: leave it for the user rather than guess.
+        let Some(v) = composer::phar_version(&file) else {
+            continue;
+        };
+        let dest = composer::version_dir(layout, &v).join(composer::PHAR);
+        if dest.is_file() {
+            std::fs::remove_file(&file)?;
+        } else {
+            std::fs::create_dir_all(composer::version_dir(layout, &v))?;
+            std::fs::rename(&file, &dest)?;
+        }
+        adopted.push(v);
+    }
+    let Some(latest) = adopted.iter().max_by(|a, b| version::cmp(a, b)).cloned() else {
+        return Ok(());
+    };
+    // The adopted 2.2 phar, if any: it ran for PHP the latest one cannot run on.
+    let lts = adopted
+        .iter()
+        .find(|v| composer::min_php(v) != composer::min_php(&latest))
+        .cloned();
+
+    let config = Config::load(&layout.config_file())?;
+    let default = config.composer.clone().unwrap_or_else(|| latest.clone());
+    let installed = composer::installed(&dir);
+    let default = version::best_match(&default, installed.iter().map(String::as_str))
+        .unwrap_or(&latest)
+        .to_owned();
+    let needs_lts: Vec<sites::Site> = match &lts {
+        Some(_) => sites::all(&config)
+            .into_iter()
+            .filter(|s| s.composer.is_none())
+            .filter(|s| {
+                crate::shim::resolve(layout.root(), &s.path).is_ok_and(|r| !composer::runs_on(&default, &r.version))
+            })
+            .collect(),
+        None => Vec::new(),
+    };
+    config::update(&layout.config_file(), |c| {
+        c.composer.get_or_insert_with(|| latest.clone());
+        let Some(lts) = &lts else { return };
+        let line = composer::line_of(lts);
+        for site in &needs_lts {
+            match c.sites.iter_mut().find(|s| s.name == site.name) {
+                Some(s) => s.composer = Some(line.clone()),
+                None => c.sites.push(Site {
+                    name: site.name.clone(),
+                    path: site.path.clone(),
+                    php: None,
+                    composer: Some(line.clone()),
+                    secure: false,
+                    defender_excluded: false,
+                }),
+            }
+        }
+    })?;
+    Ok(())
+}
+
 // ---------------------------------------------------------------- sites
 
 fn same_path(a: &Path, b: &Path) -> bool {
@@ -465,7 +628,7 @@ pub struct Linked {
 }
 
 /// Links `dir` as a site (name: given or from the folder). Re-linking the same
-/// folder keeps its HTTPS and Defender flags. `dir` must be absolute.
+/// folder keeps its Composer version, HTTPS and Defender flags. `dir` must be absolute.
 pub fn link_site(layout: &Layout, dir: &Path, name: Option<&str>, php_version: Option<String>) -> io::Result<Linked> {
     if !dir.is_absolute() || !dir.is_dir() {
         return Err(io::Error::new(
@@ -499,6 +662,7 @@ pub fn link_site(layout: &Layout, dir: &Path, name: Option<&str>, php_version: O
             name: name.clone(),
             path: dir.to_owned(),
             php: php_version.clone(),
+            composer: same.and_then(|p| p.composer.clone()),
             secure: same.is_some_and(|p| p.secure),
             defender_excluded: same.is_some_and(|p| p.defender_excluded),
         });
@@ -518,6 +682,24 @@ pub fn unlink_site(layout: &Layout, name: &str) -> io::Result<Option<Site>> {
 /// a link entry to carry it.
 pub fn set_site_php(layout: &Layout, name: &str, php_version: Option<String>) -> io::Result<()> {
     let site = find_site(layout, name)?;
+    // The Composer picked for the site must run on the new PHP.
+    if let (Some(wanted), Some(pinned)) = (&php_version, &site.composer) {
+        let installed = php::installed(layout);
+        let found = version::best_match(wanted, installed.iter().map(String::as_str));
+        let picked = composer::installed(&layout.composer_dir());
+        let picked = version::best_match(pinned, picked.iter().map(String::as_str));
+        if let (Some(php_found), Some(picked)) = (found, picked) {
+            if !composer::runs_on(picked, php_found) {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!(
+                        "{name} uses Composer {picked}, which needs PHP {}; pick another Composer for it first",
+                        composer::min_php(picked)
+                    ),
+                ));
+            }
+        }
+    }
     config::update(&layout.config_file(), |c| {
         match c.sites.iter_mut().find(|s| s.name == name) {
             Some(s) => s.php = php_version.clone(),
@@ -525,11 +707,59 @@ pub fn set_site_php(layout: &Layout, name: &str, php_version: Option<String>) ->
                 name: site.name.clone(),
                 path: site.path.clone(),
                 php: php_version.clone(),
+                composer: None,
                 secure: false,
                 defender_excluded: false,
             }),
         }
     })
+}
+
+/// Picks (or with `None` drops) the Composer version of a site: `2.8` or
+/// `2.8.12`, already installed and able to run on the site's PHP. A parked
+/// site gets a link entry to carry it.
+pub fn set_site_composer(layout: &Layout, name: &str, wanted: Option<String>) -> io::Result<()> {
+    let site = find_site(layout, name)?;
+    if let Some(wanted) = &wanted {
+        let installed = composer::installed(&layout.composer_dir());
+        let found = version::best_match(wanted, installed.iter().map(String::as_str)).ok_or_else(|| {
+            not_found(format!(
+                "Composer {wanted} is not installed — install it first (phpev composer install {wanted})"
+            ))
+        })?;
+        check_site_composer(layout, name, found)?;
+    }
+    config::update(&layout.config_file(), |c| {
+        match c.sites.iter_mut().find(|s| s.name == name) {
+            Some(s) => s.composer = wanted.clone(),
+            None if wanted.is_some() => c.sites.push(Site {
+                name: site.name.clone(),
+                path: site.path.clone(),
+                php: None,
+                composer: wanted.clone(),
+                secure: false,
+                defender_excluded: false,
+            }),
+            None => {}
+        }
+    })
+}
+
+/// Checks that Composer `version` (`2.8` or `2.8.12`) runs on the PHP of site
+/// `name`, before installing or picking it.
+pub fn check_site_composer(layout: &Layout, name: &str, version: &str) -> io::Result<()> {
+    let site = find_site(layout, name)?;
+    match crate::shim::resolve(layout.root(), &site.path) {
+        Ok(php) if !composer::runs_on(version, &php.version) => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "Composer {version} needs PHP {} or later; {name} runs PHP {}",
+                composer::min_php(version),
+                php.version
+            ),
+        )),
+        _ => Ok(()),
+    }
 }
 
 pub fn find_site(layout: &Layout, name: &str) -> io::Result<sites::Site> {
@@ -569,6 +799,7 @@ pub fn set_site_secure(layout: &Layout, name: &str, secure: bool, r: &mut dyn Re
                 name: site.name.clone(),
                 path: site.path.clone(),
                 php: None,
+                composer: None,
                 secure: true,
                 defender_excluded: false,
             }),
@@ -739,6 +970,7 @@ mod tests {
             name: name.into(),
             path: PathBuf::from(format!(r"C:\sites\{name}")),
             php: Some(php.into()),
+            composer: None,
             secure: false,
             defender_excluded: false,
         }
@@ -752,7 +984,6 @@ mod tests {
             ..Config::default()
         };
         let layout = home("php-default", &["8.4.27", "7.1.33"], &[], config);
-        std::fs::write(composer::lts_path(&layout), "").unwrap();
 
         let refused = remove_php(&layout, "7.1.33", &mut Quiet).unwrap_err();
         assert!(refused.to_string().contains("is the default"), "{refused}");
@@ -762,12 +993,116 @@ mod tests {
         set_default_php(&layout, "8.4").unwrap();
         remove_php(&layout, "7.1.33", &mut Quiet).unwrap();
         assert_eq!(php::installed(&layout), ["8.4.27"]);
-        assert!(!composer::lts_path(&layout).exists(), "no PHP before 7.2.5 is left");
 
         // The last PHP may go; the default then points nowhere and is cleared.
         remove_php(&layout, "8.4.27", &mut Quiet).unwrap();
         assert!(php::installed(&layout).is_empty());
         assert_eq!(Config::load(&layout.config_file()).unwrap().php, None);
+        let _ = std::fs::remove_dir_all(layout.root());
+    }
+
+    #[test]
+    fn a_site_picks_a_composer_its_php_can_run() {
+        let config = Config {
+            sites: vec![site("old", "7.1"), site("new", "8.4")],
+            ..Config::default()
+        };
+        let layout = home("composer", &["8.4.27", "7.1.33"], &[], config);
+        for v in ["2.8.12", "2.2.31"] {
+            let d = composer::version_dir(&layout, v);
+            std::fs::create_dir_all(&d).unwrap();
+            std::fs::write(d.join(composer::PHAR), "").unwrap();
+        }
+        let pinned = |name: &str| {
+            Config::load(&layout.config_file())
+                .unwrap()
+                .sites
+                .into_iter()
+                .find(|s| s.name == name)
+                .and_then(|s| s.composer)
+        };
+
+        let missing = set_site_composer(&layout, "new", Some("2.5".into())).unwrap_err();
+        assert!(missing.to_string().contains("not installed"), "{missing}");
+        let too_new = set_site_composer(&layout, "old", Some("2.8".into())).unwrap_err();
+        assert!(too_new.to_string().contains("needs PHP 7.2.5"), "{too_new}");
+
+        set_site_composer(&layout, "old", Some("2.2".into())).unwrap();
+        set_site_composer(&layout, "new", Some("2.8".into())).unwrap();
+        assert_eq!(pinned("old").as_deref(), Some("2.2"));
+        assert_eq!(sites_using_composer(&layout, "2.8.12").unwrap(), ["new"]);
+
+        // Its Composer would not run on PHP 7.1.
+        assert!(set_site_php(&layout, "new", Some("7.1".into())).is_err());
+        // Still in use.
+        assert!(remove_composer(&layout, "2.8.12").is_err());
+        set_site_composer(&layout, "new", None).unwrap();
+        assert_eq!(pinned("new"), None);
+        set_site_php(&layout, "new", Some("7.1".into())).unwrap();
+        remove_composer(&layout, "2.8.12").unwrap();
+        assert_eq!(composer::installed(&layout.composer_dir()), ["2.2.31"]);
+        let _ = std::fs::remove_dir_all(layout.root());
+    }
+
+    #[test]
+    fn the_default_composer_is_kept_until_another_one_is_the_default() {
+        let layout = home("composer-default", &["8.4.27"], &[], Config::default());
+        for v in ["2.8.12", "2.2.31"] {
+            let d = composer::version_dir(&layout, v);
+            std::fs::create_dir_all(&d).unwrap();
+            std::fs::write(d.join(composer::PHAR), "").unwrap();
+        }
+        assert!(set_default_composer(&layout, "2.5").is_err());
+        assert_eq!(set_default_composer(&layout, "2.8").unwrap(), "2.8.12");
+        assert_eq!(default_composer(&layout).unwrap().as_deref(), Some("2.8.12"));
+
+        let refused = remove_composer(&layout, "2.8.12").unwrap_err();
+        assert!(refused.to_string().contains("is the default"), "{refused}");
+        remove_composer(&layout, "2.2.31").unwrap();
+        // The last one may go; the default is then cleared.
+        remove_composer(&layout, "2.8.12").unwrap();
+        assert_eq!(Config::load(&layout.config_file()).unwrap().composer, None);
+        let _ = std::fs::remove_dir_all(layout.root());
+    }
+
+    #[test]
+    fn legacy_phars_become_versions_and_old_php_sites_keep_the_2_2() {
+        let config = Config {
+            php: Some("8.4".into()),
+            sites: vec![site("old", "5.6"), site("new", "8.4")],
+            ..Config::default()
+        };
+        let layout = home("composer-legacy", &["8.4.27", "5.6.40"], &[], config);
+        let dir = layout.composer_dir();
+        std::fs::write(
+            dir.join("composer.phar"),
+            "class Composer { const VERSION = '2.11.1'; }",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("composer-2.2.phar"),
+            "class Composer { const VERSION = '2.2.31'; }",
+        )
+        .unwrap();
+
+        adopt_legacy_composer(&layout).unwrap();
+        assert_eq!(composer::installed(&dir), ["2.11.1", "2.2.31"]);
+        assert!(!dir.join("composer.phar").exists() && !dir.join("composer-2.2.phar").exists());
+        let config = Config::load(&layout.config_file()).unwrap();
+        assert_eq!(config.composer.as_deref(), Some("2.11.1"));
+        let picked = |name: &str| {
+            config
+                .sites
+                .iter()
+                .find(|s| s.name == name)
+                .and_then(|s| s.composer.clone())
+        };
+        assert_eq!(picked("old").as_deref(), Some("2.2"), "PHP 5.6 ran the 2.2 phar");
+        assert_eq!(picked("new"), None);
+
+        // Done once: nothing changes the second time.
+        adopt_legacy_composer(&layout).unwrap();
+        assert_eq!(Config::load(&layout.config_file()).unwrap(), config);
         let _ = std::fs::remove_dir_all(layout.root());
     }
 

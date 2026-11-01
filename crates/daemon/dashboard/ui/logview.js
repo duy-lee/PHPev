@@ -2,7 +2,7 @@
 import { html, useState, useEffect, useRef } from '/vendor/htm-preact-standalone.mjs';
 import { t } from '../i18n.js';
 import { Icon } from '../icons.js';
-import { Switch } from './controls.js';
+import { Switch, Select } from './controls.js';
 
 const MAX_LOG_LINES = 5000;
 
@@ -38,9 +38,8 @@ export function LogView({ sources, initial, showPath = false }) {
   return html`
     <div class="row-flex">
       <label class="sr-only" for="log-source">${t('logs.source')}</label>
-      <select class="select" id="log-source" value=${source} onChange=${(e) => setSource(e.target.value)}>
-        ${sources.map((s) => html`<option value=${s.id}>${s.label}</option>`)}
-      </select>
+      <${Select} id="log-source" label=${t('logs.source')} value=${source} onChange=${setSource}
+        options=${sources.map((s) => ({ value: s.id, label: s.label }))} />
       <label class="field grow" style="flex: 1 1 240px; border-radius: 999px"><${Icon} name="search" size=${16} />
         <input placeholder=${t('logs.filter')} aria-label=${t('logs.filter')} value=${filter} onInput=${(e) => setFilter(e.target.value)} /></label>
       <span class="row-flex small" style="font-weight: 600"><${Switch} checked=${follow} label=${t('logs.follow')} onChange=${setFollow} />${t('logs.follow')}</span>

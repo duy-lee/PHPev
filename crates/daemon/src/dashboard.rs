@@ -481,6 +481,76 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             blocking(move || ops::set_site_php(&l, &n, r.version)).await?;
             message(tr("msg.site_php", &[("name", &name)]))
         }
+        (Method::PUT, ["sites", name, "composer"]) => {
+            let r: ComposerPinRequest = body(req).await?;
+            let (l, n) = (layout.clone(), name.to_string());
+            let wanted = r.version.map(|v| v.trim().to_owned()).filter(|v| !v.is_empty());
+            let installed = phpev_core::composer::installed(&layout.composer_dir());
+            let missing = wanted
+                .as_deref()
+                .filter(|w| version::best_match(w, installed.iter().map(String::as_str)).is_none());
+            let Some(w) = missing.map(str::to_owned) else {
+                blocking(move || ops::set_site_composer(&l, &n, wanted)).await?;
+                return ok(&FixResult {
+                    message: Some(tr("msg.site_composer", &[("name", &name)])),
+                    job: None,
+                });
+            };
+            // Not installed yet: download it, then pick it.
+            let (l2, n2, w2) = (layout.clone(), name.to_string(), w.clone());
+            blocking(move || ops::check_site_composer(&l2, &n2, &w2)).await?;
+            let job = d.jobs.start(format!("Install Composer {w} for {name}"), move |rep| {
+                let v = ops::install_composer(&Http::new()?, &l, Some(&w), rep)?;
+                ops::set_site_composer(&l, &n, Some(w))?;
+                Ok(format!("{n} now runs Composer {v}"))
+            });
+            ok(&FixResult {
+                message: None,
+                job: Some(job),
+            })
+        }
+        (Method::GET, ["composer", "available"]) => {
+            let l = layout.clone();
+            ok(&blocking(move || {
+                let installed = phpev_core::composer::installed(&l.composer_dir());
+                Ok(
+                    phpev_core::composer::lines(&phpev_core::composer::released(&Http::new()?)?)
+                        .into_iter()
+                        .map(|v| AvailableComposer {
+                            line: phpev_core::composer::line_of(&v),
+                            min_php: phpev_core::composer::min_php(&v).to_owned(),
+                            installed: installed.contains(&v),
+                            version: v,
+                        })
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .await?)
+        }
+        (Method::GET, ["composer"]) => {
+            let l = layout.clone();
+            ok(&blocking(move || composer_info(&l)).await?)
+        }
+        (Method::POST, ["composer", "install"]) => {
+            let r: VersionRequest = body(req).await?;
+            let l = layout.clone();
+            let job = d.jobs.start(format!("Install Composer {}", r.version), move |rep| {
+                let v = ops::install_composer(&Http::new()?, &l, Some(&r.version), rep)?;
+                Ok(format!("Composer {v} installed"))
+            });
+            ok(&JobStarted { job })
+        }
+        (Method::PUT, ["composer", "default"]) => {
+            let r: VersionRequest = body(req).await?;
+            let l = layout.clone();
+            let found = blocking(move || ops::set_default_composer(&l, &r.version)).await?;
+            message(tr("msg.composer_default", &[("version", &found)]))
+        }
+        (Method::DELETE, ["composer", v]) => {
+            let (l, v2) = (layout.clone(), v.to_string());
+            blocking(move || ops::remove_composer(&l, &v2)).await?;
+            message(tr("msg.composer_removed", &[("version", v)]))
+        }
         (Method::GET, ["editors"]) => {
             let l = layout.clone();
             ok(&blocking(move || {
@@ -1216,6 +1286,37 @@ fn update_info(layout: &phpev_core::layout::Layout) -> UpdateInfo {
     }
 }
 
+fn composer_info(layout: &phpev_core::layout::Layout) -> io::Result<ComposerInfo> {
+    use phpev_core::composer;
+    let config = Config::load(&layout.config_file())?;
+    let installed = composer::installed(&layout.composer_dir());
+    let default = ops::default_composer(layout)?;
+    Ok(ComposerInfo {
+        installed: installed
+            .iter()
+            .map(|v| {
+                Ok(InstalledComposer {
+                    version: v.clone(),
+                    min_php: composer::min_php(v).to_owned(),
+                    default: default.as_deref() == Some(v.as_str()),
+                    used_by: config
+                        .sites
+                        .iter()
+                        .filter(|s| {
+                            s.composer.as_deref().is_some_and(|w| {
+                                version::best_match(w, installed.iter().map(String::as_str)) == Some(v.as_str())
+                            })
+                        })
+                        .map(|s| s.name.clone())
+                        .collect(),
+                    needed_by: ops::sites_using_composer(layout, v)?,
+                })
+            })
+            .collect::<io::Result<_>>()?,
+        default,
+    })
+}
+
 fn site_list(layout: &phpev_core::layout::Layout) -> io::Result<Vec<SiteInfo>> {
     let config = Config::load(&layout.config_file())?;
     sites::all(&config).iter().map(|s| site_info(layout, s)).collect()
@@ -1236,6 +1337,7 @@ fn site_info(layout: &phpev_core::layout::Layout, s: &sites::Site) -> io::Result
         php: shim::resolve(layout.root(), &s.path)
             .map(|r| r.version)
             .map_err(|e| e.to_string()),
+        composer_pinned: s.composer.clone(),
         secure: s.secure,
         framework: phpev_core::project::detect(&s.path),
         requests_10m: 0,

@@ -3,7 +3,7 @@
 import { html, useState, useEffect } from '/vendor/htm-preact-standalone.mjs';
 import { t } from '../i18n.js';
 import { Icon } from '../icons.js';
-import { Switch, Tabs, Empty } from './controls.js';
+import { Switch, Select, Tabs, Empty } from './controls.js';
 
 const MAX_ENTRIES = 1000;
 // [2026-10-26 10:42:13] local.ERROR: message
@@ -90,9 +90,8 @@ export function LogEntries({ sources, initial }) {
   return html`
     <div class="row-flex">
       <label class="sr-only" for="entries-source">${t('logs.source')}</label>
-      <select class="select" id="entries-source" value=${source} onChange=${(e) => setSource(e.target.value)}>
-        ${sources.map((s) => html`<option value=${s.id}>${s.label}</option>`)}
-      </select>
+      <${Select} id="entries-source" label=${t('logs.source')} value=${source} onChange=${setSource}
+        options=${sources.map((s) => ({ value: s.id, label: s.label }))} />
       ${structured && html`<${Tabs} role="radiogroup" label=${t('logs.level')} value=${level} onChange=${setLevel} tabs=${[
         { id: 'all', label: t('logs.all') },
         { id: 'errors', label: t('logs.errors', { count: errors }) },

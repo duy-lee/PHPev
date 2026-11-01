@@ -1,76 +1,67 @@
-import { html, useState } from '/vendor/htm-preact-standalone.mjs';
+// Services: one card per service, each with its own page (#/services/<id>).
+import { html } from '/vendor/htm-preact-standalone.mjs';
 import { t } from '../i18n.js';
-import { api, useApi } from '../api.js';
+import { useApi } from '../api.js';
 import { mb } from '../format.js';
-import { act, showToast } from '../ui/feedback.js';
-import { confirmAction } from '../ui/dialog.js';
-import { SetRow, Empty, Loading } from '../ui/controls.js';
+import { Icon } from '../icons.js';
+import { MariaDb } from './service-mariadb.js';
+import { Composer } from './service-composer.js';
 
-const major = (v) => v.split('.').slice(0, 2).join('.');
+const go = (hash) => (e) => {
+  e.preventDefault();
+  location.replace(hash);
+};
 
-export function Services({ startJob }) {
-  const [{ data, error }, reload] = useApi('/mariadb', 3000);
-  const [available, setAvailable] = useState(null);
-  if (!data) return html`<div class="page-head"><h1>${t('nav.services')}</h1></div><${Loading} error=${error} />`;
-  const loadAvailable = () => api('GET', '/mariadb/available').then(setAvailable, (e) => showToast(t('common.error', { message: e.message }), true));
-  const install = (version) => api('POST', '/mariadb/install', { version }).then((r) => startJob(r.job, () => { reload(); loadAvailable(); }), (e) => showToast(e.message, true));
-  const remove = async (v) => {
-    // The databases of a major are only unused once its last release is gone.
-    const last = !data.installed.some((o) => o !== v && major(o) === major(v));
-    const answer = await confirmAction({
-      title: t('services.confirm_remove', { version: v }),
-      body: last ? t('services.remove_keeps_data', { major: major(v) }) : t('services.remove_other_release'),
-      confirmLabel: t('common.remove'),
-      danger: true,
-      choice: last ? { label: t('services.delete_data_choice', { major: major(v) }), confirmWord: 'delete' } : null,
-    });
-    if (answer) act(api('DELETE', `/mariadb/${v}`, { delete_data: answer.choice }), reload);
-  };
-  const running = data.running;
+function ServiceCard({ id, icon, title, sub, running, children }) {
+  return html`<a href=${`#/services/${id}`} class="scard" onClick=${go(`#/services/${id}`)}>
+    <span class="top">
+      <span class="row-icon"><${Icon} name=${icon} /></span>
+      <span class="grow"><b>${title}</b><span class="mono small muted">${sub}</span></span>
+      ${running && html`<span class="dot ok" role="img" aria-label=${t('common.running')}></span>`}
+    </span>
+    <span class="row-flex" style="gap: 6px">${children}<span class="grow"></span>
+      <span class="small muted">${t('services.manage')}</span><${Icon} name="chevron-right" size=${15} /></span>
+  </a>`;
+}
+
+function MariaDbCard() {
+  const [{ data }] = useApi('/mariadb', 3000);
+  const running = data?.running;
+  const sub = !data ? ' ' : running ? `${running.version} · 127.0.0.1:${data.port}` : data.installed.length ? data.active ?? '' : t('services.not_installed_short');
+  return html`<${ServiceCard} id="mariadb" icon="database" title=${t('services.mariadb')} sub=${sub} running=${!!running}>
+    ${data && (running
+      ? html`<span class="pill ok">${t('common.running')}</span><span class="small muted">${mb(running.memory_kb)}</span>`
+      : html`<span class="pill">${data.installed.length ? t('common.stopped') : t('services.not_installed_short')}</span>`)}
+  </${ServiceCard}>`;
+}
+
+function ComposerCard() {
+  const [{ data }] = useApi('/composer');
+  const sub = !data ? ' ' : data.default ? t('services.composer_default_short', { version: data.default })
+    : data.installed.length ? data.installed[0].version : t('services.not_installed_short');
+  return html`<${ServiceCard} id="composer" icon="package" title=${t('services.composer')} sub=${sub}>
+    ${data && html`<span class="pill">${t('services.composer_count', { count: data.installed.length })}</span>`}
+  </${ServiceCard}>`;
+}
+
+// A new service = one entry here (its card and its page) + its API endpoints.
+export const SERVICES = [
+  { id: 'mariadb', label: 'services.mariadb', icon: 'database', card: MariaDbCard, view: MariaDb },
+  { id: 'composer', label: 'services.composer', icon: 'package', card: ComposerCard, view: Composer },
+];
+
+export function ServicesToolbar({ route }) {
+  const service = SERVICES.find((s) => s.id === route[1]);
+  return html`<div class="row-flex" style="flex-wrap: nowrap">
+    <a href="#/services" class="small muted" onClick=${go('#/services')}>${t('nav.services')}</a>
+    ${service && html`<span class="muted" aria-hidden="true">/</span><span class="small" style="font-weight: 600">${t(service.label)}</span>`}
+  </div>`;
+}
+
+export function Services({ route, startJob }) {
+  const service = SERVICES.find((s) => s.id === route[1]);
+  if (service) return html`<${service.view} startJob=${startJob} />`;
   return html`
-    <div class="page-head"><div class="grow"><h1>${t('nav.services')}</h1><p>${t('services.subtitle')}</p></div></div>
-
-    <section class="card">
-      <div class="card-head"><h2>${t('services.mariadb')}</h2><span class="grow"></span>
-        ${data.installed.length > 0 && (running
-          ? html`<span class="pill ok"><span class="dot ok"></span>${t('common.running')}</span>`
-          : html`<span class="pill">${t('common.stopped')}</span>`)}</div>
-      ${data.installed.length === 0
-        ? html`<${Empty} icon="database" title=${t('services.not_installed')}>${t('services.not_installed_hint')}</${Empty}>`
-        : html`
-          <${SetRow} icon="database" title=${running ? `MariaDB ${running.version}` : t('services.mariadb')}
-            desc=${running ? `127.0.0.1:${data.port} · ${mb(running.memory_kb)}` : t('services.stopped_hint')}>
-            ${running
-              ? html`<button class="btn quiet sm" onClick=${() => act(api('POST', '/mariadb/stop'), reload)}>${t('common.stop')}</button>`
-              : html`<button class="btn primary sm" onClick=${() => act(api('POST', '/mariadb/start'), reload)}>${t('common.start')}</button>`}
-          </${SetRow}>
-          <${SetRow} icon="folder" title=${t('services.datadir')} desc=${data.data_dir ?? '—'} />`}
-    </section>
-
-    ${data.installed.length > 0 && html`<section class="card">
-      <div class="card-head"><h2>${t('services.installed')}</h2></div>
-      ${data.installed.map((v) => html`<${SetRow} icon="database" title=${`MariaDB ${v}`}
-        desc=${data.active === major(v) ? t('services.active') : t('services.inactive')}>
-        ${data.active === major(v)
-          ? html`<span class="pill accent">${t('services.active')}</span>`
-          : html`<button class="btn quiet sm" onClick=${() => act(api('PUT', '/mariadb/active', { version: major(v) }), reload)}>${t('services.use')}</button>
-            <button class="btn danger-quiet sm" onClick=${() => remove(v)}>${t('common.remove')}</button>`}
-      </${SetRow}>`)}
-      <div class="card-foot"><span class="small muted">${t('services.switch_note')}</span></div>
-    </section>`}
-
-    <section class="card">
-      <div class="card-head"><h2>${t('services.available')}</h2><span class="grow"></span>
-        ${available === null && html`<button class="btn sm" onClick=${loadAvailable}>${t('services.load_available')}</button>`}</div>
-      ${available === null
-        ? html`<p class="small muted" style="margin: 0; padding: 0 22px 18px">${t('services.available_hint')}</p>`
-        : available.map((a) => html`<${SetRow} icon="download" title=${`MariaDB ${a.major}`}
-            desc=${a.eol ? t('services.eol', { date: a.eol }) : ''}>
-            ${a.lts && html`<span class="pill">${t('services.lts')}</span>`}
-            ${a.eol_passed && html`<span class="pill warn">${t('services.eol_passed')}</span>`}
-            ${a.installed
-              ? html`<span class="pill ok">${t('common.installed')}</span>`
-              : html`<button class="btn sm" onClick=${() => install(a.major)}>${t('common.install')}</button>`}
-          </${SetRow}>`)}
-    </section>`;
+    <div class="page-head"><div class="grow"><h1>${t('nav.services')}</h1><p>${t('services.overview_subtitle')}</p></div></div>
+    <div class="site-grid" style="margin-top: 0">${SERVICES.map((s) => html`<${s.card} key=${s.id} />`)}</div>`;
 }

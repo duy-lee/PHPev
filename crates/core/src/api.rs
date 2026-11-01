@@ -27,6 +27,9 @@ pub struct SiteInfo {
     pub php_pinned: Option<String>,
     /// Installed PHP that requests to this site run on, or why none applies.
     pub php: Result<String, String>,
+    /// Composer version picked for the site (`phpev composer pin`), if any.
+    #[serde(default)]
+    pub composer_pinned: Option<String>,
     pub secure: bool,
     /// Detected from the project's files.
     pub framework: crate::project::Framework,
@@ -50,6 +53,15 @@ pub struct SiteDetail {
     pub ca_trusted: bool,
     /// Composer version the `composer` shim runs for this site.
     pub composer: Option<String>,
+    /// Why: `site` (picked for it), `default` or `newest` (no default set).
+    #[serde(default)]
+    pub composer_source: Option<String>,
+    /// Why the shim cannot run Composer for this site, if it cannot.
+    #[serde(default)]
+    pub composer_error: Option<String>,
+    /// Composer versions installed for sites, newest first.
+    #[serde(default)]
+    pub composer_versions: Vec<ComposerChoice>,
     /// Connections from `.env` or `wp-config.php`.
     pub databases: Vec<SiteDb>,
     pub checks: Vec<crate::project::Check>,
@@ -99,6 +111,54 @@ pub struct SecureRequest {
 pub struct PhpPinRequest {
     /// `None` removes the pin.
     pub version: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ComposerPinRequest {
+    /// `2.8` or `2.8.12`, installed first if needed; `None` goes back to the
+    /// automatic Composer.
+    pub version: Option<String>,
+}
+
+/// `GET /composer/available`: the newest release of each Composer line.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AvailableComposer {
+    pub line: String,
+    pub version: String,
+    /// The oldest PHP it runs on.
+    pub min_php: String,
+    pub installed: bool,
+}
+
+/// `GET /composer`: the installed Composer versions.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ComposerInfo {
+    /// The default version (exact), if one is set and installed.
+    pub default: Option<String>,
+    /// Newest first.
+    pub installed: Vec<InstalledComposer>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct InstalledComposer {
+    pub version: String,
+    /// The oldest PHP it runs on.
+    pub min_php: String,
+    /// It is the default.
+    pub default: bool,
+    /// Sites that picked this version.
+    pub used_by: Vec<String>,
+    /// Sites that would be left without their Composer if it were removed.
+    pub needed_by: Vec<String>,
+}
+
+/// A Composer installed for sites, as the site page offers it.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ComposerChoice {
+    pub version: String,
+    pub min_php: String,
+    /// Runs on the site's PHP.
+    pub runs: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

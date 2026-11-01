@@ -6,7 +6,7 @@
 //! `phpev_core::shim::resolve`.
 
 use std::ffi::OsString;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, ExitCode};
 
 use phpev_core::{composer, php, shim};
@@ -80,21 +80,39 @@ fn php_command(tool: &str, home: &Path) -> Result<Command, String> {
     cmd.env("PHPRC", ini_dir);
 
     if tool == "composer" {
-        let phar: PathBuf = composer::phar_for(&home.join(r"bin\composer"), &resolved.version);
-        if !phar.is_file() {
-            return Err(if composer::needs_lts(&resolved.version) {
-                format!(
-                    "PHP {} needs Composer 2.2 LTS (newer Composer needs PHP 7.2.5+), which is not installed. Run: phpev composer install",
-                    resolved.version
-                )
-            } else {
-                "Composer is not installed. Run: phpev composer install".into()
-            });
+        // Each phar is one version, shared by every site that runs it: it must stay that version.
+        if is_self_update() {
+            return Err(
+                "PHPev manages Composer versions: `phpev composer self-update` installs the newest one and makes it the default; `phpev composer pin <version>` picks one for a site".into(),
+            );
         }
-        cmd.arg(phar);
+        let picked = composer::pick(
+            &home.join(r"bin\composer"),
+            &resolved.version,
+            resolved.composer.as_deref(),
+            resolved.composer_default.as_deref(),
+        )?;
+        if std::env::var_os(DEBUG_ENV).is_some() {
+            let why = match picked.why {
+                composer::Why::Site => "picked for the site",
+                composer::Why::Default => "the default",
+                composer::Why::Newest => "the newest installed",
+            };
+            eprintln!("phpev: Composer {} ({why})", picked.version);
+        }
+        cmd.arg(picked.phar);
     }
     cmd.args(std::env::args_os().skip(1));
     Ok(cmd)
+}
+
+/// `composer self-update` (or `selfupdate`), after any options.
+fn is_self_update() -> bool {
+    std::env::args_os()
+        .skip(1)
+        .map(|a| a.to_string_lossy().into_owned())
+        .find(|a| !a.starts_with('-'))
+        .is_some_and(|a| a == "self-update" || a == "selfupdate")
 }
 
 /// `mysql` / `mysqldump` and their MariaDB names: the client of the active

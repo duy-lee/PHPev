@@ -6,7 +6,7 @@ import { mb, fmtMs } from '../format.js';
 import { act, showToast } from '../ui/feedback.js';
 import { confirmAction } from '../ui/dialog.js';
 import { Icon } from '../icons.js';
-import { Switch, Picker, Tabs, SetRow, Empty, Loading } from '../ui/controls.js';
+import { Switch, Select, Tabs, SetRow, Empty, Loading } from '../ui/controls.js';
 import { Chart } from '../ui/chart.js';
 import { LogEntries } from '../ui/entries.js';
 import { siteHref } from './sites.js';
@@ -73,6 +73,42 @@ function phpSourceText(d, php) {
   return t('site.php_default', { version });
 }
 
+function composerDesc(d) {
+  if (d.composer_error) return d.composer_error;
+  if (!d.composer) return t('site.composer_missing');
+  if (d.composer_source === 'site') return t('site.composer_pinned', { version: d.composer });
+  if (d.composer_source === 'newest') return t('site.composer_newest', { version: d.composer });
+  return t('site.composer_default', { version: d.composer });
+}
+
+// The last entry of the Composer list leads to Services › Composer, where versions are installed.
+const MANAGE_COMPOSER = '#manage';
+
+function ComposerRow({ d, reload }) {
+  const s = d.site;
+  const pinned = s.composer_pinned ?? '';
+  const versions = d.composer_versions;
+  // A pin made with `phpev composer pin 2.8` names a line, not one of the installed versions.
+  const pinOnly = pinned && !versions.some((c) => c.version === pinned);
+  const options = [
+    { value: '', label: t('site.composer_automatic') },
+    ...(pinOnly ? [{ value: pinned, label: pinned }] : []),
+    ...versions.map((c) => ({
+      value: c.version,
+      hint: c.runs ? '' : t('site.composer_option_needs', { php: c.min_php }),
+      disabled: !c.runs && c.version !== pinned,
+    })),
+    { value: MANAGE_COMPOSER, label: t('site.composer_manage'), divider: true },
+  ];
+  const pick = (version) => {
+    if (version === MANAGE_COMPOSER) return location.replace('#/services/composer');
+    act(api('PUT', `/sites/${encodeURIComponent(s.name)}/composer`, { version: version || null }), reload);
+  };
+  return html`<${SetRow} icon="package" title="Composer" desc=${composerDesc(d)} tone=${d.composer_error ? 'warn' : ''}>
+    <${Select} label=${t('site.composer_version')} value=${pinned} options=${options} onChange=${pick} />
+  </${SetRow}>`;
+}
+
 function Environment({ d, reload }) {
   const s = d.site;
   const php = res(s.php);
@@ -82,15 +118,13 @@ function Environment({ d, reload }) {
     <${SetRow} icon="php" title="PHP" desc=${php.ok ? phpSourceText(d, php) : t('sites.php_unavailable', { error: php.error })} tone=${php.ok ? '' : 'warn'}>
       ${d.php_source === 'version-file'
         ? html`<span class="pill mono">.php-version</span>`
-        : html`<${Picker} label=${t('site.php_version')} value=${s.php_pinned ?? ''} options=${options}
+        : html`<${Select} label=${t('site.php_version')} value=${s.php_pinned ?? ''} options=${options}
             onChange=${(v) => act(api('PUT', `/sites/${s.name}/php`, { version: v || null }), reload)} />`}
     </${SetRow}>
     <${SetRow} icon="lock" title="HTTPS" desc=${s.secure ? (d.ca_trusted ? t('site.https_trusted') : t('site.https_untrusted')) : t('site.https_off')}>
       <${Switch} checked=${s.secure} label="HTTPS" onChange=${(on) => act(api('PUT', `/sites/${s.name}/secure`, { secure: on }), reload)} />
     </${SetRow}>
-    <${SetRow} icon="package" title="Composer" desc=${t('site.composer_desc')}>
-      ${d.composer ? html`<span class="mono muted">${d.composer}</span>` : html`<span class="small muted">${t('site.composer_missing')}</span>`}
-    </${SetRow}>
+    <${ComposerRow} d=${d} reload=${reload} />
     ${php.ok && html`<${SetRow} icon="blocks" title=${t('php.extensions')} desc=${t('site.ext_desc', { version: line(php.value) })}>
       <a class="btn quiet sm" href="#/php" onClick=${(e) => { e.preventDefault(); location.replace('#/php'); }}>${t('site.manage')}</a>
     </${SetRow}>`}

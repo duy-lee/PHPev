@@ -43,21 +43,28 @@ pub fn composer_install(
     rep: &mut dyn Report,
     cancel: &AtomicBool,
 ) -> io::Result<String> {
-    let phar = composer::phar_for(&layout.composer_dir(), &resolved.version);
-    if !phar.is_file() {
-        rep.info("installing Composer first");
-        let http = Http::new()?;
-        let label = phar
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        let mut progress = |done, total| rep.progress(&label, done, total);
-        if composer::needs_lts(&resolved.version) {
-            composer::install_lts(&http, layout, &mut progress)?;
-        } else {
-            composer::install_latest(&http, layout, &mut progress)?;
+    let dir_of = layout.composer_dir();
+    let pinned = resolved.composer.as_deref();
+    let default = || -> io::Result<Option<String>> { Ok(Config::load(&layout.config_file())?.composer) };
+    let phar = match composer::pick(&dir_of, &resolved.version, pinned, default()?.as_deref()) {
+        Ok(p) => p.phar,
+        Err(e) => {
+            // Only a missing Composer can be fixed here; one too new for the PHP is the user's pick.
+            let installed = composer::installed(&dir_of);
+            let has = |w: &str| phpev_core::version::best_match(w, installed.iter().map(String::as_str)).is_some();
+            let wanted = match (pinned, default()?) {
+                (Some(w), _) if !has(w) => Some(w.to_owned()),
+                (None, Some(w)) if !has(&w) => Some(w),
+                (None, None) if installed.is_empty() => None,
+                _ => return Err(io::Error::other(e)),
+            };
+            rep.info("installing Composer first");
+            phpev_core::ops::install_composer(&Http::new()?, layout, wanted.as_deref(), rep)?;
+            composer::pick(&dir_of, &resolved.version, pinned, default()?.as_deref())
+                .map_err(io::Error::other)?
+                .phar
         }
-    }
+    };
     rep.info(&format!("composer install (PHP {})", resolved.version));
     let mut cmd = php_in(resolved, dir)?;
     cmd.arg(&phar)

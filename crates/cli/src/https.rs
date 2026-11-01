@@ -24,7 +24,7 @@ pub enum CaCommand {
 }
 
 /// The site named `name`, or the one whose folder is the current directory.
-fn find_site(config: &Config, name: Option<&str>) -> io::Result<sites::Site> {
+pub(crate) fn find_site(config: &Config, name: Option<&str>) -> io::Result<sites::Site> {
     let all = sites::all(config);
     let found = match name {
         Some(n) => all.into_iter().find(|s| s.name == n),

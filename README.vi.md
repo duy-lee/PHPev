@@ -296,14 +296,34 @@ mysqldump shop > shop.sql            # export
 
 ### Composer
 
+Các version Composer được cài song song và dùng chung cho các site. Một version là mặc định; site
+chạy bản mặc định, trừ khi bạn chọn version khác cho site đó.
+
 ```powershell
-phpev composer install       # tải composer.phar nếu chưa có
-phpev composer self-update   # cập nhật lên bản stable mới nhất
-composer --version           # chạy bằng version PHP của thư mục hiện tại
+phpev composer install               # Composer mới nhất (bản cài đầu tiên thành mặc định)
+phpev composer install 2.2           # thêm version khác, ví dụ cho PHP trước 7.2.5
+phpev composer use 2.8               # đặt 2.8.x làm mặc định; cài nếu chưa có
+phpev composer self-update           # cài Composer mới nhất và đặt làm mặc định
+phpev composer list --available      # version đã cài và có thể tải
+phpev composer remove 2.8.12         # khi không site nào dùng (và không phải bản mặc định)
+
+phpev composer pin 2.2               # site của thư mục hiện tại chạy 2.2.x
+phpev composer pin 2.8 --site shop   # site khác
+phpev link --composer 2.8            # ghim ngay khi link
+phpev composer unpin                 # quay về bản mặc định
+phpev composer which                 # Composer nào chạy ở đây, và vì sao
+composer --version                   # chạy bằng PHP và Composer của thư mục hiện tại
 ```
 
-Composer 2.3 trở lên cần PHP 7.2.5. Khi có cài PHP cũ hơn, PHPev giữ thêm Composer 2.2 LTS
-(`bin\composer\composer-2.2.phar`) và `composer` tự dùng bản này trong các project chạy PHP đó.
+`composer` trong terminal đi theo thư mục: trong một site thì dùng PHP và Composer của site đó (kể cả
+thư mục con), ngoài mọi site thì dùng PHP mặc định và Composer mặc định. Composer 2.3 trở lên cần
+PHP 7.2.5: version quá mới cho PHP sẽ bị từ chối kèm thông báo, không tự đổi sang bản khác, nên hãy
+chọn 2.2 cho site chạy PHP cũ hơn. `composer self-update` cũng bị chặn vì mỗi version được dùng
+chung: hãy dùng `phpev composer self-update`. Trong dashboard, chọn version cho site ở mục
+**Composer** của trang site, còn cài, gỡ hoặc đặt mặc định (★) ở **Services › Composer**.
+
+Khi nâng cấp từ 1.0.0-rc.1, `composer.phar` và `composer-2.2.phar` cũ được chuyển thành version,
+bản mới nhất thành mặc định, và các site chạy PHP trước 7.2.5 đang dùng bản 2.2 được ghim 2.2.
 
 ### HTTPS
 
@@ -335,12 +355,12 @@ Dashboard chạy ở `http://127.0.0.1:7600`, gồm các trang:
 | **Home** | Cái gì đang chạy và cái gì cần xử lý, site, dịch vụ và RAM; ba bước bắt đầu khi mới cài |
 | **Sites** | Mỗi site một trang: *Overview* (version PHP, HTTPS, Composer, extension, worker, sức khỏe kèm nút Fix, unlink), *Requests*, *Logs* và *Database* (thông tin kết nối, bảng, import và export `.sql`). Mở site, thư mục, terminal hoặc editor |
 | **PHP** | Cài version (có tiến độ) hoặc thêm thư mục PHP có sẵn, đặt mặc định, bật/tắt extension, restart worker |
-| **Services** | Bật/tắt MariaDB, đổi hoặc cài version |
+| **Services** | Mỗi dịch vụ một thẻ và một trang: *MariaDB* (bật/tắt, đổi hoặc cài version) và *Composer* (cài hoặc gỡ version, đặt bản mặc định bằng ★, xem site nào đang dùng) |
 | **Performance** | Realtime: req/s, độ trễ p50/p95, histogram độ trễ, mã trạng thái, route chậm nhất, CPU/RAM từng process; lọc theo site, có/không tính file tĩnh |
 | **Logs** | Theo dõi realtime log của PHPev, PHP, MariaDB và Laravel (`storage/logs/*.log`), có ô lọc |
 | **Settings** | Chạy khi đăng nhập, icon tray, giao diện, ngôn ngữ, kiểm tra cập nhật, editor; TLD và thư mục park; port; HTTPS; Defender, file hosts và các kiểm tra; dung lượng đĩa và dọn dẹp; thông tin |
 
-`Ctrl K` để tìm site hoặc trang. Menu và danh sách site thu gọn được; dashboard nhớ lựa chọn này.
+`Ctrl K` để tìm site, trang hoặc dịch vụ. Menu và danh sách site thu gọn được; dashboard nhớ lựa chọn này.
 
 Dữ liệu hiệu năng chỉ nằm trong RAM (số liệu gộp theo giây của 10 phút gần nhất và 2 000 request gần
 nhất). Query string không bao giờ được lưu, và ID trong URL được gom nhóm (`/users/42` → `/users/{n}`).
@@ -386,7 +406,8 @@ vụ bị kill; MariaDB được tắt êm khi Windows log off hoặc shutdown.
 | `phpev doctor [--fix-path] [--defender-exclude]` | Kiểm tra sự cố (thứ tự PATH, port, runtime, CA…) |
 | `phpev php list\|install\|add\|remove\|use\|ini\|which\|warm` | Quản lý version PHP |
 | `phpev db list\|install\|remove\|start\|stop\|use` | Quản lý MariaDB |
-| `phpev composer install\|self-update` | Quản lý Composer |
+| `phpev composer install\|use\|self-update\|list\|remove` | Quản lý các version Composer và bản mặc định |
+| `phpev composer pin <version>\|unpin [--site <name>]` | Chọn version Composer cho một site |
 | `phpev start\|stop\|status` | Điều khiển dịch vụ nền |
 | `phpev autostart on\|off` | Chạy dịch vụ khi đăng nhập |
 | `phpev dashboard [--browser]` | Mở dashboard |

@@ -4,7 +4,7 @@ import { api, useApi } from '../api.js';
 import { act, showToast } from '../ui/feedback.js';
 import { confirmAction } from '../ui/dialog.js';
 import { Icon } from '../icons.js';
-import { SetRow, Empty, Loading } from '../ui/controls.js';
+import { SetRow, DefaultStar, RemoveButton, Empty, Loading } from '../ui/controls.js';
 
 const line = (v) => v.split('.').slice(0, 2).join('.');
 
@@ -52,15 +52,12 @@ export function Php({ startJob }) {
       ${data.installed.map((v) => html`
         <${SetRow} icon="php" title=${`PHP ${v.version}`}
           desc=${[v.default ? t('php.default') : '', t('php.workers', { count: v.workers })].filter(Boolean).join(' · ')}>
-          ${v.default
-            ? html`<span class="pill accent">${t('php.default')}</span>`
-            : html`<button class="btn quiet sm" onClick=${() => act(api('PUT', '/php/default', { version: line(v.version) }), reload)}>${t('php.set_default')}</button>`}
           <button class="btn quiet sm" aria-expanded=${extOpen === v.version ? 'true' : 'false'} onClick=${() => setExtOpen(extOpen === v.version ? null : v.version)}>
             ${t('php.extensions')}<${Icon} name=${extOpen === v.version ? 'chevron-down' : 'chevron-right'} size=${15} /></button>
+          <${DefaultStar} on=${v.default} label=${t('php.set_default')} onLabel=${t('php.default')}
+            onClick=${() => act(api('PUT', '/php/default', { version: line(v.version) }), reload)} />
           <button class="icon-btn" aria-label=${t('php.restart')} title=${t('php.restart')} onClick=${() => act(api('POST', `/php/${v.version}/restart`), reload)}><${Icon} name="restart" size=${16} /></button>
-          ${(!v.default || data.installed.length === 1)
-            ? html`<button class="icon-btn" aria-label=${t('common.remove')} title=${t('common.remove')} onClick=${() => remove(v)}><${Icon} name="trash" size=${16} /></button>`
-            : html`<span style="width: 36px"></span>`}
+          <${RemoveButton} blocked=${v.default && data.installed.length > 1 ? t('common.remove_default') : ''} onClick=${() => remove(v)} />
         </${SetRow}>
         ${extOpen === v.version && html`<${Extensions} version=${v.version} />`}`)}
     </section>
