@@ -1,10 +1,11 @@
-import { html, useState, useEffect } from '/vendor/htm-preact-standalone.mjs';
+import { html, useState } from '/vendor/htm-preact-standalone.mjs';
 import { t } from '../i18n.js';
 import { api, useApi } from '../api.js';
 import { act, showToast } from '../ui/feedback.js';
 import { confirmAction } from '../ui/dialog.js';
 import { Icon } from '../icons.js';
 import { SetRow, DefaultStar, RemoveButton, Tabs, Empty, Loading } from '../ui/controls.js';
+import { IniEditor } from '../ui/ini-editor.js';
 
 const line = (v) => v.split('.').slice(0, 2).join('.');
 
@@ -20,55 +21,6 @@ function Extensions({ version }) {
     </div>`;
 }
 
-// A textarea reports `\n` line endings whatever the file uses.
-const lf = (text) => text.replace(/\r\n/g, '\n');
-
-/** The version's php.ini in a textarea; saving checks it with PHP and restarts the workers. */
-function PhpIni({ version, active, onSaved }) {
-  const [ini, setIni] = useState(null);
-  const [text, setText] = useState('');
-  const [busy, setBusy] = useState(false);
-  const dirty = ini?.text !== undefined && text !== lf(ini.text);
-  const load = () => api('GET', `/php/${version}/ini`).then((r) => {
-    setIni(r);
-    setText(lf(r.text));
-  }, (e) => setIni({ error: e.message }));
-  // Reloaded each time the tab is shown, unless edited: extensions also change the file.
-  useEffect(() => {
-    if (active && !dirty) load();
-  }, [active]);
-  if (!ini) return html`<span class="small muted">${t('common.loading')}</span>`;
-  if (ini.error) return html`<span class="pill danger">${t('common.error', { message: ini.error })}</span>`;
-  const save = async () => {
-    if (!dirty || busy) return;
-    setBusy(true);
-    try {
-      const r = await api('PUT', `/php/${version}/ini`, { text, stamp: ini.stamp });
-      showToast(r.message);
-      await load();
-      onSaved();
-    } catch (e) {
-      showToast(t('common.error', { message: e.message }), true);
-    }
-    setBusy(false);
-  };
-  const onKey = (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-      e.preventDefault();
-      save();
-    }
-  };
-  return html`<div class="ini-editor">
-    <textarea class="mono" spellcheck="false" aria-label=${t('php.ini_label', { version })} value=${text}
-      onInput=${(e) => setText(e.target.value)} onKeyDown=${onKey}></textarea>
-    <div class="row-flex">
-      <span class="small muted grow">${t('php.ini_hint', { version })}</span>
-      <button class="btn quiet sm" disabled=${!dirty || busy} onClick=${() => setText(lf(ini.text))}>${t('php.ini_discard')}</button>
-      <button class="btn primary sm" disabled=${!dirty || busy} onClick=${save}>${busy ? t('php.ini_saving') : t('php.ini_save')}</button>
-    </div>
-  </div>`;
-}
-
 /** Below a version's row: its extensions and its php.ini, as two tabs. */
 function VersionPanel({ version, onSaved }) {
   const [tab, setTab] = useState('extensions');
@@ -76,7 +28,10 @@ function VersionPanel({ version, onSaved }) {
     <${Tabs} label=${t('php.details_of', { version })} value=${tab} onChange=${setTab}
       tabs=${[{ id: 'extensions', label: t('php.extensions') }, { id: 'ini', label: 'php.ini' }]} />
     <div class="ext-panel" hidden=${tab !== 'extensions'}><${Extensions} version=${version} /></div>
-    <div hidden=${tab !== 'ini'}><${PhpIni} version=${version} active=${tab === 'ini'} onSaved=${onSaved} /></div>
+    <div hidden=${tab !== 'ini'}>
+      <${IniEditor} path=${`/php/${version}/ini`} label=${t('php.ini_label', { version })} hint=${t('php.ini_hint', { version })}
+        active=${tab === 'ini'} onSaved=${onSaved} />
+    </div>
   </div>`;
 }
 

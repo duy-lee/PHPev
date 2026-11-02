@@ -156,14 +156,30 @@ pub fn installed_for_major(layout: &Layout, major: &str) -> Option<String> {
 
 /// Arguments for `mariadbd.exe`. `--no-defaults` must come first; the 16 MB redo
 /// log keeps a fresh datadir small (MariaDB resizes an existing log on start).
+/// The my.ini of a major's server, next to its databases (written by
+/// mariadb-install-db, editable in the dashboard).
+pub fn ini_path(layout: &Layout, major: &str) -> PathBuf {
+    data_dir(layout, major).join("my.ini")
+}
+
+/// Arguments of the server. The major's my.ini is read first; the arguments
+/// after it win, so PHPev keeps the data folder, port, address and logs.
 pub fn server_args(layout: &Layout, version: &str, port: u16) -> Vec<std::ffi::OsString> {
     let major = major_of(version);
+    let ini = ini_path(layout, &major);
+    let defaults = if ini.is_file() {
+        let mut arg = std::ffi::OsString::from("--defaults-file=");
+        arg.push(&ini);
+        arg
+    } else {
+        "--no-defaults".into()
+    };
     let mut datadir = std::ffi::OsString::from("--datadir=");
     datadir.push(data_dir(layout, &major));
     let mut log = std::ffi::OsString::from("--log-error=");
     log.push(layout.logs_dir().join(format!("mariadb-{major}.err")));
     vec![
-        "--no-defaults".into(),
+        defaults,
         datadir,
         format!("--port={port}").into(),
         "--bind-address=127.0.0.1".into(),

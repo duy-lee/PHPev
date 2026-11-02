@@ -8,6 +8,10 @@ All notable changes to PHPev are documented here. The format follows
 
 ### Added
 
+- **Edit my.ini in the dashboard**: **Details** under an installed MariaDB (Services › MariaDB)
+  opens its *my.ini*, for server settings such as `sql_mode`. MariaDB now reads the `my.ini` of
+  its data folder at start. Saving keeps the previous file as `my.ini.bak` and restarts MariaDB,
+  and puts the previous file back if MariaDB does not start with the new one.
 - **`.htaccess` rewrite rules**: `RewriteEngine`, `RewriteBase`, `RewriteCond` and `RewriteRule`
   in the document root and its sub-folders work as with Apache's mod_rewrite, so plain-PHP
   projects written for Apache keep their URLs, images and styles. With active rules, a missing

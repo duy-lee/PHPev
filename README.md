@@ -303,6 +303,13 @@ phpev db remove 10.11   # remove a version (not the active one); asks whether to
 MariaDB listens on `127.0.0.1:3306` with user `root` and **no password**: it is meant for local
 development only and is not reachable from other machines.
 
+Each major reads `data\mariadb\<major>\my.ini` at start, for server settings such as `sql_mode`
+(MariaDB is strict by default, which old code written for MySQL 5.6 may not expect). Edit it on the
+dashboard under **Services › MariaDB**, **Details** of an installed version, tab *my.ini*: saving keeps the previous file as `my.ini.bak` and
+restarts MariaDB, and puts the previous file back if MariaDB does not start with the new one. The
+settings apply to every site on that MariaDB. PHPev always sets the data folder, port,
+`bind-address`, `log-error`, `max_allowed_packet` and `innodb_log_file_size` itself.
+
 `mysql`, `mysqldump`, `mariadb` and `mariadb-dump` in any terminal run the client of the active
 MariaDB, already connected to it as `root` (your own `-u`, `-h` or `-P` take precedence; `-p` just
 asks for the empty password):
@@ -376,7 +383,7 @@ The dashboard runs on `http://127.0.0.1:7600` and has these pages:
 | **Home** | What runs and what needs attention, your sites, services and memory; three getting-started steps on a fresh install |
 | **Sites** | A page per site: *Overview* (PHP version, HTTPS, Composer, extensions, workers, health with Fix buttons, unlink), *Requests*, *Logs* and *Database* (connection details, tables, import and export of `.sql`). Open the site, its folder, a terminal or your editor |
 | **PHP** | Install versions (with progress) or add a PHP folder, set the default, enable/disable extensions, edit `php.ini`, restart workers |
-| **Services** | A card and a page per service: *MariaDB* (start/stop, switch or install versions) and *Composer* (install or remove versions, make one the default with ★, see which sites use them) |
+| **Services** | A card and a page per service: *MariaDB* (start/stop, switch or install versions, edit `my.ini`) and *Composer* (install or remove versions, make one the default with ★, see which sites use them) |
 | **Performance** | Live requests/s, p50/p95 latency, latency histogram, status codes, slowest routes, CPU/RAM of each process, per site, with or without static files |
 | **Logs** | Follow the PHPev, PHP, MariaDB and Laravel (`storage/logs/*.log`) logs live, with a filter |
 | **Settings** | Start at sign-in, tray icon, theme, language, update check, code editor; TLD and parked folders; ports; HTTPS; Defender, hosts file and checks; disk use and clean-up; about |

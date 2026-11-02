@@ -259,10 +259,11 @@ pub struct ExtensionRequest {
     pub enabled: bool,
 }
 
-/// `GET /php/<version>/ini`, and the body of `PUT` to replace it: `stamp` is
-/// the one read, so a file changed meanwhile is not overwritten.
+/// `GET /php/<version>/ini` and `GET /mariadb/<major>/ini`, and the body of
+/// `PUT` to replace the file: `stamp` is the one read, so a file changed
+/// meanwhile is not overwritten.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct PhpIni {
+pub struct IniFile {
     pub text: String,
     pub stamp: String,
 }

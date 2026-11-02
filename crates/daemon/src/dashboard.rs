@@ -692,10 +692,10 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
         (Method::GET, ["php", v, "ini"]) => {
             let (l, v) = (layout.clone(), v.to_string());
             let (text, stamp) = blocking(move || ops::read_php_ini(&l, &v)).await?;
-            ok(&PhpIni { text, stamp })
+            ok(&IniFile { text, stamp })
         }
         (Method::PUT, ["php", v, "ini"]) => {
-            let r: PhpIni = body(req).await?;
+            let r: IniFile = body(req).await?;
             let (l, v2) = (layout.clone(), v.to_string());
             blocking(move || ops::save_php_ini(&l, &v2, &r.text, &r.stamp)).await?;
             // Workers loaded the old php.ini; the pool restarts on the next request.
@@ -767,6 +767,36 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             let (l, v2) = (layout.clone(), v.to_string());
             let removed = blocking(move || ops::remove_mariadb(&l, &v2, r.delete_data, &mut ops::Quiet)).await?;
             message(tr("msg.mariadb_removed", &[("version", &removed)]))
+        }
+        (Method::GET, ["mariadb", major, "ini"]) => {
+            let (l, m) = (layout.clone(), major.to_string());
+            let (text, stamp) = blocking(move || ops::read_my_ini(&l, &m)).await?;
+            ok(&IniFile { text, stamp })
+        }
+        (Method::PUT, ["mariadb", major, "ini"]) => {
+            let r: IniFile = body(req).await?;
+            let (l, m) = (layout.clone(), major.to_string());
+            let existed = blocking(move || ops::save_my_ini(&l, &m, &r.text, &r.stamp)).await?;
+            let running = d.daemon.status().await.mariadb;
+            if !running.is_some_and(|s| mariadb::major_of(&s.version) == *major) {
+                return message(tr("msg.my_ini_saved", &[("major", major)]));
+            }
+            // The server reads my.ini only at start. One that does not start with
+            // the new file gets the previous one back.
+            d.daemon.db_stop().await?;
+            if let Err(e) = d.daemon.db_start().await {
+                let (l, m) = (layout.clone(), major.to_string());
+                blocking(move || ops::restore_my_ini(&l, &m, existed)).await?;
+                let restarted = d.daemon.db_start().await;
+                let errors = mariadb_errors(&layout, major);
+                let mut text = tr("msg.my_ini_rejected", &[("major", major)]);
+                text.push_str(&format!("\n{}", if errors.is_empty() { e.to_string() } else { errors }));
+                if let Err(e) = restarted {
+                    text.push_str(&format!("\n{e}"));
+                }
+                return Err(ApiError(StatusCode::BAD_REQUEST, text));
+            }
+            message(tr("msg.my_ini_restarted", &[("major", major)]))
         }
         (Method::POST, ["mariadb", "start"]) => {
             let msg = d.daemon.db_start().await?;
@@ -1297,6 +1327,22 @@ fn update_info(layout: &phpev_core::layout::Layout) -> UpdateInfo {
         url: state.url,
         checked_at: state.checked_at,
     }
+}
+
+/// The last `[ERROR]` lines of a major's server log: why it did not start.
+fn mariadb_errors(layout: &phpev_core::layout::Layout, major: &str) -> String {
+    let log = layout.logs_dir().join(format!("mariadb-{major}.err"));
+    let text = std::fs::read(&log)
+        .map(|b| String::from_utf8_lossy(&b).into_owned())
+        .unwrap_or_default();
+    let errors: Vec<&str> = text
+        .lines()
+        .rev()
+        .take(40)
+        .filter(|l| l.contains("[ERROR]"))
+        .take(3)
+        .collect();
+    errors.into_iter().rev().collect::<Vec<_>>().join("\n")
 }
 
 fn composer_info(layout: &phpev_core::layout::Layout) -> io::Result<ComposerInfo> {
