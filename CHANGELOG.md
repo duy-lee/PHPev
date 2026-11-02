@@ -39,6 +39,14 @@ All notable changes to PHPev are documented here. The format follows
   Settings, are picked from a dropdown instead of a row of buttons, which stays tidy with many
   versions.
 
+### Fixed
+
+- **Japanese text garbled in scripts of Shift-JIS projects**: static `.js`, `.css` and `.csv`
+  files were always sent as UTF-8, so a Shift-JIS page showed `�Ȃ�` in what its scripts print.
+  Like Apache, they now carry no charset and the browser reads them in the encoding of the page.
+  `AddDefaultCharset` in `.htaccess` (inherited by sub-folders, `Off` supported) now sets the
+  charset of static `.html` and `.txt` files; without it they stay UTF-8.
+
 ## [1.0.0-rc.1] - 2026-10-27
 
 The first release candidate of 1.0: a new dashboard. Please try it and report problems before

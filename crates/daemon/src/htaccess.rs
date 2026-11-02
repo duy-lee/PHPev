@@ -4,7 +4,8 @@
 //! Supported: `RewriteEngine`, `RewriteBase`, `RewriteOptions Inherit|InheritBefore`,
 //! `RewriteCond` (regex, `-f -d -s -l -F`, `=`, `<`, `>`; flags `NC`, `OR`) and
 //! `RewriteRule` (flags `L`, `END`, `R[=code]`, `NC`, `QSA`, `QSD`, `F`, `G`, `S=n`, `E=var:value`).
-//! Other directives (`php_value`, `AddDefaultCharset`, `Options`, …) are ignored;
+//! `AddDefaultCharset` is read too (see [`default_charset`]).
+//! Other directives (`php_value`, `Options`, …) are ignored;
 //! PHP settings belong in `.user.ini`, which php-cgi reads itself.
 //!
 //! Per-directory semantics as in Apache: the deepest directory on the path
@@ -34,6 +35,8 @@ pub struct Htaccess {
     base: Option<String>,
     inherit: Inherit,
     rules: Vec<Rule>,
+    /// `AddDefaultCharset`: `None` not set here, `Some(None)` is `Off`.
+    charset: Option<Option<String>>,
 }
 
 #[derive(Default, Clone, Copy, PartialEq, Eq)]
@@ -152,6 +155,13 @@ impl Htaccess {
                         Err(e) => warnings.push(format!("line {no}: {e}")),
                     }
                 }
+                "adddefaultcharset" => match args.first().map(|a| a.to_ascii_lowercase()).as_deref() {
+                    None => warnings.push(format!("line {no}: AddDefaultCharset needs a value")),
+                    Some("off") => ht.charset = Some(None),
+                    // Apache: `On` means ISO-8859-1.
+                    Some("on") => ht.charset = Some(Some("iso-8859-1".into())),
+                    Some(_) => ht.charset = Some(args.first().cloned()),
+                },
                 "rewritemap" | "rewritelock" => warnings.push(format!("line {no}: {directive} is not supported")),
                 _ => {}
             }
@@ -364,6 +374,25 @@ impl Cache {
             },
         );
         Some(parsed)
+    }
+}
+
+/// The `AddDefaultCharset` in force for `file`: the nearest `.htaccess` that
+/// sets it, from the file's folder up to the docroot (as in Apache, a
+/// sub-folder inherits it). `Off`, or no directive at all, gives `None`.
+pub fn default_charset(cache: &Cache, docroot: &Path, file: &Path) -> Option<String> {
+    let mut dir = file.parent()?;
+    loop {
+        if !dir.starts_with(docroot) {
+            return None;
+        }
+        if let Some(set) = cache.get(dir).and_then(|h| h.charset.clone()) {
+            return set;
+        }
+        if dir == docroot {
+            return None;
+        }
+        dir = dir.parent()?;
     }
 }
 
@@ -1060,5 +1089,43 @@ PHP_VALUE max_input_vars 2000
         assert_eq!(s.serves("/a"), "b");
         std::fs::write(s.root.join(".htaccess"), "RewriteEngine On\nRewriteRule ^a$ cc\n").unwrap();
         assert_eq!(s.serves("/a"), "cc");
+    }
+
+    #[test]
+    fn default_charset_is_inherited_and_can_be_switched_off() {
+        let site = Site::new(
+            "charset",
+            &[
+                (
+                    ".htaccess",
+                    "AddDefaultCharset shift_jis
+",
+                ),
+                ("js/a.js", ""),
+                (
+                    "keitai/.htaccess",
+                    "AddDefaultCharset Off
+",
+                ),
+                ("keitai/a.html", ""),
+                (
+                    "admin/.htaccess",
+                    "RewriteEngine On
+",
+                ),
+                ("admin/deep/a.txt", ""),
+                (
+                    "other/.htaccess",
+                    "AddDefaultCharset EUC-JP
+",
+                ),
+                ("other/a.txt", ""),
+            ],
+        );
+        let get = |f: &str| default_charset(&site.cache, &site.root, &site.root.join(f));
+        assert_eq!(get("js/a.js").as_deref(), Some("shift_jis"));
+        assert_eq!(get("admin/deep/a.txt").as_deref(), Some("shift_jis"));
+        assert_eq!(get("keitai/a.html"), None);
+        assert_eq!(get("other/a.txt").as_deref(), Some("EUC-JP"));
     }
 }
