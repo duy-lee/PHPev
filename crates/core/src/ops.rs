@@ -318,14 +318,7 @@ pub fn set_extension(layout: &Layout, version: &str, ext: &str, enabled: bool) -
 /// The php.ini of installed PHP `version` (exact), and a stamp that changes
 /// whenever the file does, for [`save_php_ini`].
 pub fn read_php_ini(layout: &Layout, version: &str) -> io::Result<(String, String)> {
-    let ini = php_ini_of(layout, version)?;
-    let text = String::from_utf8(std::fs::read(&ini)?).map_err(|_| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("{} is not UTF-8 text", ini.display()),
-        )
-    })?;
-    Ok((text, stamp(&ini)?))
+    read_edited(&php_ini_of(layout, version)?)
 }
 
 /// Replaces the php.ini of PHP `version` with `text`, unless the file changed
@@ -334,16 +327,7 @@ pub fn read_php_ini(layout: &Layout, version: &str) -> io::Result<(String, Strin
 /// must be restarted afterwards.
 pub fn save_php_ini(layout: &Layout, version: &str, text: &str, stamp_read: &str) -> io::Result<()> {
     let ini = php_ini_of(layout, version)?;
-    if stamp(&ini)? != stamp_read {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("the php.ini of PHP {version} changed since it was opened; reload it first"),
-        ));
-    }
-    // Keep the file's line endings; a textarea sends `\n`.
-    let crlf = std::fs::read_to_string(&ini).is_ok_and(|t| t.contains("\r\n"));
-    let text = text.replace("\r\n", "\n");
-    let text = if crlf { text.replace('\n', "\r\n") } else { text };
+    let text = prepare_edit(&ini, text, stamp_read, &format!("the php.ini of PHP {version}"))?;
 
     let check = ini.with_extension("ini.check");
     std::fs::write(&check, &text)?;
@@ -370,9 +354,84 @@ fn php_ini_of(layout: &Layout, version: &str) -> io::Result<PathBuf> {
     Ok(php::version_dir(layout, version).join("php.ini"))
 }
 
-/// Size and modification time of `file`.
+/// The my.ini of installed MariaDB `major` (`11.4`), which its server reads
+/// at start, and a stamp for [`save_my_ini`]. Empty if there is none yet.
+pub fn read_my_ini(layout: &Layout, major: &str) -> io::Result<(String, String)> {
+    read_edited(&my_ini_of(layout, major)?)
+}
+
+/// Replaces the my.ini of MariaDB `major` with `text`, unless it changed since
+/// it was read (`stamp` from [`read_my_ini`]); the previous file is kept as
+/// `my.ini.bak`. Returns whether a file existed before, for [`restore_my_ini`].
+/// A running server of that major must be restarted to use it.
+pub fn save_my_ini(layout: &Layout, major: &str, text: &str, stamp_read: &str) -> io::Result<bool> {
+    let ini = my_ini_of(layout, major)?;
+    let text = prepare_edit(&ini, text, stamp_read, &format!("the my.ini of MariaDB {major}"))?;
+    let existed = ini.is_file();
+    if existed {
+        std::fs::copy(&ini, ini.with_extension("ini.bak"))?;
+    }
+    config::write_atomic(&ini, text.as_bytes())?;
+    Ok(existed)
+}
+
+/// Puts back the my.ini [`save_my_ini`] replaced, or removes the one it
+/// created: for a server that does not start with the new file.
+pub fn restore_my_ini(layout: &Layout, major: &str, existed: bool) -> io::Result<()> {
+    let ini = my_ini_of(layout, major)?;
+    if existed {
+        std::fs::copy(ini.with_extension("ini.bak"), &ini).map(|_| ())
+    } else {
+        std::fs::remove_file(&ini)
+    }
+}
+
+fn my_ini_of(layout: &Layout, major: &str) -> io::Result<PathBuf> {
+    // `major` comes from a URL: only an installed major names a folder.
+    if !mariadb::installed(layout).iter().any(|v| mariadb::major_of(v) == major) {
+        return Err(not_found(format!(
+            "MariaDB {major} is not installed (give the major, e.g. 11.4)"
+        )));
+    }
+    Ok(mariadb::ini_path(layout, major))
+}
+
+/// A text file edited in the dashboard, and its [`stamp`].
+fn read_edited(file: &Path) -> io::Result<(String, String)> {
+    let text = match std::fs::read(file) {
+        Ok(bytes) => String::from_utf8(bytes).map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("{} is not UTF-8 text", file.display()),
+            )
+        })?,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(e),
+    };
+    Ok((text, stamp(file)?))
+}
+
+/// `text` to write over `file`, refused if the file changed since it was read
+/// with `stamp_read`. Keeps the file's line endings (a textarea sends `\n`).
+fn prepare_edit(file: &Path, text: &str, stamp_read: &str, what: &str) -> io::Result<String> {
+    if stamp(file)? != stamp_read {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("{what} changed since it was opened; reload it first"),
+        ));
+    }
+    let crlf = std::fs::read_to_string(file).is_ok_and(|t| t.contains("\r\n"));
+    let text = text.replace("\r\n", "\n");
+    Ok(if crlf { text.replace('\n', "\r\n") } else { text })
+}
+
+/// Size and modification time of `file`; `none` while it does not exist.
 fn stamp(file: &Path) -> io::Result<String> {
-    let meta = std::fs::metadata(file)?;
+    let meta = match std::fs::metadata(file) {
+        Ok(m) => m,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok("none".into()),
+        Err(e) => return Err(e),
+    };
     let modified = meta
         .modified()?
         .duration_since(std::time::UNIX_EPOCH)
@@ -1125,6 +1184,34 @@ mod tests {
         let refused = save_php_ini(&layout, "8.4.27", "[PHP]\nmemory_limit=2G\n", &stamp).unwrap_err();
         assert!(refused.to_string().contains("changed since"), "{refused}");
         assert_eq!(std::fs::read_to_string(&ini).unwrap(), "[PHP]\r\nmemory_limit=1G\r\n");
+        let _ = std::fs::remove_dir_all(layout.root());
+    }
+
+    #[test]
+    fn my_ini_is_saved_backed_up_and_restored() {
+        let layout = home("my-ini", &[], &["11.4.13"], Config::default());
+        let ini = mariadb::ini_path(&layout, "11.4");
+        assert!(read_my_ini(&layout, "10.6").is_err(), "only installed majors");
+        assert!(read_my_ini(&layout, r"..\11.4").is_err());
+
+        // None yet: empty, then created; restoring removes it again.
+        let (text, stamp) = read_my_ini(&layout, "11.4").unwrap();
+        assert_eq!((text.as_str(), stamp.as_str()), ("", "none"));
+        assert!(!save_my_ini(&layout, "11.4", "[mysqld]\nsql_mode=\n", &stamp).unwrap());
+        restore_my_ini(&layout, "11.4", false).unwrap();
+        assert!(!ini.exists());
+
+        std::fs::write(&ini, "[mysqld]\r\ndatadir=x\r\n").unwrap();
+        let (text, stamp) = read_my_ini(&layout, "11.4").unwrap();
+        let edited = text.replace("\r\n", "\n") + "sql_mode=NO_ENGINE_SUBSTITUTION\n";
+        assert!(save_my_ini(&layout, "11.4", &edited, &stamp).unwrap());
+        assert_eq!(
+            std::fs::read_to_string(&ini).unwrap(),
+            "[mysqld]\r\ndatadir=x\r\nsql_mode=NO_ENGINE_SUBSTITUTION\r\n"
+        );
+        assert!(save_my_ini(&layout, "11.4", "x", &stamp).is_err(), "changed since read");
+        restore_my_ini(&layout, "11.4", true).unwrap();
+        assert_eq!(std::fs::read_to_string(&ini).unwrap(), "[mysqld]\r\ndatadir=x\r\n");
         let _ = std::fs::remove_dir_all(layout.root());
     }
 

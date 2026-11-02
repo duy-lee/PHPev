@@ -295,6 +295,13 @@ phpev db remove 10.11   # xoá một version (không phải version đang dùng)
 MariaDB lắng nghe ở `127.0.0.1:3306`, user `root`, **không mật khẩu**. Nó chỉ dành cho phát triển
 local và máy khác không truy cập được.
 
+Mỗi phiên bản chính đọc `data\mariadb\<major>\my.ini` khi khởi động, cho các thiết lập của server
+như `sql_mode` (MariaDB mặc định chạy strict, code cũ viết cho MySQL 5.6 có thể không chạy được).
+Sửa file này trong dashboard ở **Services › MariaDB**, nút **Details** của phiên bản đã cài, tab *my.ini*: khi lưu, file cũ được giữ thành
+`my.ini.bak` và MariaDB được khởi động lại; nếu MariaDB không khởi động được với file mới, file cũ sẽ
+được trả lại. Thiết lập áp dụng cho mọi site dùng MariaDB đó. PHPev luôn tự đặt thư mục dữ liệu,
+port, `bind-address`, `log-error`, `max_allowed_packet` và `innodb_log_file_size`.
+
 Lệnh `mysql`, `mysqldump`, `mariadb` và `mariadb-dump` trong mọi terminal chạy client của MariaDB
 đang dùng, đã kết nối sẵn bằng `root` (`-u`, `-h`, `-P` bạn tự truyền được ưu tiên; `-p` chỉ hỏi
 mật khẩu rỗng, bấm Enter):
@@ -367,7 +374,7 @@ Dashboard chạy ở `http://127.0.0.1:7600`, gồm các trang:
 | **Home** | Cái gì đang chạy và cái gì cần xử lý, site, dịch vụ và RAM; ba bước bắt đầu khi mới cài |
 | **Sites** | Mỗi site một trang: *Overview* (version PHP, HTTPS, Composer, extension, worker, sức khỏe kèm nút Fix, unlink), *Requests*, *Logs* và *Database* (thông tin kết nối, bảng, import và export `.sql`). Mở site, thư mục, terminal hoặc editor |
 | **PHP** | Cài version (có tiến độ) hoặc thêm thư mục PHP có sẵn, đặt mặc định, bật/tắt extension, sửa `php.ini`, restart worker |
-| **Services** | Mỗi dịch vụ một thẻ và một trang: *MariaDB* (bật/tắt, đổi hoặc cài version) và *Composer* (cài hoặc gỡ version, đặt bản mặc định bằng ★, xem site nào đang dùng) |
+| **Services** | Mỗi dịch vụ một thẻ và một trang: *MariaDB* (bật/tắt, đổi hoặc cài version, sửa `my.ini`) và *Composer* (cài hoặc gỡ version, đặt bản mặc định bằng ★, xem site nào đang dùng) |
 | **Performance** | Realtime: req/s, độ trễ p50/p95, histogram độ trễ, mã trạng thái, route chậm nhất, CPU/RAM từng process; lọc theo site, có/không tính file tĩnh |
 | **Logs** | Theo dõi realtime log của PHPev, PHP, MariaDB và Laravel (`storage/logs/*.log`), có ô lọc |
 | **Settings** | Chạy khi đăng nhập, icon tray, giao diện, ngôn ngữ, kiểm tra cập nhật, editor; TLD và thư mục park; port; HTTPS; Defender, file hosts và các kiểm tra; dung lượng đĩa và dọn dẹp; thông tin |

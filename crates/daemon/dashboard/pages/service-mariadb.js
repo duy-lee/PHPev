@@ -4,14 +4,31 @@ import { api, useApi } from '../api.js';
 import { mb } from '../format.js';
 import { act, showToast } from '../ui/feedback.js';
 import { confirmAction } from '../ui/dialog.js';
-import { SetRow, DefaultStar, RemoveButton, Empty, Loading } from '../ui/controls.js';
+import { Icon } from '../icons.js';
+import { SetRow, DefaultStar, RemoveButton, Tabs, Empty, Loading } from '../ui/controls.js';
+import { IniEditor } from '../ui/ini-editor.js';
 
 const major = (v) => v.split('.').slice(0, 2).join('.');
 
-/** Services › MariaDB: the server, installed versions and versions to install. */
+/** Below a version's row, as on the PHP page: the my.ini of its major, read by the server at start. */
+function VersionPanel({ version, onSaved }) {
+  const [tab, setTab] = useState('ini');
+  const m = major(version);
+  return html`<div class="version-panel">
+    <${Tabs} label=${t('services.details_of', { version })} value=${tab} onChange=${setTab} tabs=${[{ id: 'ini', label: 'my.ini' }]} />
+    <div class="ini-editor">
+      <p class="small muted" style="margin: 0">${t('services.my_ini_note', { major: m })}</p>
+      <${IniEditor} path=${`/mariadb/${m}/ini`} label=${t('services.my_ini_label', { major: m })}
+        hint=${t('services.my_ini_hint', { major: m })} onSaved=${onSaved} />
+    </div>
+  </div>`;
+}
+
+/** Services › MariaDB: the server, installed versions (with their my.ini) and versions to install. */
 export function MariaDb({ startJob }) {
   const [{ data, error }, reload] = useApi('/mariadb', 3000);
   const [available, setAvailable] = useState(null);
+  const [open, setOpen] = useState(null);
   if (!data) return html`<div class="page-head"><h1>${t('services.mariadb')}</h1></div><${Loading} error=${error} />`;
   const loadAvailable = () => api('GET', '/mariadb/available').then(setAvailable, (e) => showToast(t('common.error', { message: e.message }), true));
   const install = (version) => api('POST', '/mariadb/install', { version }).then((r) => startJob(r.job, () => { reload(); loadAvailable(); }), (e) => showToast(e.message, true));
@@ -52,10 +69,13 @@ export function MariaDb({ startJob }) {
       <div class="card-head"><h2>${t('services.installed')}</h2></div>
       ${data.installed.map((v) => html`<${SetRow} icon="database" title=${`MariaDB ${v}`}
         desc=${data.active === major(v) ? t('services.active') : t('services.inactive')}>
+        <button class="btn quiet sm" aria-expanded=${open === v ? 'true' : 'false'} onClick=${() => setOpen(open === v ? null : v)}>
+          ${t('php.details')}<${Icon} name=${open === v ? 'chevron-down' : 'chevron-right'} size=${15} /></button>
         <${DefaultStar} on=${data.active === major(v)} label=${t('services.use')} onLabel=${t('services.active')}
           onClick=${() => act(api('PUT', '/mariadb/active', { version: major(v) }), reload)} />
         <${RemoveButton} blocked=${data.active === major(v) ? t('services.remove_active') : ''} onClick=${() => remove(v)} />
-      </${SetRow}>`)}
+      </${SetRow}>
+      ${open === v && html`<${VersionPanel} version=${v} onSaved=${reload} />`}`)}
       <div class="card-foot"><span class="small muted">${t('services.switch_note')}</span></div>
     </section>`}
 
