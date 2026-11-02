@@ -301,7 +301,10 @@ async fn handle(router: &Router, req: Request<Incoming>, remote: SocketAddr, htt
     }
 
     match route(&docroot, &rel, fallback) {
-        Target::Static(file) => serve_static(&req, &file).await,
+        Target::Static(file) => {
+            let charset = htaccess::default_charset(&router.htaccess, &docroot, &file);
+            serve_static(&req, &file, charset.as_deref()).await
+        }
         Target::Php {
             script,
             script_name,
@@ -480,7 +483,7 @@ fn route(docroot: &Path, rel: &[String], fallback: bool) -> Target {
 
 // ---------------------------------------------------------------- static files
 
-async fn serve_static(req: &Request<Incoming>, file: &Path) -> Response<Body> {
+async fn serve_static(req: &Request<Incoming>, file: &Path, charset: Option<&str>) -> Response<Body> {
     let Ok(meta) = tokio::fs::metadata(file).await else {
         return text(StatusCode::NOT_FOUND, "Not Found");
     };
@@ -507,7 +510,7 @@ async fn serve_static(req: &Request<Incoming>, file: &Path) -> Response<Body> {
             .unwrap_or_else(|_| internal());
     }
     let builder = builder
-        .header(header::CONTENT_TYPE, content_type(file))
+        .header(header::CONTENT_TYPE, content_type(file, charset))
         .header(header::CONTENT_LENGTH, meta.len());
 
     let body = if meta.len() <= INLINE_FILE_MAX {
@@ -534,19 +537,32 @@ async fn serve_static(req: &Request<Incoming>, file: &Path) -> Response<Body> {
     builder.body(body).unwrap_or_else(|_| internal())
 }
 
-fn content_type(file: &Path) -> &'static str {
+/// Content-Type of a static file. As in Apache, only HTML and plain text get a
+/// charset (`AddDefaultCharset` of the `.htaccess`, else UTF-8); scripts, styles
+/// and CSV carry none, so the browser reads them in the encoding of the page
+/// that uses them (a Shift-JIS project keeps working).
+fn content_type(file: &Path, charset: Option<&str>) -> String {
     let ext = file
         .extension()
         .and_then(|e| e.to_str())
         .unwrap_or("")
         .to_ascii_lowercase();
+    let text = |mime: &str| format!("{mime}; charset={}", charset.unwrap_or("utf-8"));
     match ext.as_str() {
-        "html" | "htm" => "text/html; charset=utf-8",
-        "css" => "text/css; charset=utf-8",
-        "js" | "mjs" => "text/javascript; charset=utf-8",
+        "html" | "htm" => text("text/html"),
+        "txt" => text("text/plain"),
+        // ES modules are always UTF-8.
+        "mjs" => "text/javascript; charset=utf-8".into(),
+        _ => static_mime(&ext).into(),
+    }
+}
+
+fn static_mime(ext: &str) -> &'static str {
+    match ext {
+        "css" => "text/css",
+        "js" => "text/javascript",
         "json" | "map" => "application/json",
-        "txt" => "text/plain; charset=utf-8",
-        "csv" => "text/csv; charset=utf-8",
+        "csv" => "text/csv",
         "xml" => "application/xml",
         "svg" => "image/svg+xml",
         "png" => "image/png",
@@ -903,6 +919,23 @@ fn dashboard(status: StatusCode, sites: &[Site], config: &Config, unknown: Optio
 
 #[cfg(test)]
 mod tests {
+    use super::content_type;
+    use std::path::Path;
+
+    #[test]
+    fn charset_only_on_html_and_text() {
+        let ct = |f: &str, c: Option<&str>| content_type(Path::new(f), c);
+        assert_eq!(ct("a.html", None), "text/html; charset=utf-8");
+        assert_eq!(ct("a.html", Some("shift_jis")), "text/html; charset=shift_jis");
+        assert_eq!(ct("a.TXT", Some("shift_jis")), "text/plain; charset=shift_jis");
+        // Like Apache: scripts and styles carry no charset, the page decides.
+        assert_eq!(ct("a.js", Some("shift_jis")), "text/javascript");
+        assert_eq!(ct("a.css", None), "text/css");
+        assert_eq!(ct("a.csv", Some("shift_jis")), "text/csv");
+        assert_eq!(ct("a.mjs", Some("shift_jis")), "text/javascript; charset=utf-8");
+        assert_eq!(ct("a.png", Some("shift_jis")), "image/png");
+    }
+
     use super::*;
 
     fn segs(p: &str) -> Option<Vec<String>> {
