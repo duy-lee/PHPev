@@ -59,14 +59,11 @@ pub struct Router {
 const VERSION_TTL: Duration = Duration::from_secs(2);
 
 /// Config and site table. Reloaded as soon as config.toml changes (one `stat`
-/// per request, so `phpev link` takes effect on the very next request), and
-/// re-scanned at most once per second when a host is not found (a new folder
-/// in a parked directory).
+/// per request, so `phpev link` takes effect on the very next request).
 struct SiteCache {
     config: Arc<Config>,
     sites: Arc<Vec<Site>>,
     mtime: Option<SystemTime>,
-    scanned: Instant,
 }
 
 impl Router {
@@ -78,7 +75,6 @@ impl Router {
             config: Arc::new(config),
             sites: Arc::new(sites),
             mtime,
-            scanned: Instant::now(),
         };
         Self {
             layout,
@@ -113,7 +109,6 @@ impl Router {
         c.config = config;
         c.sites = sites;
         c.mtime = mtime;
-        c.scanned = Instant::now();
         (c.config.clone(), c.sites.clone())
     }
 
@@ -130,16 +125,6 @@ impl Router {
             .unwrap_or_else(|e| e.into_inner())
             .insert(site.to_owned(), (version.clone(), Instant::now()));
         Ok(version)
-    }
-
-    /// Re-reads parked directories after a miss, at most once per second.
-    fn rescan(&self) -> Arc<Vec<Site>> {
-        let mut c = self.cache.lock().unwrap_or_else(|e| e.into_inner());
-        if c.scanned.elapsed().as_secs() >= 1 {
-            c.scanned = Instant::now();
-            c.sites = Arc::new(sites::all(&c.config));
-        }
-        c.sites.clone()
     }
 }
 
@@ -221,16 +206,11 @@ pub async fn listen(
 
 async fn handle(router: &Router, req: Request<Incoming>, remote: SocketAddr, https: bool, port: u16) -> Response<Body> {
     let host = request_host(&req);
-    let (config, mut all) = router.snapshot();
+    let (config, all) = router.snapshot();
     if host == "localhost" || host == "127.0.0.1" || host == "[::1]" {
         return dashboard(StatusCode::OK, &all, &config, None);
     }
-    let mut site = sites::find(&all, &host, &config.tld).cloned();
-    if site.is_none() {
-        all = router.rescan();
-        site = sites::find(&all, &host, &config.tld).cloned();
-    }
-    let Some(site) = site else {
+    let Some(site) = sites::find(&all, &host, &config.tld).cloned() else {
         return dashboard(StatusCode::NOT_FOUND, &all, &config, Some(&host));
     };
 
@@ -892,18 +872,14 @@ fn dashboard(status: StatusCode, sites: &[Site], config: &Config, unknown: Optio
         html += &format!("<p>No site is configured for <b>{}</b>.</p>", escape(host));
     }
     if sites.is_empty() {
-        html += "<p>No sites yet. Run <code>phpev park C:\\code</code> or <code>phpev link</code> in a project.</p>";
+        html += "<p>No sites yet. Run <code>phpev link</code> in a project folder.</p>";
     } else {
         html += "<table>";
         for s in sites {
             let scheme = if s.secure { "https" } else { "http" };
             let url = format!("{scheme}://{}", s.host(&config.tld));
-            let kind = match s.kind {
-                sites::Kind::Linked => "linked",
-                sites::Kind::Parked => "parked",
-            };
             html += &format!(
-                "<tr><td><a href=\"{u}\">{u}</a></td><td>{kind}</td><td><code>{}</code></td></tr>",
+                "<tr><td><a href=\"{u}\">{u}</a></td><td><code>{}</code></td></tr>",
                 escape(&s.path.to_string_lossy()),
                 u = escape(&url)
             );

@@ -20,8 +20,6 @@ pub struct Overview {
 pub struct SiteInfo {
     pub name: String,
     pub url: String,
-    /// `linked` or `parked`.
-    pub kind: String,
     pub path: String,
     /// Version pinned in config (`phpev link --php`), if any.
     pub php_pinned: Option<String>,
@@ -68,6 +66,15 @@ pub struct SiteDetail {
     /// connections name, then the ones added by hand, without repeats.
     #[serde(default)]
     pub site_databases: Vec<SiteDbEntry>,
+    /// The folder the site serves, relative to its folder (`public`; `.` is the folder itself).
+    #[serde(default)]
+    pub docroot: String,
+    /// The one PHPev picks by itself, in the same form.
+    #[serde(default)]
+    pub docroot_auto: String,
+    /// The one picked for the site; `None` while PHPev picks it.
+    #[serde(default)]
+    pub docroot_picked: Option<String>,
     /// Version of the running MariaDB, `None` while it is stopped.
     #[serde(default)]
     pub mariadb_version: Option<String>,
@@ -132,6 +139,26 @@ pub struct LinkRequest {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SecureRequest {
     pub secure: bool,
+}
+
+/// `PUT /sites/<name>/name`.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RenameSiteRequest {
+    pub name: String,
+}
+
+/// Answer to a rename: the name as kept (`GET /sites/<name>` now answers under it).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SiteRenamed {
+    pub message: String,
+    pub name: String,
+}
+
+/// `PUT /sites/<name>/docroot`.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DocrootRequest {
+    /// Relative to the project folder (`public`, `.`); `None` lets PHPev pick it.
+    pub docroot: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -491,7 +518,6 @@ pub struct SettingsInfo {
     /// `en`, `vi` or `system`.
     pub language: String,
     pub tld: String,
-    pub parked: Vec<String>,
     pub ports: crate::config::Ports,
     /// The local certificate authority exists (HTTPS was turned on once).
     pub ca_exists: bool,

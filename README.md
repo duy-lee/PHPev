@@ -79,14 +79,14 @@ Apache stack. PHPev aims for the Herd experience with three priorities:
 - **MariaDB** (10.6 – 13.0, official builds), one data directory per major version, started on
   demand and restored after a reboot.
 - **Composer** installed and kept up to date, run with the project's PHP version.
-- **Automatic domains**: `park` a folder and every sub-folder becomes `http://<name>.localhost`;
-  `link` a single project. No hosts file edits and no admin rights for `.localhost`.
+- **Automatic domains**: `link` a project and it becomes `http://<name>.localhost`; rename it or
+  pick the folder it serves later. No hosts file edits and no admin rights for `.localhost`.
 - **HTTPS per site** with a local certificate authority that is limited to local TLDs.
 - **Dashboard** in its own window, light or dark, in English or Vietnamese: a page per site
   (PHP version, HTTPS, extensions, logs, database import and export, health checks with Fix
   buttons, open in your editor), PHP versions and extensions, services, **live performance charts**
   (requests/s, p50/p95/p99 latency, slowest routes, CPU/RAM per process), **live logs** and
-  Settings (ports, TLD, parked folders, disk use and more).
+  Settings (ports, TLD, disk use and more).
 - **Tray icon** to open the dashboard and sites, start/stop MariaDB and quit; it also tells you
   when a new PHPev release is out.
 - **Safe by default**: every download is verified by SHA-256, admin rights are asked only for
@@ -157,10 +157,7 @@ first time they open PHPev from the Start menu.
 # Install a PHP version (the first one becomes the default)
 phpev php install 8.4
 
-# Serve every project inside C:\code as http://<folder>.localhost
-phpev park C:\code
-
-# Or make one existing project run end to end
+# Make an existing project run end to end
 cd C:\code\my-laravel-app
 phpev import
 
@@ -176,15 +173,16 @@ the first time a command needs it.
 ### Sites and domains
 
 PHPev serves sites through its own router on ports 80/443. A site's document root is its
-`public` folder if it has `public/index.php` (Laravel, Symfony, …), otherwise the project folder.
+`public` folder if it has `public/index.php` (Laravel, Symfony, …), otherwise the project folder;
+`phpev docroot` (or the site page) picks another one.
 
 ```powershell
-phpev park C:\code          # every sub-folder of C:\code becomes <folder>.localhost
-phpev unpark C:\code
-
 cd C:\code\shop
 phpev link                  # this folder becomes shop.localhost
 phpev link store --php 8.3  # ...as store.localhost, pinned to PHP 8.3
+phpev rename store         # shop.localhost becomes store.localhost
+phpev docroot web/dist      # serve this folder of the project instead
+phpev docroot --auto        # ...or let PHPev pick it again
 phpev unlink
 
 phpev sites                 # list sites with URL, PHP version and folder
@@ -386,7 +384,7 @@ The dashboard runs on `http://127.0.0.1:7600` and has these pages:
 | **Services** | A card and a page per service: *MariaDB* (start/stop, switch or install versions, edit `my.ini`) and *Composer* (install or remove versions, make one the default with ★, see which sites use them) |
 | **Performance** | Live requests/s, p50/p95 latency, latency histogram, status codes, slowest routes, CPU/RAM of each process, per site, with or without static files |
 | **Logs** | Follow the PHPev, PHP, MariaDB and Laravel (`storage/logs/*.log`) logs live, with a filter |
-| **Settings** | Start at sign-in, tray icon, theme, language, update check, code editor; TLD and parked folders; ports; HTTPS; Defender, hosts file and checks; disk use and clean-up; about |
+| **Settings** | Start at sign-in, tray icon, theme, language, update check, code editor; TLD; ports; HTTPS; Defender, hosts file and checks; disk use and clean-up; about |
 
 `Ctrl K` finds a site, a page or a service. The menu and the site list can be collapsed; the dashboard
 remembers it.
@@ -442,8 +440,9 @@ down cleanly when Windows logs off or shuts down.
 | `phpev autostart on\|off` | Start the service at log in |
 | `phpev dashboard [--browser]` | Open the dashboard |
 | `phpev tray on\|off` | Show or hide the tray icon |
-| `phpev park [DIR]` / `unpark [DIR]` | Serve every sub-folder of a folder |
 | `phpev link [NAME] [--php VER]` / `unlink [NAME]` | Serve one folder |
+| `phpev rename <NEW> [--site NAME]` | Give a site another name |
+| `phpev docroot [FOLDER] [--auto] [--site NAME]` | Show or pick the folder a site serves |
 | `phpev sites` | List sites |
 | `phpev import [DIR] [--name N] [--yes] [--migrate] [--defender-exclude]` | Make an existing project run |
 | `phpev secure [NAME]` / `unsecure [NAME]` | HTTPS for a site |
@@ -465,7 +464,6 @@ PHPev restarts by itself).
 php = "8.4"           # default PHP version
 mariadb = "11.4"      # active MariaDB major version
 tld = "localhost"
-parked = ['C:\code']
 # tray = false        # hide the tray icon
 
 [ports]

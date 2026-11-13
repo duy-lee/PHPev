@@ -79,14 +79,15 @@ kèm cả một Apache. PHPev hướng tới trải nghiệm như Herd, với ba
 - **MariaDB** (10.6 – 13.0, bản chính thức), mỗi major version một thư mục dữ liệu riêng, chỉ chạy
   khi cần và tự bật lại sau khi khởi động lại máy.
 - **Composer** được cài và cập nhật sẵn, chạy bằng đúng version PHP của project.
-- **Domain tự động**: `park` một thư mục thì mọi thư mục con thành `http://<tên>.localhost`;
+- **Domain tự động**: `link` một project thì nó thành `http://<tên>.localhost`, sau đó đổi tên hoặc
+  chọn thư mục được phục vụ được;
   `link` cho từng project. Domain `.localhost` không cần sửa file hosts, không cần quyền admin.
 - **HTTPS theo từng site**, bằng một CA nội bộ chỉ được phép cấp cert cho các TLD local.
 - **Dashboard** trong cửa sổ riêng, nền sáng hoặc tối, tiếng Anh hoặc tiếng Việt: mỗi site một trang
   (version PHP, HTTPS, extension, log, import và export database, kiểm tra sức khỏe kèm nút Fix, mở
   bằng editor), version PHP và extension, dịch vụ, **biểu đồ hiệu năng realtime** (req/s, độ trễ
-  p50/p95/p99, route chậm nhất, CPU/RAM từng process), **log realtime** và Settings (port, TLD, thư
-  mục park, dung lượng đĩa và nhiều thứ khác).
+  p50/p95/p99, route chậm nhất, CPU/RAM từng process), **log realtime** và Settings (port, TLD, dung
+  lượng đĩa và nhiều thứ khác).
 - **Icon tray** để mở dashboard và site, bật/tắt MariaDB, thoát; đồng thời báo khi có bản PHPev mới.
 - **An toàn mặc định**: mọi file tải về đều được kiểm tra SHA-256; chỉ xin quyền admin cho các tính
   năng tùy chọn; thao tác có tác dụng phụ đều hỏi trước khi chạy.
@@ -155,10 +156,7 @@ mở PHPev từ Start menu.
 # Cài một version PHP (version đầu tiên sẽ thành mặc định)
 phpev php install 8.4
 
-# Mọi project trong C:\code chạy ở http://<tên thư mục>.localhost
-phpev park C:\code
-
-# Hoặc cho một project có sẵn chạy được từ đầu tới cuối
+# Cho một project có sẵn chạy được từ đầu tới cuối
 cd C:\code\my-laravel-app
 phpev import
 
@@ -173,15 +171,16 @@ Giờ `http://my-laravel-app.localhost` đã chạy app. Dịch vụ nền tự 
 ### Site và domain
 
 PHPev phục vụ site qua router riêng trên port 80/443. Document root là thư mục `public` nếu có
-`public/index.php` (Laravel, Symfony…), ngược lại là chính thư mục project.
+`public/index.php` (Laravel, Symfony…), ngược lại là chính thư mục project; `phpev docroot` (hoặc
+trang site) chọn thư mục khác.
 
 ```powershell
-phpev park C:\code          # mọi thư mục con của C:\code thành <tên>.localhost
-phpev unpark C:\code
-
 cd C:\code\shop
 phpev link                  # thư mục này thành shop.localhost
 phpev link store --php 8.3  # ...thành store.localhost, cố định PHP 8.3
+phpev rename store         # shop.localhost thành store.localhost
+phpev docroot web/dist      # phục vụ thư mục này của project
+phpev docroot --auto        # ...hoặc để PHPev tự chọn lại
 phpev unlink
 
 phpev sites                 # liệt kê site: URL, version PHP, thư mục
@@ -377,7 +376,7 @@ Dashboard chạy ở `http://127.0.0.1:7600`, gồm các trang:
 | **Services** | Mỗi dịch vụ một thẻ và một trang: *MariaDB* (bật/tắt, đổi hoặc cài version, sửa `my.ini`) và *Composer* (cài hoặc gỡ version, đặt bản mặc định bằng ★, xem site nào đang dùng) |
 | **Performance** | Realtime: req/s, độ trễ p50/p95, histogram độ trễ, mã trạng thái, route chậm nhất, CPU/RAM từng process; lọc theo site, có/không tính file tĩnh |
 | **Logs** | Theo dõi realtime log của PHPev, PHP, MariaDB và Laravel (`storage/logs/*.log`), có ô lọc |
-| **Settings** | Chạy khi đăng nhập, icon tray, giao diện, ngôn ngữ, kiểm tra cập nhật, editor; TLD và thư mục park; port; HTTPS; Defender, file hosts và các kiểm tra; dung lượng đĩa và dọn dẹp; thông tin |
+| **Settings** | Chạy khi đăng nhập, icon tray, giao diện, ngôn ngữ, kiểm tra cập nhật, editor; TLD; port; HTTPS; Defender, file hosts và các kiểm tra; dung lượng đĩa và dọn dẹp; thông tin |
 
 `Ctrl K` để tìm site, trang hoặc dịch vụ. Menu và danh sách site thu gọn được; dashboard nhớ lựa chọn này.
 
@@ -431,8 +430,9 @@ vụ bị kill; MariaDB được tắt êm khi Windows log off hoặc shutdown.
 | `phpev autostart on\|off` | Chạy dịch vụ khi đăng nhập |
 | `phpev dashboard [--browser]` | Mở dashboard |
 | `phpev tray on\|off` | Hiện/ẩn icon tray |
-| `phpev park [DIR]` / `unpark [DIR]` | Phục vụ mọi thư mục con của một thư mục |
 | `phpev link [NAME] [--php VER]` / `unlink [NAME]` | Phục vụ một thư mục |
+| `phpev rename <MỚI> [--site TÊN]` | Đổi tên một site |
+| `phpev docroot [THƯ_MỤC] [--auto] [--site TÊN]` | Xem hoặc chọn thư mục mà site phục vụ |
 | `phpev sites` | Liệt kê site |
 | `phpev import [DIR] [--name N] [--yes] [--migrate] [--defender-exclude]` | Cho project có sẵn chạy được |
 | `phpev secure [NAME]` / `unsecure [NAME]` | HTTPS cho một site |
@@ -454,7 +454,6 @@ bằng tay thì cần `phpev stop` rồi `phpev start` (đổi trong Settings c�
 php = "8.4"           # version PHP mặc định
 mariadb = "11.4"      # major version MariaDB đang dùng
 tld = "localhost"
-parked = ['C:\code']
 # tray = false        # ẩn icon tray
 
 [ports]

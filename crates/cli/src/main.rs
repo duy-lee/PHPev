@@ -83,10 +83,6 @@ enum Command {
         #[arg(value_enum)]
         mode: daemon::Switch,
     },
-    /// Serve every sub-folder of DIR (default: current folder) as http://<folder>.localhost
-    Park { dir: Option<PathBuf> },
-    /// Stop serving the sub-folders of DIR (default: current folder)
-    Unpark { dir: Option<PathBuf> },
     /// Serve the current folder as http://<name>.localhost
     Link {
         /// Site name (default: the folder name)
@@ -100,6 +96,25 @@ enum Command {
     },
     /// Remove a linked site (default: the one for the current folder)
     Unlink { name: Option<String> },
+    /// Give a site another name, so it is served as http://<new-name>.localhost
+    Rename {
+        /// The new name (a-z, 0-9, -)
+        new_name: String,
+        /// Site to rename (default: the site of the current folder)
+        #[arg(long)]
+        site: Option<String>,
+    },
+    /// Show or pick the folder of a site that is served, e.g. `phpev docroot public`
+    Docroot {
+        /// Folder inside the project (`public`, `web/dist`, `.` for the project folder); without it, show the current one
+        folder: Option<String>,
+        /// Let PHPev pick the folder again (`public` when it holds an index.php)
+        #[arg(long, conflicts_with = "folder")]
+        auto: bool,
+        /// Site name (default: the site of the current folder)
+        #[arg(long)]
+        site: Option<String>,
+    },
     /// List all sites with their URL, PHP version and folder
     Sites,
     /// Make an existing project run: pick PHP, check extensions, composer install, .env, database, domain
@@ -304,10 +319,10 @@ fn main() -> ExitCode {
         Command::Dashboard { browser } => daemon::dashboard(browser),
         Command::Tray { mode } => daemon::tray(mode),
         Command::Autostart { mode } => daemon::autostart(mode),
-        Command::Park { dir } => sites::park(dir),
-        Command::Unpark { dir } => sites::unpark(dir),
         Command::Link { name, php, composer } => sites::link(name, php, composer),
         Command::Unlink { name } => sites::unlink(name),
+        Command::Rename { new_name, site } => sites::rename(&new_name, site),
+        Command::Docroot { folder, auto, site } => sites::docroot(folder, auto, site),
         Command::Sites => sites::list(),
         Command::Secure { name } => https::secure(name),
         Command::Unsecure { name } => https::unsecure(name),

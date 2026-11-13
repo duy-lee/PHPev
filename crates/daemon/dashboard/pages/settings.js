@@ -66,18 +66,6 @@ function Sites({ s, reload }) {
     });
     if (ok) act(api('PUT', '/settings/tld', { tld: wanted }), reload);
   };
-  const park = async () => {
-    try {
-      const { path } = await api('POST', '/settings/parked/pick');
-      if (path) await act(api('POST', '/settings/parked', { path }), reload);
-    } catch (e) {
-      showToast(t('common.error', { message: e.message }), true);
-    }
-  };
-  const unpark = async (path) => {
-    const ok = await confirmAction({ title: t('settings.unpark_title'), body: t('settings.unpark_body', { path }), confirmLabel: t('settings.unpark') });
-    if (ok) act(api('POST', '/settings/parked/remove', { path }), reload);
-  };
   return html`
     <section class="card">
       <div class="card-head"><h2>${t('settings.domain')}</h2></div>
@@ -87,16 +75,6 @@ function Sites({ s, reload }) {
             onKeyDown=${(e) => e.key === 'Enter' && applyTld()} /></label>
         <button class="btn sm" disabled=${tld.trim().replace(/^\./, '').toLowerCase() === s.tld} onClick=${applyTld}>${t('settings.apply')}</button>
       </${SetRow}>
-    </section>
-    <section class="card">
-      <div class="card-head"><h2>${t('settings.parked')}</h2><span class="grow"></span>
-        <button class="btn sm" onClick=${park}><${Icon} name="plus" size=${15} />${t('settings.park')}</button></div>
-      <p class="small muted" style="margin: 0; padding: 0 22px 12px">${t('settings.parked_hint', { tld: s.tld })}</p>
-      ${s.parked.length === 0
-        ? html`<${SetRow} icon="folder" title=${t('settings.parked_none')} />`
-        : s.parked.map((path) => html`<${SetRow} icon="folder" title=${path.split('\\').pop()} desc=${path}>
-            <button class="btn quiet sm" onClick=${() => unpark(path)}>${t('settings.unpark')}</button>
-          </${SetRow}>`)}
     </section>`;
 }
 
