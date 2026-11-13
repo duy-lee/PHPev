@@ -11,6 +11,7 @@ import { Chart } from '../ui/chart.js';
 import { LogEntries } from '../ui/entries.js';
 import { siteHref } from './sites.js';
 import { prefs } from '../ui/prefs.js';
+import { DatabaseCard, Database } from './site-database.js';
 
 const host = (url) => url.replace(/^https?:\/\//, '').replace(/\/$/, '');
 const line = (v) => v.split('.').slice(0, 2).join('.');
@@ -27,8 +28,6 @@ function rememberRecent(name) {
   }
   prefs.set('recentSites', JSON.stringify([name, ...list.filter((n) => n !== name)].slice(0, 20)));
 }
-const size = (bytes) => (bytes >= 1073741824 ? `${(bytes / 1073741824).toFixed(1)} GB` : bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
-const copy = (text) => navigator.clipboard.writeText(text).then(() => showToast(t('common.copied')), () => showToast(text));
 
 /** The log shown first: the newest Laravel log, else the site's newest log, else PHP errors. */
 function defaultLog(logs) {
@@ -132,82 +131,6 @@ function Environment({ d, reload }) {
       desc=${d.workers ? t('site.workers_running', { count: d.workers, mb: mb(d.workers_memory_kb) }) : t('home.no_pools')}>
       <button class="btn quiet sm" onClick=${() => act(api('POST', `/php/${php.value}/restart`), reload)}>${t('site.restart')}</button>
     </${SetRow}>`}
-  </section>`;
-}
-
-function useSiteDatabase(siteName, conn) {
-  const [state, setState] = useState(null);
-  useEffect(() => {
-    setState(null);
-    if (!conn) return;
-    api('GET', `/sites/${encodeURIComponent(siteName)}/database?name=${encodeURIComponent(conn.name)}`).then(setState, (e) => setState({ error: e.message }));
-  }, [siteName, conn?.name, conn?.version]);
-  return state;
-}
-
-/** "MAIN", or nothing for the plain DB_* connection. */
-const connLabel = (db) => (db.name && db.name !== 'wordpress' ? db.name : '');
-
-function databaseDesc(db, info) {
-  if (!info) return t('common.loading');
-  if (info.error) return info.error;
-  if (!info.mariadb_running) return t('site.db_stopped');
-  if (!info.exists) return t('site.db_missing');
-  return t('site.db_size', { count: info.tables.length, size: size(info.bytes) });
-}
-
-/** Picks a .sql file, asks how to import it, then follows the import. */
-async function importInto(siteName, db, startJob, done) {
-  let picked;
-  try {
-    picked = await api('POST', `/sites/${encodeURIComponent(siteName)}/database/import/pick`);
-  } catch (e) {
-    return showToast(e.message, true);
-  }
-  if (!picked.path) return;
-  const file = picked.path.split('\\').pop();
-  const answer = await confirmAction({
-    title: t('site.import_title', { db: db.database }),
-    body: t('site.import_body', { file }),
-    confirmLabel: t('site.import'),
-    choice: { label: t('site.import_empty_first'), confirmWord: 'delete' },
-  });
-  if (!answer) return;
-  api('POST', `/sites/${encodeURIComponent(siteName)}/database/import`, { name: db.name, path: picked.path, empty_first: answer.choice })
-    .then((r) => startJob(r.job, done), (e) => showToast(e.message, true));
-}
-
-function exportFrom(siteName, db, startJob) {
-  api('POST', `/sites/${encodeURIComponent(siteName)}/database/export`, { name: db.name })
-    .then((r) => r.job && startJob(r.job), (e) => showToast(e.message, true));
-}
-
-function DatabaseCard({ d, startJob, onOpen }) {
-  const db = d.databases.find((x) => x.local);
-  const [version, setVersion] = useState(0);
-  const info = useSiteDatabase(d.site.name, db ? { ...db, version } : null);
-  const other = !db && d.databases.find((x) => x.database);
-  const url = db && `mysql://${db.username || 'root'}@127.0.0.1:${info?.port ?? db.port ?? 3306}/${db.database}`;
-  const status = info?.mariadb_running
-    ? html`<span class="pill ok"><span class="dot ok"></span>MariaDB ${info.mariadb_version.split('.').slice(0, 2).join('.')}</span>`
-    : info && html`<span class="pill">${t('site.db_stopped')}</span>`;
-  return html`<section class="card">
-    <div class="card-head"><h2>${t('site.database')}</h2><span class="grow"></span>${db && status}</div>
-    ${!db && html`<${SetRow} icon="database" title=${other ? other.database : t('site.db_none')}
-      desc=${other ? t('site.db_elsewhere', { connection: other.connection, host: other.host }) : t('site.db_none_hint')} />`}
-    ${db && html`
-      <div class="setrow">
-        <span class="row-icon" style="background: var(--accent-soft); color: var(--accent)"><${Icon} name="database" /></span>
-        <span class="row-text"><b class="mono">${db.database}</b><span>${databaseDesc(db, info)}</span></span>
-        <button class="btn quiet sm" disabled=${!info?.mariadb_running} onClick=${() => importInto(d.site.name, db, startJob, () => setVersion(version + 1))}>
-          <${Icon} name="upload" size=${15} />${t('site.import')}</button>
-        <button class="btn quiet sm" disabled=${!info?.exists} onClick=${() => exportFrom(d.site.name, db, startJob)}>
-          <${Icon} name="download" size=${15} />${t('site.export')}</button>
-      </div>
-      <div class="copyline"><span class="key">${t('site.connection')}</span><span class="val mono">${url}</span>
-        <button class="icon-btn ghost sm" aria-label=${t('common.copy')} title=${t('common.copy')} onClick=${() => copy(url)}><${Icon} name="copy" size=${15} /></button></div>
-      <div class="copyline"><span class="key">${t('site.terminal')}</span><span class="val mono">mysql ${db.database}</span>
-        <button class="icon-btn ghost sm" aria-label=${t('common.copy')} title=${t('common.copy')} onClick=${() => copy(`mysql ${db.database}`)}><${Icon} name="copy" size=${15} /></button></div>`}
   </section>`;
 }
 
@@ -346,47 +269,6 @@ function Requests({ siteHost }) {
     </section>`;
 }
 
-function Database({ d, conn, onPick, startJob }) {
-  const locals = d.databases.filter((db) => db.local);
-  const found = locals.find((x) => x.name === conn) ?? locals[0];
-  const [version, setVersion] = useState(0);
-  const db = { ...found, version };
-  const info = useSiteDatabase(d.site.name, db);
-  const rows = [
-    ['Host', '127.0.0.1'],
-    [t('site.port'), String(info?.port ?? db.port ?? 3306)],
-    [t('site.user'), db.username || 'root'],
-    ['Database', db.database],
-  ];
-  return html`
-    ${locals.length > 1 && html`<${Tabs} role="radiogroup" label=${t('site.connection')} value=${db.name} onChange=${onPick}
-      tabs=${locals.map((x) => ({ id: x.name, label: connLabel(x) || x.database }))} />`}
-    <div class="cols">
-    <div class="col-side"><section class="card" style="overflow: hidden">
-      <div class="card-head" style="padding-bottom: 10px"><h2>${t('site.connect')}</h2></div>
-      <p class="small muted" style="margin: 0; padding: 0 22px 10px">${t('site.connect_hint')}</p>
-      ${rows.map(([k, v]) => html`<div class="copyline"><span class="key">${k}</span><span class="val mono">${v}</span>
-        <button class="icon-btn ghost sm" aria-label=${`${t('common.copy')} ${k}`} title=${t('common.copy')} onClick=${() => copy(v)}><${Icon} name="copy" size=${15} /></button></div>`)}
-      <div class="copyline"><span class="key">${t('site.password')}</span><span class="val muted">${db.has_password ? t('site.password_set') : t('site.password_empty')}</span></div>
-      <div class="card-foot">
-        <button class="btn primary sm" disabled=${!info?.mariadb_running} onClick=${() => importInto(d.site.name, db, startJob, () => setVersion(version + 1))}>
-          <${Icon} name="upload" size=${15} />${t('site.import_sql')}</button>
-        <button class="btn sm" disabled=${!info?.exists} onClick=${() => exportFrom(d.site.name, db, startJob)}><${Icon} name="download" size=${15} />${t('site.export')}</button>
-      </div>
-    </section></div>
-    <div class="col-main"><section class="card" style="overflow: hidden">
-      <div class="card-head" style="padding-bottom: 6px"><h2>${t('site.tables')}</h2><span class="small muted">${databaseDesc(db, info)}</span></div>
-      ${!info ? html`<div style="padding: 0 22px 18px"><${Loading} height=${120} /></div>`
-        : info.error ? html`<div style="padding: 0 22px 18px"><span class="pill danger">${info.error}</span></div>`
-        : info.tables.length === 0 ? html`<${Empty} icon="database" title=${databaseDesc(db, info)} />`
-        : html`<div class="scroll-x"><table class="table">
-          <thead><tr><th>${t('site.table')}</th><th class="num">${t('site.rows')}</th><th class="num">${t('site.size')}</th></tr></thead>
-          <tbody>${info.tables.map((x) => html`<tr><td class="mono">${x.name}</td><td class="num">${x.rows.toLocaleString(LANG)}</td><td class="num">${size(x.bytes)}</td></tr>`)}</tbody>
-        </table></div>`}
-    </section></div>
-  </div>`;
-}
-
 export function SiteDetail({ name, tab, sub, onChanged, startJob }) {
   const [{ data: d, error }, reloadDetail] = useApi(`/sites/${encodeURIComponent(name)}`, 15000);
   useEffect(() => rememberRecent(name), [name]);
@@ -409,7 +291,7 @@ export function SiteDetail({ name, tab, sub, onChanged, startJob }) {
     { id: 'overview', label: t('site.tab_overview') },
     { id: 'requests', label: t('site.tab_requests') },
     { id: 'logs', label: t('site.tab_logs') },
-    ...(d.databases.some((db) => db.local) ? [{ id: 'database', label: t('site.tab_database') }] : []),
+    ...(d.site_databases.length > 0 ? [{ id: 'database', label: t('site.tab_database') }] : []),
   ];
   const current = tabs.some((x) => x.id === tab) ? tab : 'overview';
   const eyebrow = [
@@ -442,7 +324,7 @@ export function SiteDetail({ name, tab, sub, onChanged, startJob }) {
     ${current === 'overview' && html`<div class="cols">
       <div class="col-main">
         <${Environment} d=${d} reload=${reload} />
-        <${DatabaseCard} d=${d} startJob=${startJob} onOpen=${(conn) => go(`database/${encodeURIComponent(conn)}`)} />
+        <${DatabaseCard} d=${d} onOpen=${(db) => go(`database/${encodeURIComponent(db)}`)} onAdded=${(db) => { reload(); go(`database/${encodeURIComponent(db)}`); }} />
         <${LatestLogs} logs=${d.logs} onOpen=${() => go('logs')} />
       </div>
       <div class="col-side">
@@ -457,6 +339,6 @@ export function SiteDetail({ name, tab, sub, onChanged, startJob }) {
     ${current === 'logs' && (d.logs.length
       ? html`<${LogEntries} sources=${d.logs.map((l) => ({ ...l, label: l.label.replace(`${s.name} · `, '') }))} initial=${defaultLog(d.logs)} />`
       : html`<section class="card"><${Empty} icon="logs" title=${t('site.no_logs')} /></section>`)}
-    ${current === 'database' && html`<${Database} d=${d} conn=${sub} startJob=${startJob} onPick=${(conn) => go(`database/${encodeURIComponent(conn)}`)} />`}
+    ${current === 'database' && html`<${Database} d=${d} current=${sub} startJob=${startJob} onChanged=${reload} onPick=${(db) => go(`database/${encodeURIComponent(db)}`)} />`}
   </div>`;
 }

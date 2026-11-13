@@ -378,6 +378,7 @@ fn link_site(layout: &Layout, dir: &Path, name: &str, pin: Option<String>, exclu
         let secure = previous.is_some_and(|s| s.secure);
         let defender_excluded = excluded || previous.is_some_and(|s| s.defender_excluded);
         let composer = previous.and_then(|s| s.composer.clone());
+        let databases = previous.map(|s| s.databases.clone()).unwrap_or_default();
         c.sites.retain(|s| s.name != name);
         c.sites.push(Site {
             name: name.to_owned(),
@@ -385,6 +386,7 @@ fn link_site(layout: &Layout, dir: &Path, name: &str, pin: Option<String>, exclu
             php: pin.clone(),
             composer,
             secure,
+            databases,
             defender_excluded,
         });
         None

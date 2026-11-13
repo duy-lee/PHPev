@@ -8,6 +8,20 @@ All notable changes to PHPev are documented here. The format follows
 
 ### Added
 
+- **Databases of each MariaDB version**: **Details** under an installed MariaDB (Services ›
+  MariaDB) opens a **Databases** tab with every database, its tables and size, and the sites that
+  use it. On the running version you can create a database or drop one (after typing its name;
+  the dialog names the sites that would break). Other versions are listed too, read from their
+  data folder with estimated sizes; switch to a version to change its databases. The server's own
+  databases (`mysql`, `sys`, `test`…) are never shown.
+- **Databases by hand on a site**: the Database tab (and the Database card on the site's
+  Overview) now lists every database of the site, and **Add database** attaches any database that
+  exists on PHPev's MariaDB, for example the per-customer ones a project picks at run time and
+  that are in no `.env`. The tab is named after the database instead of `MAIN` / `SUB`
+  (above five databases it becomes a dropdown), a connection without a database name no longer
+  gets a tab, and connection URL, terminal command, import and export all live on that tab.
+  Databases added by hand are kept by PHPev, not in the project, and can be removed from the
+  site without touching the database.
 - **Edit my.ini in the dashboard**: **Details** under an installed MariaDB (Services › MariaDB)
   opens its *my.ini*, for server settings such as `sql_mode`. MariaDB now reads the `my.ini` of
   its data folder at start. Saving keeps the previous file as `my.ini.bak` and restarts MariaDB,

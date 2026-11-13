@@ -100,6 +100,10 @@ pub struct Site {
     pub composer: Option<String>,
     #[serde(default)]
     pub secure: bool,
+    /// Databases of PHPev's MariaDB added to the site by hand, besides the ones
+    /// its `.env` names (the dashboard's Database tab). Lower case, no repeats.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub databases: Vec<String>,
     /// A Microsoft Defender exclusion was added for this folder by
     /// `phpev import` (non-admin users cannot read the exclusion list).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -231,6 +235,7 @@ mod tests {
                 php: None,
                 composer: Some("2.8".into()),
                 secure: true,
+                databases: Vec::new(),
                 defender_excluded: false,
             }],
             ..Config::default()

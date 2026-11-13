@@ -7,20 +7,26 @@ import { confirmAction } from '../ui/dialog.js';
 import { Icon } from '../icons.js';
 import { SetRow, DefaultStar, RemoveButton, Tabs, Empty, Loading } from '../ui/controls.js';
 import { IniEditor } from '../ui/ini-editor.js';
+import { DatabasesPanel } from './mariadb-databases.js';
 
 const major = (v) => v.split('.').slice(0, 2).join('.');
 
-/** Below a version's row, as on the PHP page: the my.ini of its major, read by the server at start. */
-function VersionPanel({ version, onSaved }) {
-  const [tab, setTab] = useState('ini');
+/**
+ * Below a version's row, as on the PHP page: the databases of its major, and
+ * its my.ini (read by the server at start). `running`: this major is the server that runs now.
+ */
+function VersionPanel({ version, running, port, startJob, onSaved }) {
+  const [tab, setTab] = useState('databases');
   const m = major(version);
   return html`<div class="version-panel">
-    <${Tabs} label=${t('services.details_of', { version })} value=${tab} onChange=${setTab} tabs=${[{ id: 'ini', label: 'my.ini' }]} />
-    <div class="ini-editor">
+    <${Tabs} label=${t('services.details_of', { version })} value=${tab} onChange=${setTab}
+      tabs=${[{ id: 'databases', label: t('services.databases') }, { id: 'ini', label: 'my.ini' }]} />
+    ${tab === 'databases' && html`<${DatabasesPanel} major=${m} running=${running} port=${port} startJob=${startJob} />`}
+    ${tab === 'ini' && html`<div class="ini-editor">
       <p class="small muted" style="margin: 0">${t('services.my_ini_note', { major: m })}</p>
       <${IniEditor} path=${`/mariadb/${m}/ini`} label=${t('services.my_ini_label', { major: m })}
         hint=${t('services.my_ini_hint', { major: m })} onSaved=${onSaved} />
-    </div>
+    </div>`}
   </div>`;
 }
 
@@ -75,7 +81,7 @@ export function MariaDb({ startJob }) {
           onClick=${() => act(api('PUT', '/mariadb/active', { version: major(v) }), reload)} />
         <${RemoveButton} blocked=${data.active === major(v) ? t('services.remove_active') : ''} onClick=${() => remove(v)} />
       </${SetRow}>
-      ${open === v && html`<${VersionPanel} version=${v} onSaved=${reload} />`}`)}
+      ${open === v && html`<${VersionPanel} version=${v} running=${!!running && major(running.version) === major(v)} port=${data.port} startJob=${startJob} onSaved=${reload} />`}`)}
       <div class="card-foot"><span class="small muted">${t('services.switch_note')}</span></div>
     </section>`}
 

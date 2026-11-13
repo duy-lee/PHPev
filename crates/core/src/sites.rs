@@ -23,6 +23,8 @@ pub struct Site {
     pub composer: Option<String>,
     /// HTTPS enabled with `phpev secure` (linked sites only).
     pub secure: bool,
+    /// Databases added by hand in the dashboard (linked sites only), lower case.
+    pub databases: Vec<String>,
 }
 
 impl Site {
@@ -93,6 +95,7 @@ pub fn all(config: &Config) -> Vec<Site> {
             php: s.php.clone(),
             composer: s.composer.clone(),
             secure: s.secure,
+            databases: s.databases.clone(),
         })
         .collect();
     for dir in &config.parked {
@@ -105,6 +108,7 @@ pub fn all(config: &Config) -> Vec<Site> {
                     php: None,
                     composer: None,
                     secure: false,
+                    databases: Vec::new(),
                 });
             }
         }
@@ -171,6 +175,7 @@ mod tests {
                 php: Some("8.3".into()),
                 composer: None,
                 secure: false,
+                databases: Vec::new(),
                 defender_excluded: false,
             }],
             ..Config::default()

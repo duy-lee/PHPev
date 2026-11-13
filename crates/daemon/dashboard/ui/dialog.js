@@ -46,9 +46,11 @@ let open = () => {};
  * - danger: red confirm button
  * - choice: { label, confirmWord? } an extra checkbox (e.g. "also delete the
  *   databases"); with confirmWord the user must type it when the box is ticked
+ * - confirmWord: the user must type it (any case) before the action is allowed
+ * - details: extra content shown under the body (e.g. a warning)
  */
-export function confirmAction({ title, body, confirmLabel, danger = false, choice = null }) {
-  return new Promise((resolve) => open({ title, body, confirmLabel, danger, choice, resolve }));
+export function confirmAction({ title, body, confirmLabel, danger = false, choice = null, confirmWord = null, details = null }) {
+  return new Promise((resolve) => open({ title, body, confirmLabel, danger, choice, confirmWord, details, resolve }));
 }
 
 export function DialogHost() {
@@ -65,11 +67,12 @@ export function DialogHost() {
     setAsk(null);
     ask.resolve(result);
   };
-  const word = ask.choice?.confirmWord;
-  const needsWord = checked && word;
-  const ready = !needsWord || typed.trim().toLowerCase() === word;
+  const word = ask.confirmWord ?? (checked ? ask.choice?.confirmWord : null);
+  const needsWord = !!word;
+  const ready = !needsWord || typed.trim().toLowerCase() === word.toLowerCase();
   return html`<${Dialog} title=${ask.title} onClose=${() => done(null)}>
     ${ask.body && html`<p>${ask.body}</p>`}
+    ${ask.details}
     ${ask.choice && html`<label class="check"><input type="checkbox" checked=${checked} onChange=${(e) => setChecked(e.target.checked)} />${ask.choice.label}</label>`}
     ${needsWord && html`<div style="margin-top: 14px">
       <label class="small muted" for="confirm-word">${t('dialog.type_to_confirm', { word })}</label>

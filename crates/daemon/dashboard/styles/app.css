@@ -206,6 +206,20 @@ progress { width: 100%; height: 8px; accent-color: var(--accent); }
 .ini-editor { display: flex; flex-direction: column; gap: 10px; }
 .ini-editor textarea { width: 100%; min-height: 360px; padding: 12px 14px; border: 1px solid var(--hair-strong); border-radius: var(--radius-control); background: var(--surface); color: var(--ink); line-height: 1.55; tab-size: 4; white-space: pre; overflow-wrap: normal; resize: vertical; }
 .ini-editor textarea:focus { outline: none; border-color: var(--accent); }
+/* Databases of a MariaDB version (Services › MariaDB). */
+.db-panel { display: flex; flex-direction: column; gap: 12px; }
+.db-create { display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; }
+.db-create .field { flex: 1 1 220px; max-width: 340px; background: var(--surface); }
+.db-create .field:has(input:disabled) { opacity: .6; }
+.db-list { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--hair); border-radius: var(--radius-card); overflow: hidden; }
+.db-row { display: flex; align-items: center; gap: 6px 14px; flex-wrap: wrap; padding: 9px 14px; border-top: 1px solid var(--hair); }
+.db-row:first-child { border-top: 0; }
+.db-row .row-icon { display: flex; flex: none; color: var(--muted); }
+.db-row .name { flex: 1 1 200px; min-width: 0; font-family: var(--font-mono); font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.db-actions { display: flex; align-items: center; gap: 2px; }
+.db-row .meta { font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.callout { margin: 12px 0 0; padding: 10px 14px; border-radius: var(--radius-control); font-size: 13px; background: var(--soft); color: var(--ink-2); }
+.callout.warn { background: var(--warn-soft); color: var(--warn); }
 .charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 18px; }
 .chart-card { padding: 18px 20px; }
 .chart-card h3 { font-size: 15px; margin-bottom: 8px; }

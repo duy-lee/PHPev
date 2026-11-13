@@ -360,95 +360,77 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             let (l, n) = (layout.clone(), name.to_string());
             ok(&blocking(move || {
                 let site = ops::find_site(&l, &n)?;
-                crate::site_page::database(&l, &site.path, &connection, db.as_ref())
+                crate::site_page::database(&l, &site, &connection, db.as_ref())
             })
             .await?)
         }
-        (Method::POST, ["sites", _name, "database", "import", "pick"]) => {
-            let path = blocking(|| {
-                crate::folderpick::pick_file(
-                    "Choose the .sql file to import",
-                    crate::appwindow::window(),
-                    "SQL dump (*.sql)",
-                    "*.sql",
-                )
+        (Method::GET, ["sites", name, "databases", "available"]) => {
+            let db = d.daemon.status().await.mariadb;
+            let (l, n) = (layout.clone(), name.to_string());
+            ok(&blocking(move || {
+                let site = ops::find_site(&l, &n)?;
+                crate::site_page::available_databases(&l, &site, db.as_ref())
+            })
+            .await?)
+        }
+        (Method::POST, ["sites", name, "databases"]) => {
+            let r: AddSiteDatabaseRequest = body(req).await?;
+            let server = running_mariadb(d).await?;
+            let (l, n) = (layout.clone(), name.to_string());
+            let added = blocking(move || {
+                let site = ops::find_site(&l, &n)?;
+                let wanted = r.database.trim().to_ascii_lowercase();
+                if !mariadb::database_exists(&l, &server.version, server.port, &wanted)? {
+                    return Err(io::Error::new(
+                        io::ErrorKind::NotFound,
+                        format!("database `{wanted}` does not exist"),
+                    ));
+                }
+                if crate::site_page::local_database(&l, &site, &wanted).is_ok() {
+                    return Err(io::Error::new(
+                        io::ErrorKind::AlreadyExists,
+                        format!("`{wanted}` already belongs to this site"),
+                    ));
+                }
+                ops::add_site_database(&l, &n, &wanted)
             })
             .await?;
-            ok(&PickedFolder { path })
+            message(tr("msg.site_database_added", &[("name", &added)]))
         }
+        (Method::DELETE, ["sites", name, "databases", db]) => {
+            let (l, n, db) = (layout.clone(), name.to_string(), db.to_string());
+            let db2 = db.clone();
+            blocking(move || {
+                if ops::remove_site_database(&l, &n, &db2)? {
+                    Ok(())
+                } else {
+                    Err(io::Error::new(
+                        io::ErrorKind::NotFound,
+                        format!("`{db2}` was not added by hand to this site"),
+                    ))
+                }
+            })
+            .await?;
+            message(tr("msg.site_database_removed", &[("name", &db)]))
+        }
+        (Method::POST, ["sites", _name, "database", "import", "pick"]) => pick_sql_file().await,
         (Method::POST, ["sites", name, "database", "import"]) => {
             let r: DbImportRequest = body(req).await?;
             let server = running_mariadb(d).await?;
-            let (l, n) = (layout.clone(), name.to_string());
-            let file = PathBuf::from(&r.path);
-            let db = blocking(move || {
-                if !file.is_file() || file.extension().is_none_or(|e| !e.eq_ignore_ascii_case("sql")) {
-                    return Err(io::Error::new(io::ErrorKind::InvalidInput, "choose a .sql file"));
-                }
-                crate::site_page::local_database(&l, &ops::find_site(&l, &n)?.path, &r.name)
+            let (l, n, wanted) = (layout.clone(), name.to_string(), r.name.clone());
+            start_import(d, &layout, server, r, move || {
+                crate::site_page::local_database(&l, &ops::find_site(&l, &n)?, &wanted)
             })
-            .await?;
-            let l = layout.clone();
-            let label = PathBuf::from(&r.path)
-                .file_name()
-                .map(|f| f.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            let job = d
-                .jobs
-                .start_cancellable(format!("Import into {db}"), move |rep, cancel| {
-                    rep.info(&format!("{} into `{db}`", r.path));
-                    if r.empty_first {
-                        rep.info(&format!("emptying `{db}` first"));
-                    }
-                    phpev_core::dbdump::import(
-                        &l,
-                        &server.version,
-                        server.port,
-                        &db,
-                        Path::new(&r.path),
-                        r.empty_first,
-                        &mut |done, total| rep.progress(&label, done, total),
-                        cancel,
-                    )?;
-                    Ok(format!("Imported {label} into {db}"))
-                });
-            ok(&JobStarted { job })
+            .await
         }
         (Method::POST, ["sites", name, "database", "export"]) => {
             let r: DbExportRequest = body(req).await?;
             let server = running_mariadb(d).await?;
             let (l, n) = (layout.clone(), name.to_string());
-            let picked = blocking(move || {
-                let db = crate::site_page::local_database(&l, &ops::find_site(&l, &n)?.path, &r.name)?;
-                let proposed = format!("{db}-{}.sql", phpev_core::clock::today());
-                let path = crate::folderpick::save_file(
-                    "Export the database to",
-                    crate::appwindow::window(),
-                    "SQL dump (*.sql)",
-                    "*.sql",
-                    &proposed,
-                )?;
-                Ok(path.map(|p| (db, p)))
+            start_export(d, &layout, server, move || {
+                crate::site_page::local_database(&l, &ops::find_site(&l, &n)?, &r.name)
             })
-            .await?;
-            let Some((db, path)) = picked else {
-                return ok(&MaybeJob { job: None });
-            };
-            let l = layout.clone();
-            let job = d.jobs.start_cancellable(format!("Export {db}"), move |rep, cancel| {
-                rep.info(&format!("`{db}` to {path}"));
-                let size = phpev_core::dbdump::export(
-                    &l,
-                    &server.version,
-                    server.port,
-                    &db,
-                    Path::new(&path),
-                    &mut |done, _| rep.progress(&db, done, None),
-                    cancel,
-                )?;
-                Ok(format!("Exported {db} ({:.1} MB) to {path}", size as f64 / 1_048_576.0))
-            });
-            ok(&MaybeJob { job: Some(job) })
+            .await
         }
         (Method::DELETE, ["sites", name]) => {
             let (l, n) = (layout.clone(), name.to_string());
@@ -798,6 +780,69 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             }
             message(tr("msg.my_ini_restarted", &[("major", major)]))
         }
+        (Method::GET, ["mariadb", major, "databases"]) => {
+            let running = d.daemon.status().await.mariadb;
+            let (l, m) = (layout.clone(), major.to_string());
+            ok(&blocking(move || {
+                if !mariadb::installed(&l).iter().any(|v| mariadb::major_of(v) == m) {
+                    return Err(io::Error::new(
+                        io::ErrorKind::NotFound,
+                        format!("MariaDB {m} is not installed"),
+                    ));
+                }
+                // Only the running server can be asked; the others are read from their folders.
+                let server = running.filter(|s| mariadb::major_of(&s.version) == m);
+                let (found, users) = match &server {
+                    Some(s) => (mariadb::databases(&l, &s.version, s.port)?, ops::database_users(&l)?),
+                    None => (mariadb::databases_on_disk(&l, &m), Default::default()),
+                };
+                Ok(DatabaseList {
+                    running: server.is_some(),
+                    databases: found
+                        .into_iter()
+                        .map(|db| DatabaseEntry {
+                            used_by: users.get(&db.name.to_ascii_lowercase()).cloned().unwrap_or_default(),
+                            name: db.name,
+                            tables: db.tables,
+                            bytes: db.bytes,
+                        })
+                        .collect(),
+                })
+            })
+            .await?)
+        }
+        (Method::POST, ["mariadb", "databases", "import", "pick"]) => pick_sql_file().await,
+        (Method::POST, ["mariadb", "databases", "import"]) => {
+            let r: DbImportRequest = body(req).await?;
+            let server = running_mariadb(d).await?;
+            let (l, s, wanted) = (layout.clone(), server.clone(), r.name.clone());
+            start_import(d, &layout, server, r, move || {
+                mariadb::user_database(&l, &s.version, s.port, &wanted)
+            })
+            .await
+        }
+        (Method::POST, ["mariadb", "databases", "export"]) => {
+            let r: DbExportRequest = body(req).await?;
+            let server = running_mariadb(d).await?;
+            let (l, s) = (layout.clone(), server.clone());
+            start_export(d, &layout, server, move || {
+                mariadb::user_database(&l, &s.version, s.port, &r.name)
+            })
+            .await
+        }
+        (Method::POST, ["mariadb", "databases"]) => {
+            let r: CreateDatabaseRequest = body(req).await?;
+            let server = running_mariadb(d).await?;
+            let l = layout.clone();
+            let name = blocking(move || mariadb::create_database(&l, &server.version, server.port, &r.name)).await?;
+            message(tr("msg.database_created", &[("name", &name)]))
+        }
+        (Method::DELETE, ["mariadb", "databases", name]) => {
+            let server = running_mariadb(d).await?;
+            let (l, n) = (layout.clone(), name.to_string());
+            blocking(move || mariadb::drop_database(&l, &server.version, server.port, &n)).await?;
+            message(tr("msg.database_dropped", &[("name", &name)]))
+        }
         (Method::POST, ["mariadb", "start"]) => {
             let msg = d.daemon.db_start().await?;
             d.daemon.remember_db(true);
@@ -1092,7 +1137,7 @@ async fn fix_check(
             let server = running_mariadb(d).await?;
             let l = layout.clone();
             let created = blocking(move || {
-                let name = crate::site_page::local_database(&l, &dir, &connection)?;
+                let name = crate::site_page::connection_database(&l, &dir, &connection)?;
                 phpev_core::mariadb::exec_sql(
                     &l,
                     &server.version,
@@ -1106,6 +1151,105 @@ async fn fix_check(
         }
         other => Err(ApiError(StatusCode::NOT_FOUND, format!("nothing to fix for `{other}`"))),
     }
+}
+
+/// Asks for the `.sql` file to import (a native dialog); an empty path means it was cancelled.
+async fn pick_sql_file() -> Result<Response<Body>, ApiError> {
+    let path = blocking(|| {
+        crate::folderpick::pick_file(
+            "Choose the .sql file to import",
+            crate::appwindow::window(),
+            "SQL dump (*.sql)",
+            "*.sql",
+        )
+    })
+    .await?;
+    ok(&PickedFolder { path })
+}
+
+/// Starts the job that runs the `.sql` file of `r` into the database `resolve` names
+/// (it also decides which databases may be imported into).
+async fn start_import(
+    d: &Dashboard,
+    layout: &phpev_core::layout::Layout,
+    server: phpev_core::ipc::Service,
+    r: DbImportRequest,
+    resolve: impl FnOnce() -> io::Result<String> + Send + 'static,
+) -> Result<Response<Body>, ApiError> {
+    let file = PathBuf::from(&r.path);
+    let db = blocking(move || {
+        if !file.is_file() || file.extension().is_none_or(|e| !e.eq_ignore_ascii_case("sql")) {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "choose a .sql file"));
+        }
+        resolve()
+    })
+    .await?;
+    let l = layout.clone();
+    let label = PathBuf::from(&r.path)
+        .file_name()
+        .map(|f| f.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let job = d
+        .jobs
+        .start_cancellable(format!("Import into {db}"), move |rep, cancel| {
+            rep.info(&format!("{} into `{db}`", r.path));
+            if r.empty_first {
+                rep.info(&format!("emptying `{db}` first"));
+            }
+            phpev_core::dbdump::import(
+                &l,
+                &server.version,
+                server.port,
+                &db,
+                Path::new(&r.path),
+                r.empty_first,
+                &mut |done, total| rep.progress(&label, done, total),
+                cancel,
+            )?;
+            Ok(format!("Imported {label} into {db}"))
+        });
+    ok(&JobStarted { job })
+}
+
+/// Asks where to save, then starts the job that exports the database `resolve` names.
+/// No job when the dialog was cancelled.
+async fn start_export(
+    d: &Dashboard,
+    layout: &phpev_core::layout::Layout,
+    server: phpev_core::ipc::Service,
+    resolve: impl FnOnce() -> io::Result<String> + Send + 'static,
+) -> Result<Response<Body>, ApiError> {
+    let picked = blocking(move || {
+        let db = resolve()?;
+        let proposed = format!("{db}-{}.sql", phpev_core::clock::today());
+        let path = crate::folderpick::save_file(
+            "Export the database to",
+            crate::appwindow::window(),
+            "SQL dump (*.sql)",
+            "*.sql",
+            &proposed,
+        )?;
+        Ok(path.map(|p| (db, p)))
+    })
+    .await?;
+    let Some((db, path)) = picked else {
+        return ok(&MaybeJob { job: None });
+    };
+    let l = layout.clone();
+    let job = d.jobs.start_cancellable(format!("Export {db}"), move |rep, cancel| {
+        rep.info(&format!("`{db}` to {path}"));
+        let size = phpev_core::dbdump::export(
+            &l,
+            &server.version,
+            server.port,
+            &db,
+            Path::new(&path),
+            &mut |done, _| rep.progress(&db, done, None),
+            cancel,
+        )?;
+        Ok(format!("Exported {db} ({:.1} MB) to {path}", size as f64 / 1_048_576.0))
+    });
+    ok(&MaybeJob { job: Some(job) })
 }
 
 /// The MariaDB server the daemon runs, or a clear error when it is stopped.
