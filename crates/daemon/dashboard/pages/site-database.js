@@ -93,7 +93,6 @@ function CardRow({ siteName, db, withSize, onOpen }) {
   return html`<div class="setrow">
     <span class="row-icon" style="background: var(--accent-soft); color: var(--accent)"><${Icon} name="database" /></span>
     <span class="row-text"><b class="mono">${db.database}</b>${withSize && html`<span>${databaseDesc(info)}</span>`}</span>
-    ${db.manual && html`<span class="pill">${t('site.db_manual')}</span>`}
     <button class="btn quiet sm" aria-label=${`${t('site.open_db')} ${db.database}`} onClick=${() => onOpen(db.database)}>
       ${t('site.open_db')}<${Icon} name="chevron-right" size=${15} /></button>
   </div>`;
@@ -102,7 +101,8 @@ function CardRow({ siteName, db, withSize, onOpen }) {
 /** Overview: every database of the site, each leading to the Database tab. */
 export function DatabaseCard({ d, onOpen, onAdded }) {
   const dbs = d.site_databases;
-  const other = dbs.length === 0 && d.databases.find((x) => x.database);
+  // A connection to another server, or a database taken off the tab, says nothing here.
+  const other = dbs.length === 0 && d.databases.find((x) => x.database && !x.local);
   const status = d.mariadb_version
     ? html`<span class="pill ok"><span class="dot ok"></span>MariaDB ${d.mariadb_version.split('.').slice(0, 2).join('.')}</span>`
     : html`<span class="pill">${t('site.db_stopped')}</span>`;
@@ -138,7 +138,9 @@ export function Database({ d, current, onPick, onChanged, startJob }) {
       body: t('site.db_detach_body'),
       confirmLabel: t('site.db_detach'),
     });
-    if (ok) act(api('DELETE', `/sites/${enc(d.site.name)}/databases/${enc(found.database)}`), onChanged);
+    if (!ok) return;
+    const next = dbs.find((x) => x !== found);
+    act(api('DELETE', `/sites/${enc(d.site.name)}/databases/${enc(found.database)}`), () => { onChanged(); if (next) onPick(next.database); });
   };
   const choices = dbs.map((x) => ({ id: x.database, label: x.database }));
 
@@ -146,14 +148,14 @@ export function Database({ d, current, onPick, onChanged, startJob }) {
     <div class="row-flex" style="gap: 12px">
       ${dbs.length > MAX_TABS
         ? html`<${Select} label=${t('site.databases_of_site')} value=${found.database} onChange=${onPick}
-            options=${dbs.map((x) => ({ value: x.database, label: x.database, hint: x.manual ? t('site.db_manual') : undefined }))} />`
+            options=${dbs.map((x) => ({ value: x.database, label: x.database }))} />`
         : html`<${Tabs} role="radiogroup" label=${t('site.databases_of_site')} value=${found.database} onChange=${onPick} tabs=${choices} />`}
       <span class="grow"></span>
       <${AddButton} siteName=${d.site.name} onAdded=${(name) => { onChanged(); onPick(name); }} />
     </div>
     <div class="cols">
     <div class="col-side"><section class="card" style="overflow: hidden">
-      <div class="card-head" style="padding-bottom: 10px"><h2>${t('site.connect')}</h2>${found.manual && html`<span class="grow"></span><span class="pill">${t('site.db_manual')}</span>`}</div>
+      <div class="card-head" style="padding-bottom: 10px"><h2>${t('site.connect')}</h2></div>
       <p class="small muted" style="margin: 0; padding: 0 22px 10px">${t('site.connect_hint')}</p>
       ${rows.map(([k, v]) => html`<div class="copyline"><span class="key">${k}</span><span class="val mono">${v}</span>
         <button class="icon-btn ghost sm" aria-label=${`${t('common.copy')} ${k}`} title=${t('common.copy')} onClick=${() => copy(v)}><${Icon} name="copy" size=${15} /></button></div>`)}
@@ -163,7 +165,7 @@ export function Database({ d, current, onPick, onChanged, startJob }) {
           <${Icon} name="upload" size=${15} />${t('site.import_sql')}</button>
         <button class="btn sm" disabled=${!info?.exists} onClick=${() => exportFrom(base, found.database, startJob)}><${Icon} name="download" size=${15} />${t('site.export')}</button>
         <span class="grow"></span>
-        ${found.manual && html`<button class="btn link-danger sm" onClick=${detach}>${t('site.db_detach')}</button>`}
+        <button class="btn link-danger sm" onClick=${detach}>${t('site.db_detach')}</button>
       </div>
     </section></div>
     <div class="col-main"><section class="card" style="overflow: hidden">

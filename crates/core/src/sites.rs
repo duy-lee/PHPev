@@ -25,6 +25,8 @@ pub struct Site {
     pub secure: bool,
     /// Databases added by hand in the dashboard (linked sites only), lower case.
     pub databases: Vec<String>,
+    /// Databases its `.env` names that were taken off the Database tab (linked sites only), lower case.
+    pub hidden_databases: Vec<String>,
 }
 
 impl Site {
@@ -96,6 +98,7 @@ pub fn all(config: &Config) -> Vec<Site> {
             composer: s.composer.clone(),
             secure: s.secure,
             databases: s.databases.clone(),
+            hidden_databases: s.hidden_databases.clone(),
         })
         .collect();
     for dir in &config.parked {
@@ -109,6 +112,7 @@ pub fn all(config: &Config) -> Vec<Site> {
                     composer: None,
                     secure: false,
                     databases: Vec::new(),
+                    hidden_databases: Vec::new(),
                 });
             }
         }
@@ -176,6 +180,7 @@ mod tests {
                 composer: None,
                 secure: false,
                 databases: Vec::new(),
+                hidden_databases: Vec::new(),
                 defender_excluded: false,
             }],
             ..Config::default()

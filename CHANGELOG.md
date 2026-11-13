@@ -20,8 +20,8 @@ All notable changes to PHPev are documented here. The format follows
   that are in no `.env`. The tab is named after the database instead of `MAIN` / `SUB`
   (above five databases it becomes a dropdown), a connection without a database name no longer
   gets a tab, and connection URL, terminal command, import and export all live on that tab.
-  Databases added by hand are kept by PHPev, not in the project, and can be removed from the
-  site without touching the database.
+  Any database of the site, also one a `.env` names, can be removed from the tab; PHPev only
+  remembers that (the project and the database are not touched) and **Add database** brings it back.
 - **Edit my.ini in the dashboard**: **Details** under an installed MariaDB (Services › MariaDB)
   opens its *my.ini*, for server settings such as `sql_mode`. MariaDB now reads the `my.ini` of
   its data folder at start. Saving keeps the previous file as `my.ini.bak` and restarts MariaDB,

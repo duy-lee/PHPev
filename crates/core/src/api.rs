@@ -88,8 +88,6 @@ pub struct SiteDb {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SiteDbEntry {
     pub database: String,
-    /// Added by hand in the dashboard rather than named in `.env`.
-    pub manual: bool,
     pub user: String,
     pub has_password: bool,
 }

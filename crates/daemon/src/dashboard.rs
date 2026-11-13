@@ -399,16 +399,12 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
         }
         (Method::DELETE, ["sites", name, "databases", db]) => {
             let (l, n, db) = (layout.clone(), name.to_string(), db.to_string());
-            let db2 = db.clone();
+            let wanted = db.clone();
             blocking(move || {
-                if ops::remove_site_database(&l, &n, &db2)? {
-                    Ok(())
-                } else {
-                    Err(io::Error::new(
-                        io::ErrorKind::NotFound,
-                        format!("`{db2}` was not added by hand to this site"),
-                    ))
-                }
+                let site = ops::find_site(&l, &n)?;
+                // Only a database the site has can be taken off it.
+                let kept = crate::site_page::local_database(&l, &site, &wanted)?;
+                ops::remove_site_database(&l, &n, &kept)
             })
             .await?;
             message(tr("msg.site_database_removed", &[("name", &db)]))

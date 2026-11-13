@@ -566,7 +566,8 @@ pub fn database_users(layout: &Layout) -> io::Result<std::collections::BTreeMap<
         let from_env = crate::project::databases(&site.path)
             .into_iter()
             .filter(|db| !db.database.is_empty() && db.is_local_mysql(config.ports.mariadb))
-            .map(|db| db.database.to_ascii_lowercase());
+            .map(|db| db.database.to_ascii_lowercase())
+            .filter(|name| !site.hidden_databases.contains(name));
         for name in from_env.chain(site.databases.iter().cloned()) {
             let list = users.entry(name).or_default();
             if !list.contains(&site.name) {
@@ -577,9 +578,32 @@ pub fn database_users(layout: &Layout) -> io::Result<std::collections::BTreeMap<
     Ok(users)
 }
 
+/// Changes the config entry of a site; a parked site gets a link entry to carry the change.
+fn update_site_entry(layout: &Layout, name: &str, change: impl FnOnce(&mut Site)) -> io::Result<()> {
+    let site = find_site(layout, name)?;
+    config::update(&layout.config_file(), |c| {
+        if !c.sites.iter().any(|s| s.name == name) {
+            c.sites.push(Site {
+                name: site.name.clone(),
+                path: site.path.clone(),
+                php: None,
+                composer: None,
+                secure: false,
+                databases: Vec::new(),
+                hidden_databases: Vec::new(),
+                defender_excluded: false,
+            });
+        }
+        if let Some(s) = c.sites.iter_mut().find(|s| s.name == name) {
+            change(s);
+        }
+    })
+}
+
 /// Adds a database of PHPev's MariaDB to a site's Database tab, besides the ones its
-/// `.env` names (a parked site gets a link entry to carry it). Returns the name as
-/// kept (lower case). Whether the database exists is for the caller to check.
+/// `.env` names (a parked site gets a link entry to carry it); one taken off the tab
+/// before comes back. Returns the name as kept (lower case). Whether the database
+/// exists is for the caller to check.
 pub fn add_site_database(layout: &Layout, name: &str, db: &str) -> io::Result<String> {
     let db = db.trim().to_ascii_lowercase();
     if !mariadb::is_safe_db_name(&db) || mariadb::is_system_db(&db) {
@@ -588,36 +612,26 @@ pub fn add_site_database(layout: &Layout, name: &str, db: &str) -> io::Result<St
             format!("`{db}` cannot be added to a site"),
         ));
     }
-    let site = find_site(layout, name)?;
-    config::update(&layout.config_file(), |c| {
-        match c.sites.iter_mut().find(|s| s.name == name) {
-            Some(s) if !s.databases.contains(&db) => s.databases.push(db.clone()),
-            Some(_) => {}
-            None => c.sites.push(Site {
-                name: site.name.clone(),
-                path: site.path.clone(),
-                php: None,
-                composer: None,
-                secure: false,
-                databases: vec![db.clone()],
-                defender_excluded: false,
-            }),
+    update_site_entry(layout, name, |s| {
+        if s.hidden_databases.contains(&db) {
+            s.hidden_databases.retain(|d| *d != db);
+        } else if !s.databases.contains(&db) {
+            s.databases.push(db.clone());
         }
     })?;
     Ok(db)
 }
 
-/// Takes a database added by hand off a site's Database tab; the database itself stays.
-/// Returns whether it was on the site.
-pub fn remove_site_database(layout: &Layout, name: &str, db: &str) -> io::Result<bool> {
-    find_site(layout, name)?;
+/// Takes a database off a site's Database tab; the database itself stays. One added by
+/// hand is forgotten, one the `.env` names is hidden (the file is not touched).
+pub fn remove_site_database(layout: &Layout, name: &str, db: &str) -> io::Result<()> {
     let db = db.to_ascii_lowercase();
-    config::update(&layout.config_file(), |c| {
-        c.sites.iter_mut().find(|s| s.name == name).is_some_and(|s| {
-            let before = s.databases.len();
-            s.databases.retain(|d| *d != db);
-            s.databases.len() != before
-        })
+    update_site_entry(layout, name, |s| {
+        let before = s.databases.len();
+        s.databases.retain(|d| *d != db);
+        if s.databases.len() == before && !s.hidden_databases.contains(&db) {
+            s.hidden_databases.push(db.clone());
+        }
     })
 }
 
@@ -797,6 +811,7 @@ pub fn adopt_legacy_composer(layout: &Layout) -> io::Result<()> {
                     composer: Some(line.clone()),
                     secure: false,
                     databases: Vec::new(),
+                    hidden_databases: Vec::new(),
                     defender_excluded: false,
                 }),
             }
@@ -854,6 +869,7 @@ pub fn link_site(layout: &Layout, dir: &Path, name: Option<&str>, php_version: O
             composer: same.and_then(|p| p.composer.clone()),
             secure: same.is_some_and(|p| p.secure),
             databases: same.map(|p| p.databases.clone()).unwrap_or_default(),
+            hidden_databases: same.map(|p| p.hidden_databases.clone()).unwrap_or_default(),
             defender_excluded: same.is_some_and(|p| p.defender_excluded),
         });
         previous.is_some()
@@ -900,6 +916,7 @@ pub fn set_site_php(layout: &Layout, name: &str, php_version: Option<String>) ->
                 composer: None,
                 secure: false,
                 databases: Vec::new(),
+                hidden_databases: Vec::new(),
                 defender_excluded: false,
             }),
         }
@@ -930,6 +947,7 @@ pub fn set_site_composer(layout: &Layout, name: &str, wanted: Option<String>) ->
                 composer: wanted.clone(),
                 secure: false,
                 databases: Vec::new(),
+                hidden_databases: Vec::new(),
                 defender_excluded: false,
             }),
             None => {}
@@ -994,6 +1012,7 @@ pub fn set_site_secure(layout: &Layout, name: &str, secure: bool, r: &mut dyn Re
                 composer: None,
                 secure: true,
                 databases: Vec::new(),
+                hidden_databases: Vec::new(),
                 defender_excluded: false,
             }),
             None => {}
@@ -1166,6 +1185,7 @@ mod tests {
             composer: None,
             secure: false,
             databases: Vec::new(),
+            hidden_databases: Vec::new(),
             defender_excluded: false,
         }
     }
@@ -1236,9 +1256,21 @@ mod tests {
         assert_eq!(users["reports"], ["blog", "shop"]);
         assert_eq!(users["shop_main"], ["shop"]);
 
-        assert!(remove_site_database(&layout, "shop", "Reports").unwrap());
-        assert!(!remove_site_database(&layout, "shop", "reports").unwrap());
+        // One added by hand is forgotten; one the `.env` names is hidden, the file stays.
+        remove_site_database(&layout, "shop", "Reports").unwrap();
+        let config = Config::load(&layout.config_file()).unwrap();
+        assert!(config.sites[0].databases.is_empty() && config.sites[0].hidden_databases.is_empty());
         assert_eq!(database_users(&layout).unwrap()["reports"], ["blog"]);
+        remove_site_database(&layout, "shop", "Shop_Main").unwrap();
+        remove_site_database(&layout, "shop", "shop_main").unwrap();
+        let config = Config::load(&layout.config_file()).unwrap();
+        assert_eq!(config.sites[0].hidden_databases, ["shop_main"], "no repeats");
+        assert!(!database_users(&layout).unwrap().contains_key("shop_main"));
+        // Adding it again brings it back instead of copying it into the list.
+        add_site_database(&layout, "shop", "shop_main").unwrap();
+        let config = Config::load(&layout.config_file()).unwrap();
+        assert!(config.sites[0].databases.is_empty() && config.sites[0].hidden_databases.is_empty());
+        assert_eq!(database_users(&layout).unwrap()["shop_main"], ["shop"]);
 
         // Linking again keeps the list.
         link_site(&layout, &projects.join("blog"), None, None).unwrap();

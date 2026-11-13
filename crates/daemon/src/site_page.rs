@@ -8,7 +8,7 @@ use phpev_core::api::{AvailableDatabases, ComposerChoice, SiteDatabase, SiteDb, 
 use phpev_core::config::Config;
 use phpev_core::layout::Layout;
 use phpev_core::shim::{self, Source};
-use phpev_core::{ca, composer, ipc, mariadb, php, project, sites};
+use phpev_core::{ca, composer, ipc, mariadb, ops, php, project, sites};
 
 pub fn detail(
     layout: &Layout,
@@ -33,13 +33,7 @@ pub fn detail(
     let workers = pool.map_or(0, |p| p.workers.len());
     let workers_memory_kb = pool.map_or(0, |p| p.workers.iter().filter_map(|w| w.memory_kb).sum());
 
-    let manual = config
-        .sites
-        .iter()
-        .find(|s| s.name == site.name)
-        .map(|s| s.databases.as_slice())
-        .unwrap_or_default();
-    let (databases, site_databases) = site_databases(&config, &dir, manual);
+    let (databases, site_databases) = site_databases(&config, &ops::find_site(layout, &site.name)?);
     let existing = db_server.and_then(|server| mariadb::database_names(layout, &server.version, server.port).ok());
     let modules = php_version.as_ref().and_then(|v| php::modules(layout, v).ok());
     let checks = project::checks(
@@ -122,9 +116,10 @@ pub fn detail(
 
 /// The connections of the project in `dir`, and the databases of PHPev's MariaDB
 /// that belong to it: the ones the connections name (a connection without a
-/// database name has none to show), then those added by hand.
-fn site_databases(config: &Config, dir: &Path, manual: &[String]) -> (Vec<SiteDb>, Vec<SiteDbEntry>) {
-    let connections: Vec<SiteDb> = project::databases(dir)
+/// database name has none to show), then those added by hand; the ones taken off
+/// the tab are left out.
+fn site_databases(config: &Config, site: &sites::Site) -> (Vec<SiteDb>, Vec<SiteDbEntry>) {
+    let connections: Vec<SiteDb> = project::databases(&site.path)
         .into_iter()
         .map(|settings| SiteDb {
             local: settings.is_local_mysql(config.ports.mariadb) && !settings.database.is_empty(),
@@ -133,14 +128,14 @@ fn site_databases(config: &Config, dir: &Path, manual: &[String]) -> (Vec<SiteDb
         .collect();
     let mut entries: Vec<SiteDbEntry> = Vec::new();
     let mut add = |entry: SiteDbEntry| {
-        if !entries.iter().any(|e| e.database.eq_ignore_ascii_case(&entry.database)) {
+        let name = entry.database.to_ascii_lowercase();
+        if !site.hidden_databases.contains(&name) && !entries.iter().any(|e| e.database.eq_ignore_ascii_case(&name)) {
             entries.push(entry);
         }
     };
     for db in connections.iter().filter(|c| c.local) {
         add(SiteDbEntry {
             database: db.settings.database.clone(),
-            manual: false,
             user: if db.settings.username.is_empty() {
                 "root".into()
             } else {
@@ -149,10 +144,9 @@ fn site_databases(config: &Config, dir: &Path, manual: &[String]) -> (Vec<SiteDb
             has_password: db.settings.has_password,
         });
     }
-    for name in manual {
+    for name in &site.databases {
         add(SiteDbEntry {
             database: name.clone(),
-            manual: true,
             user: "root".into(),
             has_password: false,
         });
@@ -163,7 +157,7 @@ fn site_databases(config: &Config, dir: &Path, manual: &[String]) -> (Vec<SiteDb
 /// The databases of PHPev's MariaDB that belong to `site` (see [`site_databases`]).
 fn entries(layout: &Layout, site: &sites::Site) -> io::Result<(Config, Vec<SiteDbEntry>)> {
     let config = Config::load(&layout.config_file())?;
-    let (_, entries) = site_databases(&config, &site.path, &site.databases);
+    let (_, entries) = site_databases(&config, site);
     Ok((config, entries))
 }
 

@@ -104,6 +104,10 @@ pub struct Site {
     /// its `.env` names (the dashboard's Database tab). Lower case, no repeats.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub databases: Vec<String>,
+    /// Databases its `.env` names that were taken off the Database tab (the file
+    /// itself is not touched). Lower case, no repeats.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hidden_databases: Vec<String>,
     /// A Microsoft Defender exclusion was added for this folder by
     /// `phpev import` (non-admin users cannot read the exclusion list).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -236,6 +240,7 @@ mod tests {
                 composer: Some("2.8".into()),
                 secure: true,
                 databases: Vec::new(),
+                hidden_databases: Vec::new(),
                 defender_excluded: false,
             }],
             ..Config::default()
