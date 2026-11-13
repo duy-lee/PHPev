@@ -1,4 +1,4 @@
-//! `phpev park|unpark|link|unlink|sites` and `phpev hosts sync`.
+//! `phpev link|unlink|rename|docroot|sites` and `phpev hosts sync`.
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -6,7 +6,7 @@ use std::process::ExitCode;
 
 use phpev_core::config::{self, Config};
 use phpev_core::layout::Layout;
-use phpev_core::sites::{self, Kind};
+use phpev_core::sites;
 use phpev_core::{ops, php, shim, version};
 
 /// Absolute, normalized form of `dir` (default: the current directory).
@@ -35,44 +35,6 @@ fn strip_verbatim(p: PathBuf) -> PathBuf {
 
 fn same_path(a: &Path, b: &Path) -> bool {
     a.to_string_lossy().eq_ignore_ascii_case(&b.to_string_lossy())
-}
-
-pub fn park(dir: Option<PathBuf>) -> io::Result<ExitCode> {
-    let layout = Layout::resolve()?;
-    let dir = absolute(dir)?;
-    let added = ops::park(&layout, &dir)?;
-    println!("{} {}", if added { "Parked" } else { "Already parked:" }, dir.display());
-    let config = Config::load(&layout.config_file())?;
-    let found: Vec<_> = sites::all(&config)
-        .into_iter()
-        .filter(|s| s.kind == Kind::Parked && s.path.starts_with(&dir))
-        .collect();
-    if found.is_empty() {
-        println!(
-            "No sub-folders yet; each new folder becomes http://<folder>.{}",
-            config.tld
-        );
-    }
-    for s in found {
-        println!("  http://{}  →  {}", s.host(&config.tld), s.path.display());
-    }
-    auto_hosts(&layout);
-    Ok(ExitCode::SUCCESS)
-}
-
-pub fn unpark(dir: Option<PathBuf>) -> io::Result<ExitCode> {
-    let layout = Layout::resolve()?;
-    let dir = absolute(dir)?;
-    let removed = ops::unpark(&layout, &dir)?;
-    println!(
-        "{} {}",
-        if removed { "Unparked" } else { "Was not parked:" },
-        dir.display()
-    );
-    if removed {
-        auto_hosts(&layout);
-    }
-    Ok(ExitCode::SUCCESS)
 }
 
 pub fn link(name: Option<String>, php_version: Option<String>, composer: Option<String>) -> io::Result<ExitCode> {
@@ -123,12 +85,55 @@ pub fn unlink(name: Option<String>) -> io::Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
+/// Gives a site another name; the old address stops working.
+pub fn rename(new_name: &str, site: Option<String>) -> io::Result<ExitCode> {
+    let layout = Layout::resolve()?;
+    let config = Config::load(&layout.config_file())?;
+    let site = crate::https::find_site(&config, site.as_deref())?;
+    let kept = ops::rename_site(&layout, &site.name, new_name)?;
+    if kept == site.name {
+        println!("{} already has that name", site.name);
+        return Ok(ExitCode::SUCCESS);
+    }
+    let old_host = site.host(&config.tld);
+    let scheme = if site.secure { "https" } else { "http" };
+    println!(
+        "Renamed {} to {scheme}://{kept}.{}  (was {old_host})",
+        site.name, config.tld
+    );
+    // Settings that name the old address are the project's own, so they are only pointed out.
+    let env = site.path.join(".env");
+    if std::fs::read_to_string(&env).is_ok_and(|t| t.contains(&old_host)) {
+        println!("Tip: {} still names {old_host}; update it (APP_URL).", env.display());
+    }
+    auto_hosts(&layout);
+    Ok(ExitCode::SUCCESS)
+}
+
+/// Shows (no `folder`), picks or resets (`auto`) the folder of a site that is served.
+pub fn docroot(folder: Option<String>, auto: bool, site: Option<String>) -> io::Result<ExitCode> {
+    let layout = Layout::resolve()?;
+    let config = Config::load(&layout.config_file())?;
+    let site = crate::https::find_site(&config, site.as_deref())?;
+    if folder.is_some() || auto {
+        ops::set_site_docroot(&layout, &site.name, folder.as_deref())?;
+    }
+    let site = crate::https::find_site(&Config::load(&layout.config_file())?, Some(&site.name))?;
+    let how = if site.docroot.is_some() {
+        "picked"
+    } else {
+        "picked by PHPev"
+    };
+    println!("{} serves {}  ({how})", site.name, site.docroot().display());
+    Ok(ExitCode::SUCCESS)
+}
+
 pub fn list() -> io::Result<ExitCode> {
     let layout = Layout::resolve()?;
     let config = Config::load(&layout.config_file())?;
     let all = sites::all(&config);
     if all.is_empty() {
-        println!("No sites. Run `phpev park <dir>` or `phpev link` inside a project.");
+        println!("No sites. Run `phpev link` inside a project.");
     }
     let port = if config.ports.http == 80 {
         String::new()
@@ -140,7 +145,6 @@ pub fn list() -> io::Result<ExitCode> {
             Ok(r) => format!("PHP {}", r.version),
             Err(_) => "PHP ?".to_owned(),
         };
-        let kind = if s.kind == Kind::Linked { "linked" } else { "parked" };
         let composer = s
             .composer
             .as_ref()
@@ -149,16 +153,10 @@ pub fn list() -> io::Result<ExitCode> {
         let excluded = config.is_defender_excluded(&s.path);
         let defender = if excluded { "  (Defender exclusion)" } else { "" };
         println!(
-            "http://{}{port}  {kind}  {php}{composer}  {}{defender}",
+            "http://{}{port}  {php}{composer}  {}{defender}",
             s.host(&config.tld),
             s.path.display()
         );
-    }
-    if !config.parked.is_empty() {
-        println!("\nParked directories:");
-        for p in &config.parked {
-            println!("  {}", p.display());
-        }
     }
     Ok(ExitCode::SUCCESS)
 }

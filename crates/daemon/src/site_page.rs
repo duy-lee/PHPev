@@ -33,7 +33,8 @@ pub fn detail(
     let workers = pool.map_or(0, |p| p.workers.len());
     let workers_memory_kb = pool.map_or(0, |p| p.workers.iter().filter_map(|w| w.memory_kb).sum());
 
-    let (databases, site_databases) = site_databases(&config, &ops::find_site(layout, &site.name)?);
+    let record = ops::find_site(layout, &site.name)?;
+    let (databases, site_databases) = site_databases(&config, &record);
     let existing = db_server.and_then(|server| mariadb::database_names(layout, &server.version, server.port).ok());
     let modules = php_version.as_ref().and_then(|v| php::modules(layout, v).ok());
     let checks = project::checks(
@@ -107,11 +108,22 @@ pub fn detail(
         composer_versions,
         databases,
         site_databases,
+        docroot: relative(&dir, &record.docroot()),
+        docroot_auto: relative(&dir, &record.auto_docroot()),
+        docroot_picked: record.docroot.clone(),
         mariadb_version: db_server.map(|s| s.version.clone()),
         checks,
         logs,
         site,
     })
+}
+
+/// `dir` below `base` written the way `config.toml` keeps a document root (`.` for `base` itself).
+fn relative(base: &Path, dir: &Path) -> String {
+    match dir.strip_prefix(base) {
+        Ok(rest) if !rest.as_os_str().is_empty() => rest.to_string_lossy().replace('\\', "/"),
+        _ => ".".into(),
+    }
 }
 
 /// The connections of the project in `dir`, and the databases of PHPev's MariaDB

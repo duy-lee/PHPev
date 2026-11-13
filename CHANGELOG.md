@@ -22,6 +22,13 @@ All notable changes to PHPev are documented here. The format follows
   gets a tab, and connection URL, terminal command, import and export all live on that tab.
   Any database of the site, also one a `.env` names, can be removed from the tab; PHPev only
   remembers that (the project and the database are not touched) and **Add database** brings it back.
+- **Rename a site and pick its document root**: the pencil after a site's address opens a
+  dialog that renames it (`shop.localhost` becomes `store.localhost`) and takes the folder it
+  serves (`public`, `web/dist`, `.` for the project folder…) instead of PHPev's guess; the folder
+  must exist in the project. `phpev rename <new-name>` and
+  `phpev docroot [folder|--auto]` do the same from a terminal. Only the name changes: PHP and
+  Composer versions, HTTPS and databases stay, the old address stops working, and settings inside
+  the project that name it (such as `APP_URL`) are left for you to update.
 - **Edit my.ini in the dashboard**: **Details** under an installed MariaDB (Services › MariaDB)
   opens its *my.ini*, for server settings such as `sql_mode`. MariaDB now reads the `my.ini` of
   its data folder at start. Saving keeps the previous file as `my.ini.bak` and restarts MariaDB,
@@ -46,6 +53,9 @@ All notable changes to PHPev are documented here. The format follows
 
 ### Changed
 
+- **Parked folders are gone**: `phpev park` / `unpark`, the *Parked folders* card in Settings and
+  the `parked` key of `config.toml` no longer exist; every site is a project you `link` (or
+  `import`). A folder that was only parked is not a site any more: run `phpev link` in it.
 - Every Composer is now an installed version: `composer.phar` and the separate 2.2 LTS phar are
   gone. Upgrading moves them into versions, makes the newest the default and pins 2.2 for the
   sites on PHP before 7.2.5 that ran it. A Composer too new for a site's PHP is now refused with a

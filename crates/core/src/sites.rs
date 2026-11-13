@@ -1,38 +1,43 @@
-//! Site table: linked sites plus the sub-folders of parked directories
-//! (decided 2026-10-23).
+//! Site table: the linked sites of `config.toml`.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::config::Config;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Kind {
-    Linked,
-    Parked,
-}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Site {
     /// DNS label, e.g. `my-app` for `my-app.localhost`.
     pub name: String,
     pub path: PathBuf,
-    pub kind: Kind,
-    /// PHP version pinned in config (linked sites only); `.php-version` still wins.
+    /// PHP version pinned in config; `.php-version` still wins.
     pub php: Option<String>,
-    /// Composer version picked for the site (linked sites only).
+    /// Composer version picked for the site.
     pub composer: Option<String>,
-    /// HTTPS enabled with `phpev secure` (linked sites only).
+    /// HTTPS enabled with `phpev secure`.
     pub secure: bool,
-    /// Databases added by hand in the dashboard (linked sites only), lower case.
+    /// Databases added by hand in the dashboard, lower case.
     pub databases: Vec<String>,
-    /// Databases its `.env` names that were taken off the Database tab (linked sites only), lower case.
+    /// Databases its `.env` names that were taken off the Database tab, lower case.
     pub hidden_databases: Vec<String>,
+    /// Folder inside the project that is served, relative (`public`, `.` for the project folder
+    /// itself); `None` picks it by itself.
+    pub docroot: Option<String>,
 }
 
 impl Site {
+    /// The folder the web server serves: the one picked for the site (while it
+    /// exists), else [`Site::auto_docroot`].
+    pub fn docroot(&self) -> PathBuf {
+        self.docroot
+            .as_deref()
+            .map(|rel| self.path.join(rel))
+            .filter(|dir| dir.is_dir())
+            .unwrap_or_else(|| self.auto_docroot())
+    }
+
     /// `public/` when it holds a front controller (Laravel, Symfony, Slim…),
     /// otherwise the project folder itself (plain PHP).
-    pub fn docroot(&self) -> PathBuf {
+    pub fn auto_docroot(&self) -> PathBuf {
         let public = self.path.join("public");
         if public.join("index.php").is_file() {
             public
@@ -44,6 +49,26 @@ impl Site {
     pub fn host(&self, tld: &str) -> String {
         format!("{}.{tld}", self.name)
     }
+}
+
+/// A document root typed or picked by the user, as `config.toml` keeps it: relative to the
+/// project, `/` between folders, `.` for the project itself. `None` when it is empty,
+/// absolute, on another drive or climbs out of the project with `..`.
+pub fn normalize_docroot(rel: &str) -> Option<String> {
+    let rel = rel.trim();
+    if rel.is_empty() || rel.starts_with(['/', '\\']) {
+        return None;
+    }
+    let mut parts: Vec<&str> = Vec::new();
+    for part in rel.split(['/', '\\']).map(str::trim) {
+        match part {
+            "" | "." => {}
+            ".." => return None,
+            p if p.contains(':') => return None,
+            p => parts.push(p),
+        }
+    }
+    Some(if parts.is_empty() { ".".into() } else { parts.join("/") })
 }
 
 /// Folder name → DNS label: lowercase, accents removed (`Dự án` → `du-an`),
@@ -84,8 +109,7 @@ fn fold_accent(c: char) -> char {
         .map_or(c, |&(_, base)| base)
 }
 
-/// Every site, sorted by name. A linked site wins over a parked folder of the
-/// same name; among parked directories the first one listed wins.
+/// Every site, sorted by name.
 pub fn all(config: &Config) -> Vec<Site> {
     let mut sites: Vec<Site> = config
         .sites
@@ -93,50 +117,16 @@ pub fn all(config: &Config) -> Vec<Site> {
         .map(|s| Site {
             name: s.name.clone(),
             path: s.path.clone(),
-            kind: Kind::Linked,
             php: s.php.clone(),
             composer: s.composer.clone(),
             secure: s.secure,
             databases: s.databases.clone(),
             hidden_databases: s.hidden_databases.clone(),
+            docroot: s.docroot.clone(),
         })
         .collect();
-    for dir in &config.parked {
-        for (name, path) in parked_folders(dir) {
-            if !sites.iter().any(|s| s.name == name) {
-                sites.push(Site {
-                    name,
-                    path,
-                    kind: Kind::Parked,
-                    php: None,
-                    composer: None,
-                    secure: false,
-                    databases: Vec::new(),
-                    hidden_databases: Vec::new(),
-                });
-            }
-        }
-    }
     sites.sort_by(|a, b| a.name.cmp(&b.name));
     sites
-}
-
-/// Visible sub-folders of a parked directory with their site names.
-fn parked_folders(dir: &Path) -> Vec<(String, PathBuf)> {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return Vec::new();
-    };
-    entries
-        .flatten()
-        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
-        .filter_map(|e| {
-            let folder = e.file_name().into_string().ok()?;
-            if folder.starts_with('.') {
-                return None;
-            }
-            normalize_name(&folder).map(|n| (n, e.path()))
-        })
-        .collect()
 }
 
 /// The site a request `Host` (port already stripped, lowercase) refers to.
@@ -160,45 +150,75 @@ mod tests {
     }
 
     #[test]
-    fn linked_wins_and_docroot_detection() {
+    fn docroot_is_picked_or_detected() {
         let root = std::env::temp_dir().join(format!("phpev-sites-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
-        let parked = root.join("code");
-        std::fs::create_dir_all(parked.join(r"Blog\public")).unwrap();
-        std::fs::write(parked.join(r"Blog\public\index.php"), "").unwrap();
-        std::fs::create_dir_all(parked.join("plain")).unwrap();
-        std::fs::create_dir_all(parked.join(".hidden")).unwrap();
-        let elsewhere = root.join("elsewhere");
-        std::fs::create_dir_all(&elsewhere).unwrap();
-
+        let laravel = root.join("Blog");
+        std::fs::create_dir_all(laravel.join("public")).unwrap();
+        std::fs::write(laravel.join("public").join("index.php"), "").unwrap();
+        let plain = root.join("plain");
+        std::fs::create_dir_all(plain.join("web").join("dist")).unwrap();
+        let entry = |name: &str, path: &PathBuf, docroot: Option<&str>| config::Site {
+            name: name.into(),
+            path: path.clone(),
+            php: None,
+            composer: None,
+            secure: false,
+            databases: Vec::new(),
+            hidden_databases: Vec::new(),
+            docroot: docroot.map(str::to_owned),
+            defender_excluded: false,
+        };
         let cfg = Config {
-            parked: vec![parked.clone()],
-            sites: vec![config::Site {
-                name: "plain".into(),
-                path: elsewhere.clone(),
-                php: Some("8.3".into()),
-                composer: None,
-                secure: false,
-                databases: Vec::new(),
-                hidden_databases: Vec::new(),
-                defender_excluded: false,
-            }],
+            sites: vec![
+                entry("plain", &plain, None),
+                entry("blog", &laravel, None),
+                entry("dist", &plain, Some("web/dist")),
+                entry("gone", &plain, Some("removed")),
+                entry("whole", &laravel, Some(".")),
+            ],
             ..Config::default()
         };
         let sites = all(&cfg);
         let names: Vec<&str> = sites.iter().map(|s| s.name.as_str()).collect();
-        assert_eq!(names, ["blog", "plain"]);
+        assert_eq!(names, ["blog", "dist", "gone", "plain", "whole"]);
 
-        let blog = find(&sites, "blog.localhost", "localhost").unwrap();
-        assert_eq!(blog.docroot(), parked.join(r"Blog\public"));
-        let plain = find(&sites, "plain.localhost", "localhost").unwrap();
+        let docroot = |name: &str| {
+            find(&sites, &format!("{name}.localhost"), "localhost")
+                .unwrap()
+                .docroot()
+        };
         assert_eq!(
-            (plain.kind, plain.path.clone(), plain.docroot()),
-            (Kind::Linked, elsewhere.clone(), elsewhere)
+            docroot("blog"),
+            laravel.join("public"),
+            "public/ with a front controller"
+        );
+        assert_eq!(docroot("plain"), plain);
+        assert_eq!(docroot("dist"), plain.join("web/dist"));
+        assert_eq!(
+            docroot("gone"),
+            plain,
+            "a folder that is gone falls back to the automatic one"
+        );
+        assert_eq!(
+            docroot("whole"),
+            laravel.join("."),
+            "`.` serves the project folder though public/ exists"
         );
         assert!(find(&sites, "blog.test", "localhost").is_none());
         assert!(find(&sites, "localhost", "localhost").is_none());
 
         std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn docroot_names_stay_inside_the_project() {
+        assert_eq!(normalize_docroot(" public ").as_deref(), Some("public"));
+        assert_eq!(normalize_docroot(r"web\public/").as_deref(), Some("web/public"));
+        assert_eq!(normalize_docroot("./web//dist").as_deref(), Some("web/dist"));
+        assert_eq!(normalize_docroot(".").as_deref(), Some("."));
+        for bad in ["", "  ", "..", "web/../..", r"C:\x", "/etc", r"\\share"] {
+            assert_eq!(normalize_docroot(bad), None, "{bad}");
+        }
     }
 }

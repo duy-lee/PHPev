@@ -435,10 +435,7 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
                     sync_hosts_if_needed(&layout).await;
                     message(tr("msg.unlinked", &[("name", &s.name)]))
                 }
-                None => Err(ApiError(
-                    StatusCode::NOT_FOUND,
-                    format!("`{name}` is not a linked site (parked sites cannot be unlinked)"),
-                )),
+                None => Err(ApiError(StatusCode::NOT_FOUND, format!("no site named `{name}`"))),
             }
         }
         (Method::PUT, ["sites", name, "secure"]) => {
@@ -452,6 +449,23 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             sync_hosts_if_needed(&layout).await;
             let key = if r.secure { "msg.https_on" } else { "msg.https_off" };
             message(tr(key, &[("name", &name)]))
+        }
+        (Method::PUT, ["sites", name, "name"]) => {
+            let r: RenameSiteRequest = body(req).await?;
+            let (l, n) = (layout.clone(), name.to_string());
+            let kept = blocking(move || ops::rename_site(&l, &n, &r.name)).await?;
+            // Another TLD needs the new name in the hosts file; HTTPS gets its certificate on the first request.
+            sync_hosts_if_needed(&layout).await;
+            ok(&SiteRenamed {
+                message: tr("msg.site_renamed", &[("name", &kept)]),
+                name: kept,
+            })
+        }
+        (Method::PUT, ["sites", name, "docroot"]) => {
+            let r: DocrootRequest = body(req).await?;
+            let (l, n) = (layout.clone(), name.to_string());
+            blocking(move || ops::set_site_docroot(&l, &n, r.docroot.as_deref())).await?;
+            message(tr("msg.site_docroot", &[("name", &name)]))
         }
         (Method::PUT, ["sites", name, "php"]) => {
             let r: PhpPinRequest = body(req).await?;
@@ -956,25 +970,6 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
                 message: text,
                 restarting: false,
             })
-        }
-        (Method::POST, ["settings", "parked"]) => {
-            let r: PathRequest = body(req).await?;
-            let l = layout.clone();
-            let added = blocking(move || ops::park(&l, Path::new(r.path.trim()))).await?;
-            sync_hosts_if_needed(&layout).await;
-            message(tr(if added { "msg.parked" } else { "msg.already_parked" }, &[]))
-        }
-        (Method::POST, ["settings", "parked", "remove"]) => {
-            let r: PathRequest = body(req).await?;
-            let l = layout.clone();
-            blocking(move || ops::unpark(&l, Path::new(r.path.trim()))).await?;
-            sync_hosts_if_needed(&layout).await;
-            message(tr("msg.unparked", &[]))
-        }
-        (Method::POST, ["settings", "parked", "pick"]) => {
-            let path = blocking(|| crate::folderpick::pick_folder(&tr("pick.parked", &[]), crate::appwindow::window()))
-                .await?;
-            ok(&PickedFolder { path })
         }
         (Method::POST, ["settings", "hosts"]) => {
             let l = layout.clone();
@@ -1525,12 +1520,6 @@ fn site_info(layout: &phpev_core::layout::Layout, s: &sites::Site) -> io::Result
     Ok(SiteInfo {
         url: site_url(layout, s)?,
         name: s.name.clone(),
-        kind: if s.kind == sites::Kind::Linked {
-            "linked"
-        } else {
-            "parked"
-        }
-        .into(),
         path: s.path.display().to_string(),
         php_pinned: s.php.clone(),
         php: shim::resolve(layout.root(), &s.path)

@@ -28,6 +28,13 @@ impl Report for Quiet {
     fn progress(&mut self, _: &str, _: u64, _: Option<u64>) {}
 }
 
+fn invalid_name(name: &str) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::InvalidInput,
+        format!("`{name}` is not a valid site name (use a-z, 0-9, -)"),
+    )
+}
+
 fn not_found(msg: String) -> io::Error {
     io::Error::new(io::ErrorKind::NotFound, msg)
 }
@@ -578,22 +585,10 @@ pub fn database_users(layout: &Layout) -> io::Result<std::collections::BTreeMap<
     Ok(users)
 }
 
-/// Changes the config entry of a site; a parked site gets a link entry to carry the change.
+/// Changes the config entry of a site.
 fn update_site_entry(layout: &Layout, name: &str, change: impl FnOnce(&mut Site)) -> io::Result<()> {
-    let site = find_site(layout, name)?;
+    find_site(layout, name)?;
     config::update(&layout.config_file(), |c| {
-        if !c.sites.iter().any(|s| s.name == name) {
-            c.sites.push(Site {
-                name: site.name.clone(),
-                path: site.path.clone(),
-                php: None,
-                composer: None,
-                secure: false,
-                databases: Vec::new(),
-                hidden_databases: Vec::new(),
-                defender_excluded: false,
-            });
-        }
         if let Some(s) = c.sites.iter_mut().find(|s| s.name == name) {
             change(s);
         }
@@ -601,7 +596,7 @@ fn update_site_entry(layout: &Layout, name: &str, change: impl FnOnce(&mut Site)
 }
 
 /// Adds a database of PHPev's MariaDB to a site's Database tab, besides the ones its
-/// `.env` names (a parked site gets a link entry to carry it); one taken off the tab
+/// `.env` names; one taken off the tab
 /// before comes back. Returns the name as kept (lower case). Whether the database
 /// exists is for the caller to check.
 pub fn add_site_database(layout: &Layout, name: &str, db: &str) -> io::Result<String> {
@@ -802,18 +797,8 @@ pub fn adopt_legacy_composer(layout: &Layout) -> io::Result<()> {
         let Some(lts) = &lts else { return };
         let line = composer::line_of(lts);
         for site in &needs_lts {
-            match c.sites.iter_mut().find(|s| s.name == site.name) {
-                Some(s) => s.composer = Some(line.clone()),
-                None => c.sites.push(Site {
-                    name: site.name.clone(),
-                    path: site.path.clone(),
-                    php: None,
-                    composer: Some(line.clone()),
-                    secure: false,
-                    databases: Vec::new(),
-                    hidden_databases: Vec::new(),
-                    defender_excluded: false,
-                }),
+            if let Some(s) = c.sites.iter_mut().find(|s| s.name == site.name) {
+                s.composer = Some(line.clone());
             }
         }
     })?;
@@ -845,12 +830,9 @@ pub fn link_site(layout: &Layout, dir: &Path, name: Option<&str>, php_version: O
         .map(|f| f.to_string_lossy().into_owned())
         .unwrap_or_default();
     let name = match name {
-        Some(n) => sites::normalize_name(n).filter(|norm| norm == n).ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!("`{n}` is not a valid site name (use a-z, 0-9, -)"),
-            )
-        })?,
+        Some(n) => sites::normalize_name(n)
+            .filter(|norm| norm == n)
+            .ok_or_else(|| invalid_name(n))?,
         None => sites::normalize_name(&folder).ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -870,6 +852,7 @@ pub fn link_site(layout: &Layout, dir: &Path, name: Option<&str>, php_version: O
             secure: same.is_some_and(|p| p.secure),
             databases: same.map(|p| p.databases.clone()).unwrap_or_default(),
             hidden_databases: same.map(|p| p.hidden_databases.clone()).unwrap_or_default(),
+            docroot: same.and_then(|p| p.docroot.clone()),
             defender_excluded: same.is_some_and(|p| p.defender_excluded),
         });
         previous.is_some()
@@ -884,8 +867,7 @@ pub fn unlink_site(layout: &Layout, name: &str) -> io::Result<Option<Site>> {
     })
 }
 
-/// Pins (or with `None` unpins) the PHP version of a site; a parked site gets
-/// a link entry to carry it.
+/// Pins (or with `None` unpins) the PHP version of a site.
 pub fn set_site_php(layout: &Layout, name: &str, php_version: Option<String>) -> io::Result<()> {
     let site = find_site(layout, name)?;
     // The Composer picked for the site must run on the new PHP.
@@ -906,28 +888,12 @@ pub fn set_site_php(layout: &Layout, name: &str, php_version: Option<String>) ->
             }
         }
     }
-    config::update(&layout.config_file(), |c| {
-        match c.sites.iter_mut().find(|s| s.name == name) {
-            Some(s) => s.php = php_version.clone(),
-            None => c.sites.push(Site {
-                name: site.name.clone(),
-                path: site.path.clone(),
-                php: php_version.clone(),
-                composer: None,
-                secure: false,
-                databases: Vec::new(),
-                hidden_databases: Vec::new(),
-                defender_excluded: false,
-            }),
-        }
-    })
+    update_site_entry(layout, name, |s| s.php = php_version.clone())
 }
 
 /// Picks (or with `None` drops) the Composer version of a site: `2.8` or
-/// `2.8.12`, already installed and able to run on the site's PHP. A parked
-/// site gets a link entry to carry it.
+/// `2.8.12`, already installed and able to run on the site's PHP.
 pub fn set_site_composer(layout: &Layout, name: &str, wanted: Option<String>) -> io::Result<()> {
-    let site = find_site(layout, name)?;
     if let Some(wanted) = &wanted {
         let installed = composer::installed(&layout.composer_dir());
         let found = version::best_match(wanted, installed.iter().map(String::as_str)).ok_or_else(|| {
@@ -937,22 +903,7 @@ pub fn set_site_composer(layout: &Layout, name: &str, wanted: Option<String>) ->
         })?;
         check_site_composer(layout, name, found)?;
     }
-    config::update(&layout.config_file(), |c| {
-        match c.sites.iter_mut().find(|s| s.name == name) {
-            Some(s) => s.composer = wanted.clone(),
-            None if wanted.is_some() => c.sites.push(Site {
-                name: site.name.clone(),
-                path: site.path.clone(),
-                php: None,
-                composer: wanted.clone(),
-                secure: false,
-                databases: Vec::new(),
-                hidden_databases: Vec::new(),
-                defender_excluded: false,
-            }),
-            None => {}
-        }
-    })
+    update_site_entry(layout, name, |s| s.composer = wanted.clone())
 }
 
 /// Checks that Composer `version` (`2.8` or `2.8.12`) runs on the PHP of site
@@ -1002,23 +953,56 @@ pub fn set_site_secure(layout: &Layout, name: &str, secure: bool, r: &mut dyn Re
         let tld = Config::load(&layout.config_file())?.tld;
         ensure_trusted_ca(layout, &tld, r)?;
     }
-    config::update(&layout.config_file(), |c| {
-        match c.sites.iter_mut().find(|s| s.name == name) {
-            Some(s) => s.secure = secure,
-            None if secure => c.sites.push(Site {
-                name: site.name.clone(),
-                path: site.path.clone(),
-                php: None,
-                composer: None,
-                secure: true,
-                databases: Vec::new(),
-                hidden_databases: Vec::new(),
-                defender_excluded: false,
-            }),
-            None => {}
-        }
-    })?;
+    update_site_entry(layout, name, |s| s.secure = secure)?;
     Ok(site)
+}
+
+/// Gives a linked site another name (`<name>.<tld>`); everything else it has (PHP and Composer
+/// version, HTTPS, databases, document root) stays. Returns the name as kept. The old address
+/// stops working, and the hosts file (other TLDs) is for the caller to bring up to date.
+pub fn rename_site(layout: &Layout, name: &str, new: &str) -> io::Result<String> {
+    let new = new.trim();
+    let new = sites::normalize_name(new)
+        .filter(|norm| norm == new)
+        .ok_or_else(|| invalid_name(new))?;
+    find_site(layout, name)?;
+    config::update(&layout.config_file(), |c| -> io::Result<()> {
+        if new != name && c.sites.iter().any(|s| s.name == new) {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                format!("a site named `{new}` already exists"),
+            ));
+        }
+        if let Some(s) = c.sites.iter_mut().find(|s| s.name == name) {
+            s.name = new.clone();
+        }
+        Ok(())
+    })??;
+    Ok(new)
+}
+
+/// Picks the folder of the project that is served (`public`, `web/dist`, `.` for the project
+/// folder itself), or with `None` lets PHPev pick it again. It must be an existing folder inside
+/// the project. Returns the choice as kept.
+pub fn set_site_docroot(layout: &Layout, name: &str, docroot: Option<&str>) -> io::Result<Option<String>> {
+    let site = find_site(layout, name)?;
+    let kept = match docroot {
+        None => None,
+        Some(rel) => {
+            let kept = sites::normalize_docroot(rel).ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("`{rel}` is not a folder inside the project (use a relative path such as `public`)"),
+                )
+            })?;
+            if !site.path.join(&kept).is_dir() {
+                return Err(not_found(format!("{} has no folder `{kept}`", site.path.display())));
+            }
+            Some(kept)
+        }
+    };
+    update_site_entry(layout, name, |s| s.docroot = kept.clone())?;
+    Ok(kept)
 }
 
 /// Absolute folder of a site (for "open folder/terminal" actions).
@@ -1026,40 +1010,7 @@ pub fn site_dir(layout: &Layout, name: &str) -> io::Result<PathBuf> {
     Ok(find_site(layout, name)?.path)
 }
 
-// ---------------------------------------------------------------- parked folders and TLD
-
-fn same_dir(a: &Path, b: &Path) -> bool {
-    a.to_string_lossy()
-        .trim_end_matches('\\')
-        .eq_ignore_ascii_case(b.to_string_lossy().trim_end_matches('\\'))
-}
-
-/// Parks `dir` (absolute, existing): each sub-folder becomes a site.
-/// Returns false if it was already parked.
-pub fn park(layout: &Layout, dir: &Path) -> io::Result<bool> {
-    if !dir.is_absolute() || !dir.is_dir() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("{} is not an existing folder", dir.display()),
-        ));
-    }
-    config::update(&layout.config_file(), |c| {
-        let new = !c.parked.iter().any(|p| same_dir(p, dir));
-        if new {
-            c.parked.push(dir.to_owned());
-        }
-        new
-    })
-}
-
-/// Stops parking `dir`. Returns false if it was not parked.
-pub fn unpark(layout: &Layout, dir: &Path) -> io::Result<bool> {
-    config::update(&layout.config_file(), |c| {
-        let before = c.parked.len();
-        c.parked.retain(|p| !same_dir(p, dir));
-        before != c.parked.len()
-    })
-}
+// ---------------------------------------------------------------- TLD
 
 /// `tld` without a leading dot, lower case, if it is a single DNS label.
 pub fn normalize_tld(tld: &str) -> io::Result<String> {
@@ -1186,6 +1137,7 @@ mod tests {
             secure: false,
             databases: Vec::new(),
             hidden_databases: Vec::new(),
+            docroot: None,
             defender_excluded: false,
         }
     }
@@ -1229,9 +1181,10 @@ mod tests {
         std::fs::create_dir_all(projects.join("blog")).unwrap();
         let mut linked = site("shop", "8.4");
         linked.path = shop;
+        let mut other = site("blog", "8.4");
+        other.path = projects.join("blog");
         let config = Config {
-            parked: vec![projects.clone()],
-            sites: vec![linked],
+            sites: vec![linked, other],
             ..Config::default()
         };
         let layout = home("site-dbs", &[], &[], config);
@@ -1244,13 +1197,8 @@ mod tests {
         assert!(add_site_database(&layout, "shop", "a`b").is_err());
         assert!(add_site_database(&layout, "nobody", "reports").is_err());
 
-        // A parked site gets a link entry to carry the list.
         add_site_database(&layout, "blog", "reports").unwrap();
-        let blog = sites::all(&Config::load(&layout.config_file()).unwrap())
-            .into_iter()
-            .find(|s| s.name == "blog")
-            .unwrap();
-        assert_eq!(blog.databases, ["reports"]);
+        assert_eq!(find_site(&layout, "blog").unwrap().databases, ["reports"]);
 
         let users = database_users(&layout).unwrap();
         assert_eq!(users["reports"], ["blog", "shop"]);
@@ -1275,6 +1223,88 @@ mod tests {
         // Linking again keeps the list.
         link_site(&layout, &projects.join("blog"), None, None).unwrap();
         assert_eq!(find_site(&layout, "blog").unwrap().databases, ["reports"]);
+        let _ = std::fs::remove_dir_all(layout.root());
+        let _ = std::fs::remove_dir_all(projects);
+    }
+
+    #[test]
+    fn a_site_can_be_renamed_and_serve_another_folder() {
+        let projects = std::env::temp_dir().join(format!("phpev-ops-renamed-projects-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&projects);
+        let shop = projects.join("shop");
+        std::fs::create_dir_all(shop.join("web").join("dist")).unwrap();
+        let mut linked = site("shop", "8.4");
+        linked.path = shop.clone();
+        linked.secure = true;
+        linked.databases = vec!["reports".into()];
+        let config = Config {
+            sites: vec![linked, site("blog", "8.4")],
+            ..Config::default()
+        };
+        let layout = home("rename", &[], &[], config);
+
+        assert_eq!(
+            rename_site(&layout, "shop", " Store ").unwrap_err().kind(),
+            io::ErrorKind::InvalidInput
+        );
+        assert_eq!(
+            rename_site(&layout, "shop", "my shop").unwrap_err().kind(),
+            io::ErrorKind::InvalidInput
+        );
+        assert_eq!(
+            rename_site(&layout, "shop", "blog").unwrap_err().kind(),
+            io::ErrorKind::AlreadyExists
+        );
+        assert_eq!(
+            rename_site(&layout, "nobody", "store").unwrap_err().kind(),
+            io::ErrorKind::NotFound
+        );
+        assert_eq!(
+            rename_site(&layout, "shop", "shop").unwrap(),
+            "shop",
+            "the same name is not a clash"
+        );
+
+        assert_eq!(rename_site(&layout, "shop", "store").unwrap(), "store");
+        assert!(find_site(&layout, "shop").is_err());
+        let store = find_site(&layout, "store").unwrap();
+        assert_eq!(
+            (
+                store.path.clone(),
+                store.php.clone(),
+                store.secure,
+                store.databases.clone()
+            ),
+            (shop.clone(), Some("8.4".into()), true, vec!["reports".to_owned()]),
+            "only the name changes"
+        );
+
+        assert_eq!(
+            set_site_docroot(&layout, "store", Some(r" web\dist\ "))
+                .unwrap()
+                .as_deref(),
+            Some("web/dist")
+        );
+        assert_eq!(find_site(&layout, "store").unwrap().docroot(), shop.join("web/dist"));
+        assert_eq!(
+            set_site_docroot(&layout, "store", Some(".")).unwrap().as_deref(),
+            Some(".")
+        );
+        for bad in ["..", "elsewhere", r"C:\Windows"] {
+            assert!(set_site_docroot(&layout, "store", Some(bad)).is_err(), "{bad}");
+        }
+        assert_eq!(
+            find_site(&layout, "store").unwrap().docroot.as_deref(),
+            Some("."),
+            "a refused pick changes nothing"
+        );
+        assert_eq!(set_site_docroot(&layout, "store", None).unwrap(), None);
+        assert_eq!(find_site(&layout, "store").unwrap().docroot, None);
+
+        // Linking the folder again keeps the document root too.
+        set_site_docroot(&layout, "store", Some("web")).unwrap();
+        link_site(&layout, &shop, Some("store"), None).unwrap();
+        assert_eq!(find_site(&layout, "store").unwrap().docroot.as_deref(), Some("web"));
         let _ = std::fs::remove_dir_all(layout.root());
         let _ = std::fs::remove_dir_all(projects);
     }

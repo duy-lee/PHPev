@@ -25,7 +25,6 @@ pub fn info(layout: &Layout) -> io::Result<SettingsInfo> {
         check_updates: config.ui.check_updates(),
         language: config.ui.language.clone().unwrap_or_else(|| "system".into()),
         tld: config.tld.clone(),
-        parked: config.parked.iter().map(|p| p.display().to_string()).collect(),
         ports: config.ports.clone(),
         ca_exists: ca::exists(layout),
         ca_trusted,

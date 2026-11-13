@@ -18,12 +18,10 @@ pub struct Config {
     pub composer: Option<String>,
     /// Active MariaDB major version (e.g. `"11.4"`).
     pub mariadb: Option<String>,
-    /// TLD used for parked/linked sites.
+    /// TLD of the sites.
     pub tld: String,
     pub ports: Ports,
-    /// Directories whose sub-folders each become `<name>.<tld>`.
-    pub parked: Vec<PathBuf>,
-    /// Individually linked sites.
+    /// Linked sites.
     pub sites: Vec<Site>,
     /// Set once `phpev doctor --defender-exclude` succeeded. Non-admin users
     /// cannot read Defender's exclusion list, so PHPev remembers it here.
@@ -33,7 +31,7 @@ pub struct Config {
     #[serde(skip_serializing_if = "is_true")]
     pub tray: bool,
     /// Project folders PHPev excluded from Defender scanning that are not
-    /// linked sites (those carry `Site::defender_excluded`), e.g. parked ones.
+    /// linked sites (those carry `Site::defender_excluded`).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub defender_excluded_dirs: Vec<PathBuf>,
     /// Dashboard choices.
@@ -108,6 +106,10 @@ pub struct Site {
     /// itself is not touched). Lower case, no repeats.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hidden_databases: Vec<String>,
+    /// Folder of the project that is served, relative to it (`public`, `.` for the project
+    /// folder itself); picked by PHPev when unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub docroot: Option<String>,
     /// A Microsoft Defender exclusion was added for this folder by
     /// `phpev import` (non-admin users cannot read the exclusion list).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -122,7 +124,6 @@ impl Default for Config {
             mariadb: None,
             tld: "localhost".into(),
             ports: Ports::default(),
-            parked: Vec::new(),
             sites: Vec::new(),
             defender_excluded: false,
             tray: true,
@@ -241,6 +242,7 @@ mod tests {
                 secure: true,
                 databases: Vec::new(),
                 hidden_databases: Vec::new(),
+                docroot: None,
                 defender_excluded: false,
             }],
             ..Config::default()

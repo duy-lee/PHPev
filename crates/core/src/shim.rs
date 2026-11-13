@@ -314,6 +314,7 @@ mod tests {
             secure: false,
             databases: Vec::new(),
             hidden_databases: Vec::new(),
+            docroot: None,
             defender_excluded: false,
         });
         write_cache(&h.join("config.toml"), &cfg).unwrap();

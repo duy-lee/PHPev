@@ -12,21 +12,22 @@ import { LogEntries, parse as parseEntries, TONE, levelLabel } from '../ui/entri
 import { siteHref } from './sites.js';
 import { prefs } from '../ui/prefs.js';
 import { DatabaseCard, Database } from './site-database.js';
+import { EditSite } from './site-settings.js';
 
 const host = (url) => url.replace(/^https?:\/\//, '').replace(/\/$/, '');
 const line = (v) => v.split('.').slice(0, 2).join('.');
 // Metrics key requests by host without the port.
 const metricsHost = (url) => host(url).split(':')[0];
 
-/** Remembers the sites opened here, newest first, for Home's "Recent" order. */
-function rememberRecent(name) {
+/** Remembers the sites opened here, newest first, for Home's "Recent" order; `old` is a name it replaces. */
+function rememberRecent(name, old) {
   let list = [];
   try {
     list = JSON.parse(prefs.get('recentSites') ?? '[]');
   } catch {
     list = [];
   }
-  prefs.set('recentSites', JSON.stringify([name, ...list.filter((n) => n !== name)].slice(0, 20)));
+  prefs.set('recentSites', JSON.stringify([name, ...list.filter((n) => n !== name && n !== old)].slice(0, 20)));
 }
 
 /** The log shown first: the newest Laravel log, else the site's newest log, else PHP errors. */
@@ -281,6 +282,11 @@ export function SiteDetail({ name, tab, sub, onChanged, startJob }) {
   const s = d.site;
   const reload = () => { reloadDetail(); onChanged?.(); };
   const go = (id) => location.replace(siteHref(name, id));
+  const renamed = (to) => {
+    rememberRecent(to, name);
+    onChanged?.();
+    location.replace(siteHref(to, tab));
+  };
   const open = (target) => act(api('POST', `/sites/${s.name}/open`, { target }));
   const unlink = async () => {
     const ok = await confirmAction({
@@ -301,7 +307,6 @@ export function SiteDetail({ name, tab, sub, onChanged, startJob }) {
   const current = tabs.some((x) => x.id === tab) ? tab : 'overview';
   const eyebrow = [
     s.framework.version ? `${s.framework.name} ${s.framework.version}` : s.framework.name,
-    s.kind === 'linked' ? t('sites.linked') : t('sites.parked'),
     d.workers ? t('site.workers_short', { count: d.workers }) : null,
   ].filter(Boolean);
 
@@ -313,6 +318,7 @@ export function SiteDetail({ name, tab, sub, onChanged, startJob }) {
         <div class="row-flex" style="gap: 16px">
           <a href=${s.url} target="_blank" rel="noopener" style="display: inline-flex; align-items: center; gap: 6px; font-weight: 600">
             <${Icon} name=${s.secure ? 'lock' : 'globe'} size=${15} />${host(s.url)}</a>
+          <${EditSite} d=${d} reload=${reload} onRenamed=${renamed} />
           <span class="mono small muted" style="display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow-wrap: anywhere"><${Icon} name="folder" size=${15} /><span style="min-width: 0">${s.path}</span></span>
         </div>
       </div>
@@ -335,9 +341,9 @@ export function SiteDetail({ name, tab, sub, onChanged, startJob }) {
       <div class="col-side">
         <${Activity} siteHost=${metricsHost(s.url)} />
         <${Health} siteName=${s.name} checks=${d.checks} startJob=${startJob} reload=${reload} />
-        ${s.kind === 'linked' && html`<div class="row-flex" style="padding: 0 6px">
+        <div class="row-flex" style="padding: 0 6px">
           <span class="grow small muted">${t('site.unlink_hint')}</span>
-          <button class="btn link-danger sm" onClick=${unlink}>${t('sites.unlink')}</button></div>`}
+          <button class="btn link-danger sm" onClick=${unlink}>${t('sites.unlink')}</button></div>
       </div>
     </div>`}
     ${current === 'requests' && html`<${Requests} siteHost=${metricsHost(s.url)} />`}
