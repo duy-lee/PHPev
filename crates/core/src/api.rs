@@ -64,6 +64,13 @@ pub struct SiteDetail {
     pub composer_versions: Vec<ComposerChoice>,
     /// Connections from `.env` or `wp-config.php`.
     pub databases: Vec<SiteDb>,
+    /// The databases of PHPev's MariaDB that belong to the site: the ones its
+    /// connections name, then the ones added by hand, without repeats.
+    #[serde(default)]
+    pub site_databases: Vec<SiteDbEntry>,
+    /// Version of the running MariaDB, `None` while it is stopped.
+    #[serde(default)]
+    pub mariadb_version: Option<String>,
     pub checks: Vec<crate::project::Check>,
     /// The site's own logs, then the PHP error log of its version.
     pub logs: Vec<LogSource>,
@@ -77,11 +84,31 @@ pub struct SiteDb {
     pub local: bool,
 }
 
-/// One local database of a site (`GET /sites/<name>/database?name=<connection>`).
+/// A database of PHPev's MariaDB that belongs to a site.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SiteDbEntry {
+    pub database: String,
+    pub user: String,
+    pub has_password: bool,
+}
+
+/// `GET /sites/<name>/databases/available`: databases of the running server the
+/// site does not have yet (empty while MariaDB is stopped).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AvailableDatabases {
+    pub running: bool,
+    pub databases: Vec<crate::mariadb::DatabaseInfo>,
+}
+
+/// `POST /sites/<name>/databases`: add a database of the running server to the site.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AddSiteDatabaseRequest {
+    pub database: String,
+}
+
+/// One database of a site (`GET /sites/<name>/database?name=<database>`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SiteDatabase {
-    /// The connection (`.env` prefix), as in `SiteDb`.
-    pub name: String,
     pub database: String,
     pub host: String,
     pub port: u16,
@@ -278,6 +305,30 @@ pub struct MariaDbInfo {
     pub data_dir: Option<String>,
 }
 
+/// `GET /mariadb/<major>/databases`: the user databases of one installed major.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DatabaseList {
+    /// This major is the running server: created and dropped here, sizes exact.
+    pub running: bool,
+    pub databases: Vec<DatabaseEntry>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DatabaseEntry {
+    pub name: String,
+    pub tables: u64,
+    pub bytes: u64,
+    /// Sites whose settings use this database; only filled for the running major,
+    /// the one sites connect to.
+    pub used_by: Vec<String>,
+}
+
+/// `POST /mariadb/databases`: a new database on the running server.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreateDatabaseRequest {
+    pub name: String,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AvailableMariaDb {
     pub major: String,
@@ -290,7 +341,7 @@ pub struct AvailableMariaDb {
 /// Import a `.sql` file (picked with `.../database/import/pick`) into a site's database.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DbImportRequest {
-    /// The connection (`.env` prefix), as in `SiteDb`.
+    /// The database, one of the site's (`SiteDbEntry::database`).
     pub name: String,
     pub path: String,
     /// Drop and recreate the database first.

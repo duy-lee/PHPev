@@ -221,7 +221,7 @@ fn choose_php(
             return Ok((Some(v.to_owned()), None));
         }
         if ask.confirm(&format!("PHP {wanted} is not installed. Install it?")) {
-            runtimes::php_install(&wanted)?;
+            let _ = runtimes::php_install(&wanted)?;
             let installed = php::installed(layout);
             return Ok((
                 version::best_match(&wanted, installed.iter().map(String::as_str)).map(str::to_owned),
@@ -284,7 +284,7 @@ fn choose_php(
     if !ask.confirm(&format!("No installed PHP fits. Install PHP {candidate}?")) {
         return Ok((None, None));
     }
-    runtimes::php_install(&candidate)?;
+    let _ = runtimes::php_install(&candidate)?;
     Ok((Some(candidate.clone()), Some(line_of(&candidate))))
 }
 
@@ -378,6 +378,8 @@ fn link_site(layout: &Layout, dir: &Path, name: &str, pin: Option<String>, exclu
         let secure = previous.is_some_and(|s| s.secure);
         let defender_excluded = excluded || previous.is_some_and(|s| s.defender_excluded);
         let composer = previous.and_then(|s| s.composer.clone());
+        let databases = previous.map(|s| s.databases.clone()).unwrap_or_default();
+        let hidden_databases = previous.map(|s| s.hidden_databases.clone()).unwrap_or_default();
         c.sites.retain(|s| s.name != name);
         c.sites.push(Site {
             name: name.to_owned(),
@@ -385,6 +387,8 @@ fn link_site(layout: &Layout, dir: &Path, name: &str, pin: Option<String>, exclu
             php: pin.clone(),
             composer,
             secure,
+            databases,
+            hidden_databases,
             defender_excluded,
         });
         None
@@ -568,7 +572,7 @@ fn prepare_database(
                     ));
                     return Ok(None);
                 }
-                runtimes::db_install(&major)?;
+                let _ = runtimes::db_install(&major)?;
             }
             let version = mariadb::installed_for_major(layout, &major)
                 .ok_or_else(|| io::Error::other(format!("MariaDB {major} is still not installed")))?;

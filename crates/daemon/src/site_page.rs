@@ -2,13 +2,13 @@
 //! and whether it is ready. Blocking; call through `spawn_blocking`.
 
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use phpev_core::api::{ComposerChoice, SiteDatabase, SiteDb, SiteDetail, SiteInfo};
+use phpev_core::api::{AvailableDatabases, ComposerChoice, SiteDatabase, SiteDb, SiteDbEntry, SiteDetail, SiteInfo};
 use phpev_core::config::Config;
 use phpev_core::layout::Layout;
 use phpev_core::shim::{self, Source};
-use phpev_core::{ca, composer, ipc, mariadb, php, project};
+use phpev_core::{ca, composer, ipc, mariadb, ops, php, project, sites};
 
 pub fn detail(
     layout: &Layout,
@@ -33,13 +33,7 @@ pub fn detail(
     let workers = pool.map_or(0, |p| p.workers.len());
     let workers_memory_kb = pool.map_or(0, |p| p.workers.iter().filter_map(|w| w.memory_kb).sum());
 
-    let databases: Vec<SiteDb> = project::databases(&dir)
-        .into_iter()
-        .map(|settings| SiteDb {
-            local: settings.is_local_mysql(config.ports.mariadb) && !settings.database.is_empty(),
-            settings,
-        })
-        .collect();
+    let (databases, site_databases) = site_databases(&config, &ops::find_site(layout, &site.name)?);
     let existing = db_server.and_then(|server| mariadb::database_names(layout, &server.version, server.port).ok());
     let modules = php_version.as_ref().and_then(|v| php::modules(layout, v).ok());
     let checks = project::checks(
@@ -112,48 +106,136 @@ pub fn detail(
         },
         composer_versions,
         databases,
+        site_databases,
+        mariadb_version: db_server.map(|s| s.version.clone()),
         checks,
         logs,
         site,
     })
 }
 
-/// Tables of the site's local database on connection `name` (its `.env` prefix).
+/// The connections of the project in `dir`, and the databases of PHPev's MariaDB
+/// that belong to it: the ones the connections name (a connection without a
+/// database name has none to show), then those added by hand; the ones taken off
+/// the tab are left out.
+fn site_databases(config: &Config, site: &sites::Site) -> (Vec<SiteDb>, Vec<SiteDbEntry>) {
+    let connections: Vec<SiteDb> = project::databases(&site.path)
+        .into_iter()
+        .map(|settings| SiteDb {
+            local: settings.is_local_mysql(config.ports.mariadb) && !settings.database.is_empty(),
+            settings,
+        })
+        .collect();
+    let mut entries: Vec<SiteDbEntry> = Vec::new();
+    let mut add = |entry: SiteDbEntry| {
+        let name = entry.database.to_ascii_lowercase();
+        if !site.hidden_databases.contains(&name) && !entries.iter().any(|e| e.database.eq_ignore_ascii_case(&name)) {
+            entries.push(entry);
+        }
+    };
+    for db in connections.iter().filter(|c| c.local) {
+        add(SiteDbEntry {
+            database: db.settings.database.clone(),
+            user: if db.settings.username.is_empty() {
+                "root".into()
+            } else {
+                db.settings.username.clone()
+            },
+            has_password: db.settings.has_password,
+        });
+    }
+    for name in &site.databases {
+        add(SiteDbEntry {
+            database: name.clone(),
+            user: "root".into(),
+            has_password: false,
+        });
+    }
+    (connections, entries)
+}
+
+/// The databases of PHPev's MariaDB that belong to `site` (see [`site_databases`]).
+fn entries(layout: &Layout, site: &sites::Site) -> io::Result<(Config, Vec<SiteDbEntry>)> {
+    let config = Config::load(&layout.config_file())?;
+    let (_, entries) = site_databases(&config, site);
+    Ok((config, entries))
+}
+
+/// The site's database `name` (any case), or `NotFound` when it is neither in
+/// the project's settings nor added by hand: only those can be read, imported into or exported.
+fn member(layout: &Layout, site: &sites::Site, name: &str) -> io::Result<(Config, SiteDbEntry)> {
+    let (config, entries) = entries(layout, site)?;
+    entries
+        .into_iter()
+        .find(|e| e.database.eq_ignore_ascii_case(name))
+        .map(|e| (config, e))
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("`{name}` is not a database of this site"),
+            )
+        })
+}
+
+/// Tables of the site's database `name`.
 pub fn database(
     layout: &Layout,
-    dir: &std::path::Path,
+    site: &sites::Site,
     name: &str,
     db_server: Option<&ipc::Service>,
 ) -> io::Result<SiteDatabase> {
-    let config = Config::load(&layout.config_file())?;
-    let settings = project::databases(dir)
-        .into_iter()
-        .find(|d| d.name == name && d.is_local_mysql(config.ports.mariadb) && !d.database.is_empty())
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no such database on PHPev's MariaDB"))?;
+    let (config, entry) = member(layout, site, name)?;
     let tables = match db_server {
-        Some(server) => mariadb::tables(layout, &server.version, server.port, &settings.database)?,
+        Some(server) => mariadb::tables(layout, &server.version, server.port, &entry.database)?,
         None => None,
     };
     Ok(SiteDatabase {
         exists: db_server.map(|_| tables.is_some()),
         bytes: tables.iter().flatten().map(|t| t.bytes).sum(),
         tables: tables.unwrap_or_default(),
-        name: settings.name,
-        database: settings.database,
+        database: entry.database,
         host: "127.0.0.1".into(),
         port: config.ports.mariadb,
-        user: settings.username,
+        user: entry.user,
         mariadb_running: db_server.is_some(),
         mariadb_version: db_server.map(|s| s.version.clone()),
     })
 }
 
-/// The site's local database on connection `name`: (database name, server).
-pub fn local_database(layout: &Layout, dir: &std::path::Path, name: &str) -> io::Result<String> {
+/// The name of the site's database `name`, for import and export.
+pub fn local_database(layout: &Layout, site: &sites::Site, name: &str) -> io::Result<String> {
+    member(layout, site, name).map(|(_, e)| e.database)
+}
+
+/// The database a `.env` connection (its prefix) names, for the "create it" fix.
+pub fn connection_database(layout: &Layout, dir: &Path, connection: &str) -> io::Result<String> {
     let config = Config::load(&layout.config_file())?;
     project::databases(dir)
         .into_iter()
-        .find(|d| d.name == name && d.is_local_mysql(config.ports.mariadb) && !d.database.is_empty())
+        .find(|d| d.name == connection && d.is_local_mysql(config.ports.mariadb) && !d.database.is_empty())
         .map(|d| d.database)
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no such database on PHPev's MariaDB"))
+}
+
+/// User databases of the running server that the site does not have yet.
+pub fn available_databases(
+    layout: &Layout,
+    site: &sites::Site,
+    db_server: Option<&ipc::Service>,
+) -> io::Result<AvailableDatabases> {
+    let Some(server) = db_server else {
+        return Ok(AvailableDatabases {
+            running: false,
+            databases: Vec::new(),
+        });
+    };
+    let (_, have) = entries(layout, site)?;
+    let databases = mariadb::databases(layout, &server.version, server.port)?
+        .into_iter()
+        .filter(|db| !have.iter().any(|e| e.database.eq_ignore_ascii_case(&db.name)))
+        .collect();
+    Ok(AvailableDatabases {
+        running: true,
+        databases,
+    })
 }

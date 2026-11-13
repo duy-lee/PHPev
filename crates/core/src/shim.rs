@@ -312,6 +312,8 @@ mod tests {
             php: Some("8.2".into()),
             composer: Some("2.2".into()),
             secure: false,
+            databases: Vec::new(),
+            hidden_databases: Vec::new(),
             defender_excluded: false,
         });
         write_cache(&h.join("config.toml"), &cfg).unwrap();
