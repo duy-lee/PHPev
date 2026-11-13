@@ -1,5 +1,5 @@
 // A log read as entries (Laravel and PHP error logs): one row per entry with
-// its level, message and time, newest first; a row opens its stack trace.
+// its level, message and time, newest first; a row opens to the whole message and its stack trace.
 import { html, useState, useEffect } from '/vendor/htm-preact-standalone.mjs';
 import { t } from '../i18n.js';
 import { Icon } from '../icons.js';
@@ -12,12 +12,12 @@ const LARAVEL = /^\[(\d{4}-\d\d-\d\d)[ T](\d\d:\d\d:\d\d)[^\]]*\] [\w-]+\.(\w+):
 const PHP_ERROR = /^\[(\d\d-\w{3}-\d{4}) (\d\d:\d\d:\d\d)[^\]]*\] PHP ([A-Za-z ]+?):\s+(.*)$/;
 const PHP_LEVEL = { 'Fatal error': 'ERROR', 'Parse error': 'ERROR', Warning: 'WARNING', Notice: 'NOTICE', Deprecated: 'NOTICE' };
 const ERRORS = ['ERROR', 'CRITICAL', 'ALERT', 'EMERGENCY'];
-const TONE = { ERROR: 'danger', CRITICAL: 'danger', ALERT: 'danger', EMERGENCY: 'danger', WARNING: 'warn', NOTICE: 'accent', INFO: 'accent' };
+export const TONE = { ERROR: 'danger', CRITICAL: 'danger', ALERT: 'danger', EMERGENCY: 'danger', WARNING: 'warn', NOTICE: 'accent', INFO: 'accent' };
 
 let nextId = 1;
 
 /** Adds raw `lines` to `entries` (oldest first): a header line starts an entry, others continue it. */
-function parse(entries, lines) {
+export function parse(entries, lines) {
   const out = entries.slice();
   for (const line of lines) {
     const laravel = line.match(LARAVEL);
@@ -35,18 +35,19 @@ function parse(entries, lines) {
   return out.length > MAX_ENTRIES ? out.slice(-MAX_ENTRIES) : out;
 }
 
-const levelLabel = (level) => level.charAt(0) + level.slice(1).toLowerCase();
+export const levelLabel = (level) => level.charAt(0) + level.slice(1).toLowerCase();
 
 function Entry({ entry, open, onToggle }) {
   const more = entry.detail.length > 0;
+  // Every entry opens: a one-line PHP warning is cut short in the row and shows whole when opened.
   return html`<div class="entry ${open ? 'open' : ''}">
-    <button class="entry-row" aria-expanded=${more ? (open ? 'true' : 'false') : undefined} onClick=${more ? onToggle : undefined}>
+    <button class="entry-row" aria-expanded=${open ? 'true' : 'false'} onClick=${onToggle}>
       <span class="pill ${TONE[entry.level] ?? ''}">${levelLabel(entry.level)}</span>
       <span class="entry-msg">${entry.message}</span>
       <span class="entry-time mono">${entry.time}</span>
-      <span class="entry-chevron">${more && html`<${Icon} name=${open ? 'chevron-down' : 'chevron-right'} size=${15} />`}</span>
+      <span class="entry-chevron"><${Icon} name=${open ? 'chevron-down' : 'chevron-right'} size=${15} /></span>
     </button>
-    ${open && html`<pre class="entry-detail">${entry.detail.join('\n')}</pre>`}
+    ${open && more && html`<pre class="entry-detail">${entry.detail.join('\n')}</pre>`}
   </div>`;
 }
 

@@ -8,7 +8,7 @@ import { confirmAction } from '../ui/dialog.js';
 import { Icon } from '../icons.js';
 import { Switch, Select, Tabs, SetRow, Empty, Loading } from '../ui/controls.js';
 import { Chart } from '../ui/chart.js';
-import { LogEntries } from '../ui/entries.js';
+import { LogEntries, parse as parseEntries, TONE, levelLabel } from '../ui/entries.js';
 import { siteHref } from './sites.js';
 import { prefs } from '../ui/prefs.js';
 import { DatabaseCard, Database } from './site-database.js';
@@ -36,32 +36,37 @@ function defaultLog(logs) {
   return (laravel.at(-1) ?? site.at(-1) ?? logs[0])?.id;
 }
 
-// "[2026-10-26 10:42:13] local.ERROR: message"
-const LARAVEL_LINE = /^\[(\d{4}-\d\d-\d\d) (\d\d:\d\d:\d\d)\] \w+\.(\w+): (.*)$/;
-const LEVEL_TONE = { ERROR: 'danger', CRITICAL: 'danger', ALERT: 'danger', EMERGENCY: 'danger', WARNING: 'warn', NOTICE: 'accent', INFO: 'accent' };
+/** Windows paths compare without case or slash direction; the trailing slash keeps `shop` apart from `shop2`. */
+const slashes = (s) => s.toLowerCase().replaceAll('\\', '/');
+const under = (text, dir) => slashes(text).includes(`${slashes(dir).replace(/\/+$/, '')}/`);
 
-function LatestLogs({ logs, onOpen }) {
+function LatestLogs({ logs, path, onOpen }) {
   const [entries, setEntries] = useState(null);
   const source = defaultLog(logs);
+  // A site's own log is all its own; the PHP error log is shared by every site on that PHP version.
+  const shared = source?.startsWith('php:');
   useEffect(() => {
     if (!source) return;
-    const es = new EventSource(`/api/v1/logs/stream?source=${encodeURIComponent(source)}&lines=200`);
+    setEntries(null);
+    const es = new EventSource(`/api/v1/logs/stream?source=${encodeURIComponent(source)}&lines=${shared ? 1000 : 200}`);
     es.onmessage = (e) => {
       const lines = JSON.parse(e.data).lines;
-      setEntries(lines.map((l) => l.match(LARAVEL_LINE)).filter(Boolean).slice(-4).reverse());
+      // Laravel and PHP error entries alike; the lines of a stack trace belong to the entry above.
+      const found = parseEntries([], lines).filter((x) => x.level && (!shared || under([x.message, ...x.detail].join('\n'), path)));
+      setEntries(found.slice(-4).reverse());
       es.close();
     };
     return () => es.close();
-  }, [source]);
+  }, [source, path]);
   if (!source) return null;
   return html`<section class="card" style="overflow: hidden">
     <div class="card-head" style="padding-bottom: 12px"><h2>${t('site.latest_logs')}</h2><span class="grow"></span>
       <a href="#" class="small" style="font-weight: 600" onClick=${(e) => { e.preventDefault(); onOpen(); }}>${t('site.view_all')}</a></div>
     ${entries === null && html`<div class="logline muted">${t('common.loading')}</div>`}
     ${entries?.length === 0 && html`<div class="logline muted">${t('site.no_entries')}</div>`}
-    ${entries?.map(([, , time, level, msg]) => html`<div class="logline">
-      <span class="pill ${LEVEL_TONE[level] ?? ''}">${level.charAt(0) + level.slice(1).toLowerCase()}</span>
-      <span class="m" title=${msg}>${msg}</span><span class="small muted mono">${time}</span></div>`)}
+    ${entries?.map((x) => html`<div class="logline">
+      <span class="pill ${TONE[x.level] ?? ''}">${levelLabel(x.level)}</span>
+      <span class="m" title=${x.message}>${x.message}</span><span class="small muted mono">${x.time}</span></div>`)}
   </section>`;
 }
 
@@ -325,7 +330,7 @@ export function SiteDetail({ name, tab, sub, onChanged, startJob }) {
       <div class="col-main">
         <${Environment} d=${d} reload=${reload} />
         <${DatabaseCard} d=${d} onOpen=${(db) => go(`database/${encodeURIComponent(db)}`)} onAdded=${(db) => { reload(); go(`database/${encodeURIComponent(db)}`); }} />
-        <${LatestLogs} logs=${d.logs} onOpen=${() => go('logs')} />
+        <${LatestLogs} logs=${d.logs} path=${d.site.path} onOpen=${() => go('logs')} />
       </div>
       <div class="col-side">
         <${Activity} siteHost=${metricsHost(s.url)} />
