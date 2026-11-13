@@ -131,7 +131,7 @@ pub fn uninstall(mut purge: bool, yes: bool, from_installer: bool) -> io::Result
     // Stopping first releases the files (MariaDB shuts down cleanly, the
     // dashboard window closes itself).
     if ipc::is_running() {
-        daemon::stop()?;
+        let _ = daemon::stop()?;
     }
 
     if let Err(e) = autostart::set(&layout, false) {
