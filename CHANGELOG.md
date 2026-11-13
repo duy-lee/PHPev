@@ -59,6 +59,11 @@ All notable changes to PHPev are documented here. The format follows
 
 ### Fixed
 
+- **PHP errors on a plain PHP site's page**: *Latest log entries* said "No entries yet" for a site
+  without a Laravel log even when the PHP error log had entries, and in the **Logs** tab a PHP
+  warning could not be opened to read it whole. The Overview now shows the last PHP errors of the site (those
+  that name a file in its folder, as the PHP log is shared by every site on that PHP version),
+  and every entry in the Logs tab opens to its full message.
 - **Japanese text garbled in scripts of Shift-JIS projects**: static `.js`, `.css` and `.csv`
   files were always sent as UTF-8, so a Shift-JIS page showed `�Ȃ�` in what its scripts print.
   Like Apache, they now carry no charset and the browser reads them in the encoding of the page.
