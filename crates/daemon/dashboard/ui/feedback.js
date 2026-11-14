@@ -28,6 +28,9 @@ export function Toasts() {
   </div>`;
 }
 
+/** Copies `text` and says so; shows the text when the clipboard is refused. */
+export const copy = (text) => navigator.clipboard.writeText(text).then(() => showToast(t('common.copied')), () => showToast(text));
+
 // Runs an API action, reports the outcome, then refreshes.
 export async function act(promise, refresh) {
   try {

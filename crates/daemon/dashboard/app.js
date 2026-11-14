@@ -11,7 +11,7 @@ import { JobDialog } from './ui/job-dialog.js';
 import { Palette } from './ui/palette.js';
 import { prefs } from './ui/prefs.js';
 import { Home } from './pages/home.js';
-import { Sites, SitesCrumbs, siteHref, startLinking } from './pages/sites.js';
+import { Sites, SitesCrumbs, LinkHost, siteHref, startLinking } from './pages/sites.js';
 import { Php } from './pages/php.js';
 import { Services, ServicesCrumbs, SERVICES } from './pages/services.js';
 import { Performance } from './pages/performance.js';
@@ -222,6 +222,7 @@ function App() {
     </main>
     ${job && html`<${JobDialog} id=${job.id} onClose=${() => { job.after?.(); setJob(null); }} />`}
     ${palette && html`<${Palette} pages=${PALETTE_PAGES} onClose=${() => setPalette(false)} onOpen=${(hash) => { setPalette(false); location.replace(hash); }} />`}
+    <${LinkHost} />
     <${DialogHost} />
     <${Toasts} />
   </div>`;

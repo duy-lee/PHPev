@@ -3,9 +3,8 @@ import { html, useState, useEffect } from '/vendor/htm-preact-standalone.mjs';
 import { t } from '../i18n.js';
 import { api } from '../api.js';
 import { size } from '../format.js';
-import { act, showToast } from '../ui/feedback.js';
-import { confirmAction } from '../ui/dialog.js';
-import { copy, connectionUrl, importInto, exportFrom } from '../ui/db-actions.js';
+import { showToast } from '../ui/feedback.js';
+import { copy, connectionUrl, importInto, exportFrom, dropDatabase } from '../ui/db-actions.js';
 import { Icon } from '../icons.js';
 import { RemoveButton, Empty, Loading } from '../ui/controls.js';
 
@@ -73,17 +72,7 @@ export function DatabasesPanel({ major, running, port, startJob }) {
   const importSql = (db) => importInto(BASE, db.name, startJob, load);
   const exportSql = (db) => exportFrom(BASE, db.name, startJob);
 
-  const drop = async (db) => {
-    const ok = await confirmAction({
-      title: t('services.db_drop_title', { name: db.name }),
-      body: t('services.db_drop_body', { name: db.name }),
-      details: db.used_by.length > 0 && html`<p class="callout warn" role="alert">${t('services.db_drop_used', { sites: db.used_by.join(', ') })}</p>`,
-      confirmLabel: t('services.db_drop'),
-      danger: true,
-      confirmWord: db.name,
-    });
-    if (ok) act(api('DELETE', `/mariadb/databases/${encodeURIComponent(db.name)}`), load);
-  };
+  const drop = (db) => dropDatabase(db.name, db.used_by, load);
 
   if (!state?.data) return html`<${Loading} error=${state?.error} height=${120} />`;
   const all = state.data.databases;
