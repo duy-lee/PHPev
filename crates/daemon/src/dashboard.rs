@@ -1568,6 +1568,7 @@ mod tests {
             assert!(lookup(path).is_some(), "{path} is not embedded");
         }
         assert_eq!(lookup("/app.js").unwrap().1, "text/javascript; charset=utf-8");
+        assert_eq!(lookup("/vendor/inter/inter-latin.woff2").unwrap().1, "font/woff2");
         assert!(lookup("/nope.js").is_none());
     }
 
