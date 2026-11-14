@@ -16,7 +16,7 @@ import { Php } from './pages/php.js';
 import { Services, ServicesCrumbs, SERVICES } from './pages/services.js';
 import { Performance } from './pages/performance.js';
 import { Logs } from './pages/logs.js';
-import { Settings } from './pages/settings.js';
+import { Settings, SettingsCrumbs } from './pages/settings.js';
 import { applyTheme } from './ui/theme.js';
 
 // Page registry: a new feature = one entry here + its API endpoints. `group` is the breadcrumb
@@ -28,7 +28,7 @@ const PAGES = [
   { id: 'services', label: 'nav.services', icon: 'server', view: Services, crumbs: ServicesCrumbs, group: 'nav.runtimes' },
   { id: 'performance', label: 'nav.performance', icon: 'activity', view: Performance, group: 'nav.monitor' },
   { id: 'logs', label: 'nav.logs', icon: 'scroll-text', view: Logs, group: 'nav.monitor' },
-  { id: 'settings', label: 'nav.settings', icon: 'settings', view: Settings },
+  { id: 'settings', label: 'nav.settings', icon: 'settings', view: Settings, crumbs: SettingsCrumbs },
 ];
 
 // The menu: its groups and their entries; each service's page is an entry of its own.

@@ -15,8 +15,6 @@ code { padding: 0 4px; border: 1px solid var(--line); border-radius: 4px; backgr
 .t2 { color: var(--text-2); }
 .small { font-size: 12px; }
 .tnum { font-variant-numeric: tabular-nums; }
-.eyebrow { font-size: 11.5px; font-weight: 500; color: var(--text-3); }
-.display { font-family: var(--font); }
 .grow { flex: 1; min-width: 0; }
 .row-flex { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .stack { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
@@ -97,7 +95,6 @@ code { padding: 0 4px; border: 1px solid var(--line); border-radius: 4px; backgr
 .page-head { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
 .page-head h1 { font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -.015em; }
 .page-head p { margin: 2px 0 0; color: var(--text-3); }
-.section-title { font-size: 14px; font-weight: 600; }
 
 /* ------------------------------------------------------------ boxes and rows */
 
@@ -120,8 +117,6 @@ code { padding: 0 4px; border: 1px solid var(--line); border-radius: 4px; backgr
 .setrow.ok .row-icon { color: var(--ok); }
 .setrow.err .row-icon { color: var(--danger); }
 .setrow.sub { padding-left: 44px; background: var(--subtle); }
-.update-banner { background: var(--accent-soft); }
-.update-banner .row-icon { color: var(--accent-text); }
 
 /* ------------------------------------------------------------ controls */
 
@@ -147,12 +142,6 @@ a.btn:hover { text-decoration: none; }
 .btn.sm { height: 26px; padding: 0 9px; gap: 5px; font-size: 12px; }
 .btn.square { width: 30px; padding: 0; }
 .btn.square.sm { width: 26px; }
-/* Older name of a ghost square button, still used by some pages. */
-.icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; flex: none; border: 0; border-radius: var(--r-ctl); background: none; color: var(--text-2); cursor: pointer; }
-.icon-btn:hover { background: var(--hover); color: var(--text); }
-.icon-btn:disabled { opacity: .5; cursor: default; }
-.icon-btn:disabled:hover { background: none; }
-.icon-btn.sm { width: 26px; height: 26px; }
 .split { display: inline-flex; }
 .split > .btn:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
 .split > .btn:nth-child(2) { width: 26px; margin-left: -1px; padding: 0; border-top-left-radius: 0; border-bottom-left-radius: 0; }
@@ -301,7 +290,7 @@ button.select .icon { color: var(--text-3); }
 .callout { display: flex; gap: 10px; align-items: flex-start; margin: 12px 0 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--subtle); color: var(--text-2); font-size: 12.5px; }
 .callout.warn { border-color: transparent; background: var(--warn-soft); color: var(--warn-text); }
 
-/* ------------------------------------------------------------ page specifics (until each page moves to the new layout) */
+/* ------------------------------------------------------------ versions, databases, charts */
 
 /* Version lists (PHP, MariaDB, Composer), their details and the databases of MariaDB. */
 .sec { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; margin: 8px 0 -8px; }
@@ -324,14 +313,8 @@ textarea.code { width: 100%; min-height: 360px; padding: 10px 14px; border: 1px 
 textarea.code:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(47, 107, 240, .18); }
 .callout > .icon { margin-top: 2px; flex: none; color: var(--text-3); }
 .charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 16px; }
-.chart-card { padding: 14px 16px; }
-.chart-card h3 { margin-bottom: 8px; font-size: 13px; }
 .u-legend { color: var(--text-2); font-size: 12px; }
-.hist { padding: 12px 16px 16px; }
-.hist-row { display: grid; grid-template-columns: 76px minmax(0, 1fr) 44px; gap: 12px; align-items: center; height: 26px; font-size: 12px; }
-.hist-row .bar { display: block; height: 6px; min-width: 2px; border-radius: 3px; background: var(--accent); }
-.logview { min-height: 320px; max-height: calc(100vh - 260px); margin: 0; padding: 10px 16px; overflow: auto; background: var(--sunken); font: 12px/20px var(--mono); color: var(--text-2); white-space: pre-wrap; }
-.checklist .setrow { min-height: 60px; }
+.logview { min-height: 200px; max-height: 60vh; margin: 0; padding: 10px 16px; overflow: auto; background: var(--sunken); font: 12px/20px var(--mono); color: var(--text-2); white-space: pre-wrap; }
 
 
 /* ------------------------------------------------------------ home, sites, site detail */
@@ -444,3 +427,49 @@ textarea.code:focus { outline: none; border-color: var(--accent); box-shadow: 0 
 .storage-act { display: flex; justify-content: flex-end; width: 92px; }
 details > summary::-webkit-details-marker { display: none; }
 details[open] > summary svg:last-child { transform: rotate(180deg); }
+
+/* ------------------------------------------------------------ performance */
+
+.u-legend { color: var(--text-2); font-size: 12px; }
+.hrow { display: grid; grid-template-columns: 88px minmax(0, 1fr) 52px; gap: 12px; align-items: center; height: 26px; font-size: 12px; }
+.hrow > span:first-child { font: 11.5px var(--mono); color: var(--text-3); }
+.hrow .bar { height: 6px; min-width: 2px; border-radius: 3px; background: var(--accent); }
+.hrow .bar.slow { background: var(--chart-2); }
+.hrow .num { text-align: right; color: var(--text-2); font-variant-numeric: tabular-nums; }
+
+/* ------------------------------------------------------------ logs: the viewer fills the main panel */
+
+.page.page-logs { max-width: none; height: 100%; padding: 0; gap: 0; }
+.logs { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.logs > .tools { padding: 10px 16px; }
+.logs-wait { padding: 24px 32px; }
+.logv { flex: 1; min-height: 0; overflow: auto; padding: 6px 0; background: var(--sunken); font: 12px/20px var(--mono); }
+.logv-empty { padding: 24px; color: var(--text-3); font-family: var(--font); }
+.ll { display: grid; grid-template-columns: 56px minmax(0, 1fr); padding-right: 16px; }
+.ll:hover { background: var(--hover); }
+.ll .ln { padding-right: 16px; text-align: right; color: var(--text-3); opacity: .7; user-select: none; }
+.ll .lm { color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
+.lv-error { color: var(--danger-text); }
+.lv-warning { color: var(--warn-text); }
+.lv-info { color: var(--text); }
+.lv-notice, .lv-debug { color: var(--text-3); }
+.logs > .foot { background: var(--panel); }
+
+/* ------------------------------------------------------------ settings */
+
+.set-layout { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 32px; align-items: start; }
+.set-nav { position: sticky; top: 0; display: flex; flex-direction: column; gap: 1px; }
+.set-nav a { display: flex; align-items: center; gap: 9px; height: 30px; padding: 0 8px; border-radius: var(--r-ctl); color: var(--text-2); font-weight: 500; }
+.set-nav a .icon { color: var(--text-3); }
+.set-nav a:hover { background: var(--hover); color: var(--text); text-decoration: none; }
+.set-nav a.on { background: var(--press); color: var(--text); }
+.set-nav a.on .icon { color: var(--text); }
+.set-sec { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.set-sec > h2 { font-size: 14px; font-weight: 600; }
+.set-sec > p { margin: -10px 0 0; color: var(--text-3); }
+.field.port { width: 96px; }
+.field input[type="number"] { -moz-appearance: textfield; }
+@media (max-width: 860px) {
+  .set-layout { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .set-nav { position: static; flex-direction: row; flex-wrap: wrap; }
+}

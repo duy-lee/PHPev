@@ -158,24 +158,3 @@
   --fw-static: #16291F;    --fw-static-ink: #7FD9A6;
   color-scheme: dark;
 }
-
-/* Old names, kept while app.css moves to the tokens above; removed once no rule uses them. */
-:root {
-  --ground: var(--chrome);
-  --surface: var(--panel);
-  --soft: var(--subtle);
-  --hair: var(--line);
-  --hair-strong: var(--line-2);
-  --ink: var(--text);
-  --ink-2: var(--text-2);
-  --muted: var(--text-3);
-  --accent-strong: var(--accent-hover);
-  --shadow: none;
-  --shadow-raised: var(--shadow-btn);
-  --shadow-overlay: var(--shadow-pop);
-  --font-display: var(--font);
-  --font-mono: var(--mono);
-  --radius-card: var(--r-box);
-  --radius-control: var(--r-ctl);
-  --radius-pill: 999px;
-}
