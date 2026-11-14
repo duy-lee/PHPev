@@ -71,8 +71,8 @@ export function Performance() {
         <div><div class="small muted">p99</div><b style="font-size: 18px">${fmtMs(r.p99_ms)}</b></div>
         <span class="grow"></span>
         <div class="row-flex">
-          <span class="pill ok">2xx ${r.status.s2xx}</span><span class="pill">3xx ${r.status.s3xx}</span>
-          <span class="pill warn">4xx ${r.status.s4xx}</span><span class="pill danger">5xx ${r.status.s5xx}</span>
+          <span class="badge ok">2xx ${r.status.s2xx}</span><span class="badge">3xx ${r.status.s3xx}</span>
+          <span class="badge warn">4xx ${r.status.s4xx}</span><span class="badge danger">5xx ${r.status.s5xx}</span>
         </div>
       </div>
     </section>

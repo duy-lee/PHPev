@@ -114,7 +114,7 @@ function Https({ s }) {
   return html`<section class="card">
     <${SetRow} icon="shield" title=${t('settings.ca')} tone=${s.ca_exists && !s.ca_trusted ? 'warn' : ''}
       desc=${!s.ca_exists ? t('settings.ca_none') : s.ca_trusted ? t('settings.ca_trusted') : t('settings.ca_untrusted')}>
-      <span class="pill ${s.ca_trusted ? 'ok' : ''}">${s.ca_trusted ? t('settings.trusted') : s.ca_exists ? t('settings.not_trusted') : t('settings.not_created')}</span>
+      <span class="badge ${s.ca_trusted ? 'ok' : ''}">${s.ca_trusted ? t('settings.trusted') : s.ca_exists ? t('settings.not_trusted') : t('settings.not_created')}</span>
     </${SetRow}>
     <${SetRow} icon="lock" title=${t('settings.secure_sites')}
       desc=${s.secure_sites.length ? s.secure_sites.join(', ') : t('settings.secure_none')} />
@@ -129,7 +129,7 @@ function Windows({ s, reload }) {
     <section class="card">
       <${SetRow} icon="shield" title=${t('settings.defender')} desc=${s.defender_excluded ? t('settings.defender_on') : t('settings.defender_hint')}>
         ${s.defender_excluded
-          ? html`<span class="pill ok">${t('settings.excluded')}</span>`
+          ? html`<span class="badge ok">${t('settings.excluded')}</span>`
           : html`<button class="btn sm" onClick=${() => act(api('POST', '/settings/defender'), reload)}>${t('settings.exclude')}</button>`}
       </${SetRow}>
       <${SetRow} icon="globe" title=${t('settings.hosts')} desc=${s.tld === 'localhost' ? t('settings.hosts_localhost') : t('settings.hosts_hint', { tld: s.tld })}>
@@ -138,7 +138,7 @@ function Windows({ s, reload }) {
     </section>
     <section class="card checklist">
       <div class="card-head"><h2>${t('settings.checks')}</h2><span class="grow"></span>
-        <span class="pill ${problems ? 'warn' : 'ok'}">${t('home.checks_count', { fine: s.checks.length - problems, total: s.checks.length })}</span></div>
+        <span class="badge ${problems ? 'warn' : 'ok'}">${t('home.checks_count', { fine: s.checks.length - problems, total: s.checks.length })}</span></div>
       ${s.checks.filter((c) => c.status !== 'ok').map((c) => html`<${SetRow} icon=${CHECK_ICON[c.status]} title=${c.title} tone="warn"
         desc=${[...c.details, c.hint ? `→ ${c.hint}` : ''].filter(Boolean).join(' · ')} />`)}
       ${s.checks.length > problems && html`<details>

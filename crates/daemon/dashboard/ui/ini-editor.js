@@ -22,7 +22,7 @@ export function IniEditor({ path, label, hint, active = true, onSaved }) {
     if (active && !dirty) load();
   }, [active, path]);
   if (!ini) return html`<span class="small muted">${t('common.loading')}</span>`;
-  if (ini.error) return html`<span class="pill danger">${t('common.error', { message: ini.error })}</span>`;
+  if (ini.error) return html`<span class="badge danger">${t('common.error', { message: ini.error })}</span>`;
   const save = async () => {
     if (!dirty || busy) return;
     setBusy(true);

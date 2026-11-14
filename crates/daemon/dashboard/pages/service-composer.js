@@ -63,7 +63,7 @@ export function Composer({ startJob }) {
         : available.map((a) => html`<${SetRow} icon="download" title=${`Composer ${a.version}`}
             desc=${t('services.composer_needs_php', { php: a.min_php })}>
             ${a.installed
-              ? html`<span class="pill ok">${t('common.installed')}</span>`
+              ? html`<span class="badge ok">${t('common.installed')}</span>`
               : html`<button class="btn sm" onClick=${() => install(a.version)}>${t('common.install')}</button>`}
           </${SetRow}>`)}
     </section>`;

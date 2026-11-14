@@ -57,8 +57,8 @@ export function MariaDb({ startJob }) {
     <section class="card">
       <div class="card-head"><h2>${t('services.server')}</h2><span class="grow"></span>
         ${data.installed.length > 0 && (running
-          ? html`<span class="pill ok"><span class="dot ok"></span>${t('common.running')}</span>`
-          : html`<span class="pill">${t('common.stopped')}</span>`)}</div>
+          ? html`<span class="badge ok"><span class="dot ok"></span>${t('common.running')}</span>`
+          : html`<span class="badge">${t('common.stopped')}</span>`)}</div>
       ${data.installed.length === 0
         ? html`<${Empty} icon="database" title=${t('services.not_installed')}>${t('services.not_installed_hint')}</${Empty}>`
         : html`
@@ -92,10 +92,10 @@ export function MariaDb({ startJob }) {
         ? html`<p class="small muted" style="margin: 0; padding: 0 22px 18px">${t('services.available_hint')}</p>`
         : available.map((a) => html`<${SetRow} icon="download" title=${`MariaDB ${a.major}`}
             desc=${a.eol ? t('services.eol', { date: a.eol }) : ''}>
-            ${a.lts && html`<span class="pill">${t('services.lts')}</span>`}
-            ${a.eol_passed && html`<span class="pill warn">${t('services.eol_passed')}</span>`}
+            ${a.lts && html`<span class="badge">${t('services.lts')}</span>`}
+            ${a.eol_passed && html`<span class="badge warn">${t('services.eol_passed')}</span>`}
             ${a.installed
-              ? html`<span class="pill ok">${t('common.installed')}</span>`
+              ? html`<span class="badge ok">${t('common.installed')}</span>`
               : html`<button class="btn sm" onClick=${() => install(a.major)}>${t('common.install')}</button>`}
           </${SetRow}>`)}
     </section>`;

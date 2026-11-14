@@ -23,7 +23,7 @@ export function Toasts() {
       <${Icon} name=${m.error ? 'error' : 'check-circle'} />
       <span class="grow">${m.text}</span>
       ${m.action && html`<a href="#" onClick=${(e) => { e.preventDefault(); dismiss(m.id); m.action.run(); }}>${m.action.label}</a>`}
-      <button class="icon-btn ghost sm" aria-label=${t('common.close')} onClick=${() => dismiss(m.id)}><${Icon} name="close" size=${15} /></button>
+      <button class="btn ghost square sm" aria-label=${t('common.close')} onClick=${() => dismiss(m.id)}><${Icon} name="x" size=${14} /></button>
     </div>`)}
   </div>`;
 }

@@ -66,7 +66,7 @@ function AddDatabase({ siteName, onClose, onAdded }) {
   return html`<${Dialog} title=${t('site.add_db_title')} onClose=${onClose}>
     <p>${t('site.add_db_body')}</p>
     ${!state && html`<${Loading} height=${44} />`}
-    ${state?.error && html`<span class="pill danger" role="alert">${t('common.error', { message: state.error })}</span>`}
+    ${state?.error && html`<span class="badge danger" role="alert">${t('common.error', { message: state.error })}</span>`}
     ${data && !data.running && html`<p class="callout warn" role="alert">${t('site.add_db_stopped')}</p>`}
     ${data?.running && options.length === 0 && html`<p class="callout">${t('site.add_db_none')}</p>`}
     ${options.length > 0 && html`<div class="row-flex" style="gap: 12px">
@@ -104,8 +104,8 @@ export function DatabaseCard({ d, onOpen, onAdded }) {
   // A connection to another server, or a database taken off the tab, says nothing here.
   const other = dbs.length === 0 && d.databases.find((x) => x.database && !x.local);
   const status = d.mariadb_version
-    ? html`<span class="pill ok"><span class="dot ok"></span>MariaDB ${d.mariadb_version.split('.').slice(0, 2).join('.')}</span>`
-    : html`<span class="pill">${t('site.db_stopped')}</span>`;
+    ? html`<span class="badge ok"><span class="dot ok"></span>MariaDB ${d.mariadb_version.split('.').slice(0, 2).join('.')}</span>`
+    : html`<span class="badge">${t('site.db_stopped')}</span>`;
   return html`<section class="card">
     <div class="card-head"><h2>${t('site.database')}</h2><span class="grow"></span>${dbs.length > 0 && status}</div>
     ${dbs.length === 0 && html`<${SetRow} icon="database" title=${other ? other.database : t('site.db_none')}
@@ -171,7 +171,7 @@ export function Database({ d, current, onPick, onChanged, startJob }) {
     <div class="col-main"><section class="card" style="overflow: hidden">
       <div class="card-head" style="padding-bottom: 6px"><h2>${t('site.tables')}</h2><span class="small muted">${databaseDesc(info)}</span></div>
       ${!info ? html`<div style="padding: 0 22px 18px"><${Loading} height=${120} /></div>`
-        : info.error ? html`<div style="padding: 0 22px 18px"><span class="pill danger">${info.error}</span></div>`
+        : info.error ? html`<div style="padding: 0 22px 18px"><span class="badge danger">${info.error}</span></div>`
         : info.tables.length === 0 ? html`<${Empty} icon="database" title=${databaseDesc(info)} />`
         : html`<div class="scroll-x"><table class="table">
           <thead><tr><th>${t('site.table')}</th><th class="num">${t('site.rows')}</th><th class="num">${t('site.size')}</th></tr></thead>

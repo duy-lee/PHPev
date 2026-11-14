@@ -126,7 +126,7 @@ export function Select({ value, options, onChange, label, id }) {
 
   return html`<button ref=${button} type="button" class="select" id=${id} aria-label=${label} aria-haspopup="listbox"
       aria-expanded=${open ? 'true' : 'false'} onClick=${() => (open ? close() : show())} onKeyDown=${onButtonKey}>
-      <span class="select-value">${current ? current.label ?? current.value : ''}</span><${Icon} name="chevron-down" size=${15} /></button>
+      <span class="select-value">${current ? current.label ?? current.value : ''}</span><${Icon} name="chevron-down" size=${14} /></button>
     ${open && html`<div ref=${list} class="dropdown" role="listbox" tabindex="-1" aria-label=${label}
       aria-activedescendant=${active >= 0 ? `${uid.current}-${active}` : undefined}
       style=${place ?? { visibility: 'hidden', top: '0px', left: '0px' }} onKeyDown=${onListKey}>
@@ -135,35 +135,35 @@ export function Select({ value, options, onChange, label, id }) {
         <div id=${`${uid.current}-${i}`} role="option" class="dropdown-item ${i === active ? 'active' : ''}"
           aria-selected=${o.value === value ? 'true' : 'false'} aria-disabled=${o.disabled ? 'true' : undefined}
           onMouseMove=${() => !o.disabled && i !== active && setActive(i)} onClick=${() => pick(o)}>
-          <span class="tick">${o.value === value && html`<${Icon} name="check" size=${15} />`}</span>
+          <span class="tick">${o.value === value && html`<${Icon} name="check" size=${14} />`}</span>
           <span class="grow"><span class="dropdown-label" title=${o.label ?? o.value}>${o.label ?? o.value}</span>
             ${o.hint && html`<span class="dropdown-hint">${o.hint}</span>`}</span>
         </div>`)}
     </div>`}`;
 }
 
-/** Pill tabs: `tabs` = [{ id, label, count? }]. */
+/** Tabs (underlined) or, with role="radiogroup", a segmented control: `tabs` = [{ id, label, count? }]. */
 export function Tabs({ value, tabs, onChange, label, role = 'tablist' }) {
   const item = role === 'tablist' ? 'tab' : 'radio';
   const state = role === 'tablist' ? 'aria-selected' : 'aria-checked';
-  return html`<div class="tabs" role=${role} aria-label=${label} onKeyDown=${arrowKeys}>
+  return html`<div class=${role === 'tablist' ? 'tabs' : 'seg'} role=${role} aria-label=${label} onKeyDown=${arrowKeys}>
     ${tabs.map((tab) => html`<button role=${item} ...${{ [state]: tab.id === value ? 'true' : 'false' }}
-      tabindex=${tab.id === value ? 0 : -1} onClick=${() => onChange(tab.id)}>${tab.label}${tab.count ? html`<span class="pill danger">${tab.count}</span>` : ''}</button>`)}
+      tabindex=${tab.id === value ? 0 : -1} onClick=${() => onChange(tab.id)}>${tab.label}${tab.count ? html`<span class="n">${tab.count}</span>` : ''}</button>`)}
   </div>`;
 }
 
 /** The star of a version list: filled on the default (`on`), else a button that makes this one the default. */
 export function DefaultStar({ on, label, onLabel, onClick }) {
   return on
-    ? html`<span class="icon-btn star on" role="img" aria-label=${onLabel} title=${onLabel}><${Icon} name="star" size=${16} /></span>`
-    : html`<button class="icon-btn star" aria-label=${label} title=${label} onClick=${onClick}><${Icon} name="star" size=${16} /></button>`;
+    ? html`<span class="star on" role="img" aria-label=${onLabel} title=${onLabel}><${Icon} name="star" size=${15} /></span>`
+    : html`<button class="star" aria-label=${label} title=${label} onClick=${onClick}><${Icon} name="star" size=${15} /></button>`;
 }
 
 /** Trash button of a version list; disabled with the reason as its tooltip when `blocked` says why. */
 export function RemoveButton({ blocked, onClick }) {
   const label = t('common.remove');
-  return html`<button class="icon-btn" disabled=${!!blocked} aria-label=${label} title=${blocked || label}
-    onClick=${onClick}><${Icon} name="trash" size=${16} /></button>`;
+  return html`<button class="btn ghost square sm" disabled=${!!blocked} aria-label=${label} title=${blocked || label}
+    onClick=${onClick}><${Icon} name="trash" size=${15} /></button>`;
 }
 
 /** A settings row: icon, title and description, control on the right. */
@@ -176,11 +176,11 @@ export function SetRow({ icon, title, desc, tone = '', children }) {
 }
 
 export function Empty({ icon = 'info', title, children }) {
-  return html`<div class="empty"><${Icon} name=${icon} size=${26} /><b>${title}</b>${children && html`<div>${children}</div>`}</div>`;
+  return html`<div class="empty"><span class="ico"><${Icon} name=${icon} size=${20} /></span><b>${title}</b>${children && html`<div>${children}</div>`}</div>`;
 }
 
 /** Placeholder while a page loads, or its error. */
 export function Loading({ error, height = 220 }) {
-  if (error) return html`<div class="card pad" role="alert"><span class="pill danger">${t('common.error', { message: error })}</span></div>`;
+  if (error) return html`<div class="card pad" role="alert"><span class="badge danger">${t('common.error', { message: error })}</span></div>`;
   return html`<div class="skeleton" style=${`height:${height}px`} aria-label=${t('common.loading')} role="status"></div>`;
 }

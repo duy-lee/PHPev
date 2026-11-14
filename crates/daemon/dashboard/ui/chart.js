@@ -37,5 +37,5 @@ export function Chart({ title, labels, data }) {
   useEffect(() => {
     plot.current?.setData(data);
   }, [data]);
-  return html`<div class="card chart-card"><h3>${title}</h3>${failure && html`<span class="pill danger">${failure}</span>`}<div ref=${box}></div></div>`;
+  return html`<div class="card chart-card"><h3>${title}</h3>${failure && html`<span class="badge danger">${failure}</span>`}<div ref=${box}></div></div>`;
 }

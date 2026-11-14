@@ -66,7 +66,7 @@ function LatestLogs({ logs, path, onOpen }) {
     ${entries === null && html`<div class="logline muted">${t('common.loading')}</div>`}
     ${entries?.length === 0 && html`<div class="logline muted">${t('site.no_entries')}</div>`}
     ${entries?.map((x) => html`<div class="logline">
-      <span class="pill ${TONE[x.level] ?? ''}">${levelLabel(x.level)}</span>
+      <span class="badge ${TONE[x.level] ?? ''}">${levelLabel(x.level)}</span>
       <span class="m" title=${x.message}>${x.message}</span><span class="small muted mono">${x.time}</span></div>`)}
   </section>`;
 }
@@ -122,7 +122,7 @@ function Environment({ d, reload }) {
     <div class="card-head"><h2>${t('site.environment')}</h2></div>
     <${SetRow} icon="php" title="PHP" desc=${php.ok ? phpSourceText(d, php) : t('sites.php_unavailable', { error: php.error })} tone=${php.ok ? '' : 'warn'}>
       ${d.php_source === 'version-file'
-        ? html`<span class="pill mono">.php-version</span>`
+        ? html`<span class="badge mono">.php-version</span>`
         : html`<${Select} label=${t('site.php_version')} value=${s.php_pinned ?? ''} options=${options}
             onChange=${(v) => act(api('PUT', `/sites/${s.name}/php`, { version: v || null }), reload)} />`}
     </${SetRow}>
@@ -199,7 +199,7 @@ function Health({ siteName, checks, startJob, reload }) {
   const problems = checks.filter((c) => c.status !== 'ok');
   return html`<section class="card checklist" style="overflow: hidden">
     <div class="card-head" style="padding-bottom: 10px"><h2>${t('site.health')}</h2><span class="grow"></span>
-      <span class="pill ${problems.length ? 'warn' : 'ok'}">${problems.length ? t('site.to_fix', { count: problems.length }) : t('site.all_good')}</span></div>
+      <span class="badge ${problems.length ? 'warn' : 'ok'}">${problems.length ? t('site.to_fix', { count: problems.length }) : t('site.all_good')}</span></div>
     ${checks.map((c) => html`<${SetRow} icon=${CHECK_ICON[c.status]} title=${c.title} desc=${c.hint ?? ''} tone=${c.status === 'ok' ? 'ok' : 'warn'}>
       ${c.status !== 'ok' && c.fix && html`<button class="btn sm" style="background: var(--surface)" onClick=${() => fix(siteName, c, startJob, reload)}>${t('site.fix')}</button>`}
     </${SetRow}>`)}
@@ -232,13 +232,12 @@ function EditorButton({ siteName, onFallback }) {
     <button class="btn" aria-label=${t('site.choose_editor')} title=${t('site.choose_editor')} aria-haspopup="menu" aria-expanded=${menu ? 'true' : 'false'}
       onClick=${() => setMenu(!menu)}><${Icon} name="chevron-down" size=${15} /></button>
     ${menu && html`
-      <div style="position: fixed; inset: 0; z-index: 14" onClick=${() => setMenu(false)}></div>
-      <div class="menu" role="menu" aria-label=${t('site.choose_editor')} style="top: 42px; left: auto; right: 0; width: 260px">
-        ${info.editors.length === 0 && html`<div class="palette-empty">${t('site.no_editor', { list: info.supported.join(', ') })}</div>`}
-        ${info.editors.map((e) => html`<button role="menuitemradio" aria-checked=${e.id === info.chosen ? 'true' : 'false'} class="site-item"
-          style="width: 100%; border: 0; background: none; font: inherit; cursor: pointer" onClick=${() => openWith(e.id)}>
-          <${Icon} name="editor" size=${16} /><span class="grow" style="text-align: left">${e.name}</span>
-          ${e.id === info.chosen && html`<${Icon} name="check" size=${16} />`}</button>`)}
+      <div class="menu-catch" onClick=${() => setMenu(false)}></div>
+      <div class="menu" role="menu" aria-label=${t('site.choose_editor')} style="position: absolute; top: 34px; right: 0; width: 260px">
+        ${info.editors.length === 0 && html`<div class="mh">${t('site.no_editor', { list: info.supported.join(', ') })}</div>`}
+        ${info.editors.map((e) => html`<button role="menuitemradio" aria-checked=${e.id === info.chosen ? 'true' : 'false'} class="mi"
+          onClick=${() => openWith(e.id)}>
+          <span class="tick">${e.id === info.chosen && html`<${Icon} name="check" size=${14} />`}</span><span class="lab grow">${e.name}</span></button>`)}
       </div>`}
   </div>`;
 }
@@ -256,8 +255,8 @@ function Requests({ siteHost }) {
         <div class="stat"><b>${fmtMs(r.p99_ms)}</b><span>p99</span></div>
         <span class="grow"></span>
         <div class="row-flex">
-          <span class="pill ok">2xx ${r.status.s2xx}</span><span class="pill">3xx ${r.status.s3xx}</span>
-          <span class="pill warn">4xx ${r.status.s4xx}</span><span class="pill danger">5xx ${r.status.s5xx}</span>
+          <span class="badge ok">2xx ${r.status.s2xx}</span><span class="badge">3xx ${r.status.s3xx}</span>
+          <span class="badge warn">4xx ${r.status.s4xx}</span><span class="badge danger">5xx ${r.status.s5xx}</span>
         </div>
       </div>
     </section>
@@ -269,7 +268,7 @@ function Requests({ siteHost }) {
       <div class="card-head"><h2>${t('perf.slowest')}</h2></div>
       ${r.slowest.length === 0 ? html`<${Empty} icon="chart" title=${t('site.no_requests')} />` : html`<div class="scroll-x"><table class="table">
         <thead><tr><th>${t('perf.route')}</th><th class="num">${t('perf.count')}</th><th class="num">${t('perf.avg')}</th><th class="num">p95</th><th class="num">${t('perf.max')}</th></tr></thead>
-        <tbody>${r.slowest.map((s) => html`<tr><td><span class="pill mono" style="margin-right: 8px">${s.method}</span><span class="mono">${s.route}</span></td>
+        <tbody>${r.slowest.map((s) => html`<tr><td><span class="badge mono" style="margin-right: 8px">${s.method}</span><span class="mono">${s.route}</span></td>
           <td class="num">${s.count}</td><td class="num">${fmtMs(s.avg_ms)}</td><td class="num">${fmtMs(s.p95_ms)}</td><td class="num">${fmtMs(s.max_ms)}</td></tr>`)}</tbody>
       </table></div>`}
     </section>`;

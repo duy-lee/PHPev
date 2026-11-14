@@ -42,7 +42,7 @@ function Entry({ entry, open, onToggle }) {
   // Every entry opens: a one-line PHP warning is cut short in the row and shows whole when opened.
   return html`<div class="entry ${open ? 'open' : ''}">
     <button class="entry-row" aria-expanded=${open ? 'true' : 'false'} onClick=${onToggle}>
-      <span class="pill ${TONE[entry.level] ?? ''}">${levelLabel(entry.level)}</span>
+      <span class="badge ${TONE[entry.level] ?? ''}">${levelLabel(entry.level)}</span>
       <span class="entry-msg">${entry.message}</span>
       <span class="entry-time mono">${entry.time}</span>
       <span class="entry-chevron"><${Icon} name=${open ? 'chevron-down' : 'chevron-right'} size=${15} /></span>

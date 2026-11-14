@@ -11,7 +11,7 @@ const line = (v) => v.split('.').slice(0, 2).join('.');
 
 function Extensions({ version }) {
   const [{ data: exts, error }, reload] = useApi(`/php/${version}/extensions`);
-  if (!exts) return error ? html`<span class="pill danger">${error}</span>` : html`<span class="small muted">${t('common.loading')}</span>`;
+  if (!exts) return error ? html`<span class="badge danger">${error}</span>` : html`<span class="small muted">${t('common.loading')}</span>`;
   return html`<p class="small muted" style="margin: 0">${t('php.ext_hint')}</p>
     <div class="ext-grid">
       ${exts.map((x) => html`<label class="check" title=${x.toggleable ? '' : t('php.ext_builtin')}>
@@ -94,9 +94,9 @@ export function Php({ startJob }) {
       ${available === null
         ? html`<p class="small muted" style="margin: 0; padding: 0 22px 18px">${t('php.available_hint')}</p>`
         : available.map((a) => html`<${SetRow} icon="download" title=${`PHP ${a.version}`} desc=${a.archived ? t('php.eol_hint') : t('php.line', { line: a.line })}>
-            ${a.archived && html`<span class="pill warn">${t('php.eol')}</span>`}
+            ${a.archived && html`<span class="badge warn">${t('php.eol')}</span>`}
             ${isInstalled(a.version)
-              ? html`<span class="pill ok">${t('common.installed')}</span>`
+              ? html`<span class="badge ok">${t('common.installed')}</span>`
               : html`<button class="btn sm" onClick=${() => install(a.version)}>${t('common.install')}</button>`}
           </${SetRow}>`)}
     </section>`;

@@ -74,12 +74,12 @@ export function DialogHost() {
     ${ask.body && html`<p>${ask.body}</p>`}
     ${ask.details}
     ${ask.choice && html`<label class="check"><input type="checkbox" checked=${checked} onChange=${(e) => setChecked(e.target.checked)} />${ask.choice.label}</label>`}
-    ${needsWord && html`<div style="margin-top: 14px">
-      <label class="small muted" for="confirm-word">${t('dialog.type_to_confirm', { word })}</label>
-      <div class="field" style="margin-top: 6px"><input id="confirm-word" value=${typed} onInput=${(e) => setTyped(e.target.value)} autocomplete="off" /></div>
+    ${needsWord && html`<div class="form-field">
+      <label for="confirm-word">${t('dialog.type_to_confirm', { word })}</label>
+      <div class="field"><input id="confirm-word" value=${typed} onInput=${(e) => setTyped(e.target.value)} autocomplete="off" spellcheck="false" /></div>
     </div>`}
     <div class="dialog-actions">
-      <button class="btn quiet" onClick=${() => done(null)}>${t('common.cancel')}</button>
+      <button class="btn" onClick=${() => done(null)}>${t('common.cancel')}</button>
       <button class="btn ${ask.danger ? 'danger' : 'primary'}" disabled=${!ready} onClick=${() => done({ choice: checked })}>${ask.confirmLabel}</button>
     </div>
   </${Dialog}>`;

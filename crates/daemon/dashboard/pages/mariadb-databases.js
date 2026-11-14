@@ -29,7 +29,7 @@ function DatabaseRow({ db, running, port, onDrop, onImport, onExport }) {
   return html`<li class="db-row">
     <span class="row-icon"><${Icon} name="database" size=${16} /></span>
     <span class="name">${db.name}</span>
-    ${db.used_by.length > 0 && html`<span class="pill accent">${t('services.db_used_by', { sites: db.used_by.join(', ') })}</span>`}
+    ${db.used_by.length > 0 && html`<span class="badge accent">${t('services.db_used_by', { sites: db.used_by.join(', ') })}</span>`}
     <span class="meta">${running ? meta : t('services.db_estimate', { meta })}</span>
     <span class="db-actions">
       <${ActionButton} icon="copy" label=${t('services.db_copy_connection')} blocked=${blocked} onClick=${() => copy(connectionUrl('root', port, db.name))} />

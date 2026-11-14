@@ -42,10 +42,10 @@ function SiteCard({ site }) {
       ${site.requests_10m > 0 && html`<span class="dot ok" role="img" aria-label=${t('home.active')}></span>`}
     </span>
     <span class="row-flex" style="gap: 6px">
-      <span class="pill">${site.framework.name}</span>
+      <span class="badge">${site.framework.name}</span>
       ${php.ok
-        ? html`<span class="pill ${php.value.startsWith('5') || php.value.startsWith('7') ? 'warn' : ''}">PHP ${line(php.value)}</span>`
-        : html`<span class="pill danger">${t('home.no_php')}</span>`}
+        ? html`<span class="badge ${php.value.startsWith('5') || php.value.startsWith('7') ? 'warn' : ''}">PHP ${line(php.value)}</span>`
+        : html`<span class="badge danger">${t('home.no_php')}</span>`}
       ${site.secure && html`<${Icon} name="lock" size=${15} label="HTTPS" />`}
       <span class="grow"></span>
       <span class="small muted">${site.requests_10m ? t('home.requests', { count: site.requests_10m }) : t('home.idle')}</span>
@@ -56,7 +56,7 @@ function SiteCard({ site }) {
 function GetStarted({ hasPhp, hasDb, hasSites, onLink }) {
   const steps = [
     { done: hasPhp, title: t('home.step_php'), desc: t('home.step_php_hint'), action: html`<a class="btn primary sm" href="#/php" onClick=${go('#/php')}>${t('home.install_php')}</a>` },
-    { done: hasDb, title: t('home.step_db'), desc: t('home.step_db_hint'), action: html`<a class="btn sm" href="#/services" onClick=${go('#/services')}>${t('home.install_mariadb')}</a>` },
+    { done: hasDb, title: t('home.step_db'), desc: t('home.step_db_hint'), action: html`<a class="btn sm" href="#/services/mariadb" onClick=${go('#/services/mariadb')}>${t('home.install_mariadb')}</a>` },
     { done: hasSites, title: t('home.step_site'), desc: t('home.step_site_hint'), action: html`<button class="btn sm" onClick=${onLink}>${t('home.choose_folder')}</button>` },
   ];
   const next = steps.findIndex((s) => !s.done);
@@ -83,7 +83,7 @@ function Services({ status, reload }) {
   const poolKb = status.php_pools.reduce((a, p) => a + p.workers.reduce((b, w) => b + (w.memory_kb ?? 0), 0), 0);
   return html`<section class="card">
     <div class="card-head"><h2>${t('home.services')}</h2><span class="grow"></span>
-      <a href="#/services" class="small" style="font-weight: 600" onClick=${go('#/services')}>${t('home.manage')}</a></div>
+      <a href="#/services/mariadb" class="small" style="font-weight: 600" onClick=${go('#/services/mariadb')}>${t('home.manage')}</a></div>
     <${SetRow} icon="globe" title=${t('home.web_server')} desc=${r.error ?? r.listening.join(' · ')} tone=${r.error ? 'warn' : ''}>
       <span class="dot ${r.error ? 'danger' : 'ok'}"></span>
     </${SetRow}>
@@ -128,7 +128,7 @@ function Health({ checks }) {
   const problems = checks.filter((c) => c.status !== 'ok');
   return html`<section class="card checklist" style="overflow: hidden">
     <div class="card-head" style="padding-bottom: 10px"><h2>${t('site.health')}</h2><span class="grow"></span>
-      <span class="pill ${problems.length ? 'warn' : 'ok'}">${t('home.checks_count', { fine: checks.length - problems.length, total: checks.length })}</span></div>
+      <span class="badge ${problems.length ? 'warn' : 'ok'}">${t('home.checks_count', { fine: checks.length - problems.length, total: checks.length })}</span></div>
     ${problems.map((c) => html`<${SetRow} icon=${CHECK_ICON[c.status]} title=${c.title} tone="warn"
       desc=${[...c.details, c.hint ? `→ ${c.hint}` : ''].filter(Boolean).join(' · ')} />`)}
     ${checks.length > problems.length && html`<${SetRow} icon="check" tone="ok" title=${t('home.checks_passed', { count: checks.length - problems.length })} desc=${t('home.checks_fine_hint')} />`}
