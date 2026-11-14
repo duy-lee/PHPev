@@ -273,6 +273,13 @@ export function CopyButton({ text, label }) {
     <${Icon} name="copy" size=${13} /></button>`;
 }
 
+/** Sites named in a list cell ("used by"), each a link to its page; a dash when there are none. */
+export function SiteLinks({ names }) {
+  if (!names.length) return html`<span class="muted">—</span>`;
+  return names.map((name, i) => html`${i > 0 && ', '}<a class="plain-link" href=${`#/sites/${encodeURIComponent(name)}`}
+    onClick=${(e) => { e.preventDefault(); location.replace(`#/sites/${encodeURIComponent(name)}`); }}>${name}</a>`);
+}
+
 /** A settings row: icon, title and description, control on the right. */
 export function SetRow({ icon, title, desc, tone = '', children }) {
   return html`<div class="setrow ${tone}">

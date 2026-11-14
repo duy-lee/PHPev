@@ -23,5 +23,5 @@ export function Services({ route, startJob }) {
     queueMicrotask(() => location.replace(`#/services/${SERVICES[0].id}`));
     return null;
   }
-  return html`<${service.view} startJob=${startJob} />`;
+  return html`<${service.view} startJob=${startJob} route=${route} />`;
 }

@@ -1,24 +1,23 @@
+// Runtimes › Composer: the installed versions (one of them the default) and versions to install.
 import { html, useState } from '/vendor/htm-preact-standalone.mjs';
 import { t } from '../i18n.js';
 import { api, useApi } from '../api.js';
 import { act, showToast } from '../ui/feedback.js';
 import { confirmAction } from '../ui/dialog.js';
-import { SetRow, DefaultStar, RemoveButton, Empty, Loading } from '../ui/controls.js';
+import { Icon } from '../icons.js';
+import { DefaultStar, RemoveButton, Empty, Loading, SiteLinks } from '../ui/controls.js';
 
-function usage(c) {
-  const parts = [t('services.composer_needs_php', { php: c.min_php })];
-  if (c.default) parts.push(t('common.default_lower'));
-  if (c.used_by.length) parts.push(t('services.composer_used_by', { sites: c.used_by.join(', ') }));
-  return parts.join(' · ');
-}
-
-/** Services › Composer: the installed versions (one of them the default) and versions to install. */
 export function Composer({ startJob }) {
   const [{ data, error }, reload] = useApi('/composer', 5000);
   const [available, setAvailable] = useState(null);
-  if (!data) return html`<div class="page-head"><h1>${t('services.composer')}</h1></div><${Loading} error=${error} />`;
+  const [busy, setBusy] = useState(false);
+  const head = html`<div class="page-head"><div class="grow"><h1>${t('services.composer')}</h1><p>${t('services.composer_subtitle')}</p></div></div>`;
+  if (!data) return html`${head}<${Loading} error=${error} />`;
   const fail = (e) => showToast(t('common.error', { message: e.message }), true);
-  const loadAvailable = () => api('GET', '/composer/available').then(setAvailable, fail);
+  const loadAvailable = () => {
+    setBusy(true);
+    api('GET', '/composer/available').then(setAvailable, fail).finally(() => setBusy(false));
+  };
   const refresh = () => {
     reload();
     if (available) loadAvailable();
@@ -40,31 +39,35 @@ export function Composer({ startJob }) {
     if (c.needed_by.length) return t('services.composer_needed_by', { sites: c.needed_by.join(', ') });
     return c.default && data.installed.length > 1 ? t('common.remove_default') : '';
   };
-  return html`
-    <div class="page-head"><div class="grow"><h1>${t('services.composer')}</h1><p>${t('services.composer_subtitle')}</p></div></div>
+  return html`${head}
+    ${data.installed.length === 0
+      ? html`<section class="card"><${Empty} icon="package" title=${t('services.composer_none')}><p>${t('services.composer_none_hint')}</p></${Empty}></section>`
+      : html`<section class="card clip">
+        <div class="card-head"><h2>${t('services.installed')}</h2><span class="sub">${data.installed.length}</span></div>
+        <div class="scroll-x"><table class="table">
+          <thead><tr><th class="fit"><span class="sr-only">${t('common.default')}</span></th><th>${t('php.version')}</th><th>${t('services.composer_needs')}</th>
+            <th>${t('php.used_by')}</th><th class="fit"><span class="sr-only">${t('sites.actions')}</span></th></tr></thead>
+          <tbody>${data.installed.map((c) => html`<tr key=${c.version}>
+            <td class="fit"><${DefaultStar} on=${c.default} label=${t('php.set_default_of', { version: c.version })} onLabel=${t('php.default_version')}
+              onClick=${() => act(api('PUT', '/composer/default', { version: c.version }), refresh)} /></td>
+            <td><span class="ver">${c.version}</span>${c.default && html` <span class="badge accent">${t('php.default')}</span>`}</td>
+            <td class="t2">${t('services.composer_needs_php', { php: c.min_php })}</td>
+            <td class="t2"><${SiteLinks} names=${c.used_by} /></td>
+            <td><div class="row-acts"><${RemoveButton} blocked=${blocked(c)} onClick=${() => remove(c)} /></div></td>
+          </tr>`)}</tbody>
+        </table></div>
+      </section>
+      <p class="note"><${Icon} name="info" size=${13} />${t('services.composer_pin_note')}</p>`}
 
-    <section class="card">
-      <div class="card-head"><h2>${t('services.installed')}</h2></div>
-      ${data.installed.length === 0
-        ? html`<${Empty} icon="package" title=${t('services.composer_none')}>${t('services.composer_none_hint')}</${Empty}>`
-        : data.installed.map((c) => html`<${SetRow} icon="package" title=${`Composer ${c.version}`} desc=${usage(c)}>
-            <${DefaultStar} on=${c.default} label=${t('php.set_default')} onLabel=${t('common.default')}
-              onClick=${() => act(api('PUT', '/composer/default', { version: c.version }), refresh)} />
-            <${RemoveButton} blocked=${blocked(c)} onClick=${() => remove(c)} />
-          </${SetRow}>`)}
-      <div class="card-foot"><span class="small muted">${t('services.composer_pin_note')}</span></div>
-    </section>
-
-    <section class="card">
-      <div class="card-head"><h2>${t('services.composer_available')}</h2><span class="grow"></span>
-        ${available === null && html`<button class="btn sm" onClick=${loadAvailable}>${t('services.load_available')}</button>`}</div>
-      ${available === null
-        ? html`<p class="small muted" style="margin: 0; padding: 0 22px 18px">${t('services.composer_available_hint')}</p>`
-        : available.map((a) => html`<${SetRow} icon="download" title=${`Composer ${a.version}`}
-            desc=${t('services.composer_needs_php', { php: a.min_php })}>
-            ${a.installed
-              ? html`<span class="badge ok">${t('common.installed')}</span>`
-              : html`<button class="btn sm" onClick=${() => install(a.version)}>${t('common.install')}</button>`}
-          </${SetRow}>`)}
-    </section>`;
+    <div class="sec"><h2>${t('php.available_short')}</h2><span class="small muted">${t('services.composer_available_hint')}</span><span class="grow"></span>
+      ${available === null && html`<button class="btn sm" disabled=${busy} onClick=${loadAvailable}>${busy && html`<span class="spin"><${Icon} name="rotate-cw" size=${13} /></span>`}${t('services.load_available')}</button>`}</div>
+    ${available !== null && html`<section class="card">
+      ${available.map((a) => html`<div class="setrow" key=${a.version}>
+        <span class="row-icon"><${Icon} name="package" /></span>
+        <span class="row-text"><b><span class="ver">${a.version}</span></b><span>${t('services.composer_needs_php', { php: a.min_php })}</span></span>
+        ${a.installed
+          ? html`<span class="status"><${Icon} name="check" size=${13} />${t('common.installed')}</span>`
+          : html`<button class="btn sm" onClick=${() => install(a.version)}><${Icon} name="download" size=${13} />${t('common.install')}</button>`}
+      </div>`)}
+    </section>`}`;
 }
