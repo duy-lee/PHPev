@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-PHPev is pre-1.0. Security fixes go into the latest release only, so please update before reporting.
+Security fixes go into the latest release only, so please update before reporting.
 
 ## Reporting a vulnerability
 
