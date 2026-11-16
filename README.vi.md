@@ -8,700 +8,120 @@
 
 **Môi trường PHP & Laravel local cho Windows: nhanh, nhẹ, mã nguồn mở.**
 
-Cài PHP, Composer và MariaDB trong vài giây, đổi version theo từng project, và có ngay domain
-`http://<project>.localhost` (kèm HTTPS nếu cần) cho mỗi thư mục. Tất cả chỉ gồm vài file
-`.exe` native, dùng hằng ngày không cần quyền admin.
-
-[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#giấy-phép)
-![Platform: Windows 10/11 x64](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20x64-0078D6.svg)
-![Written in Rust](https://img.shields.io/badge/written%20in-Rust-orange.svg)
-[![CI](https://github.com/duy-lee/PHPev/actions/workflows/ci.yml/badge.svg)](https://github.com/duy-lee/PHPev/actions/workflows/ci.yml)
-![Status: pre-release](https://img.shields.io/badge/status-pre--release-yellow.svg)
-
-[English](README.md) · Tiếng Việt
+[English](README.md) · Tiếng Việt · [Demo dashboard](https://duy-lee.github.io/PHPev/)
 
 </div>
 
----
-
-## Mục lục
-
-- [Vì sao có PHPev](#vì-sao-có-phpev)
-- [Tính năng](#tính-năng)
-- [Yêu cầu](#yêu-cầu)
-- [Cài đặt](#cài-đặt)
-- [Bắt đầu nhanh](#bắt-đầu-nhanh)
-- [Hướng dẫn sử dụng](#hướng-dẫn-sử-dụng)
-  - [Site và domain](#site-và-domain)
-  - [Import project có sẵn](#import-project-có-sẵn)
-  - [Version PHP](#version-php)
-  - [MariaDB](#mariadb)
-  - [Composer](#composer)
-  - [HTTPS](#https)
-  - [Dashboard và icon tray](#dashboard-và-icon-tray)
-  - [Dịch vụ chạy nền](#dịch-vụ-chạy-nền)
-- [Danh sách lệnh](#danh-sách-lệnh)
-- [Cấu hình](#cấu-hình)
-- [Cách hoạt động](#cách-hoạt-động)
-- [Hiệu năng](#hiệu-năng)
-- [Bảo mật](#bảo-mật)
-- [Xử lý sự cố](#xử-lý-sự-cố)
-- [Gỡ cài đặt](#gỡ-cài-đặt)
-- [Build từ mã nguồn](#build-từ-mã-nguồn)
-- [Lộ trình](#lộ-trình)
-- [Đóng góp](#đóng-góp)
-- [Giấy phép](#giấy-phép)
-- [Lời cảm ơn](#lời-cảm-ơn)
-
----
-
-## Vì sao có PHPev
-
-Các công cụ như [Laravel Herd](https://herd.laravel.com/windows) giúp lập trình PHP trên Windows dễ
-chịu hơn nhiều, nhưng không phải mã nguồn mở. Các bộ kiểu XAMPP thì chỉ có một version PHP cố định
-kèm cả một Apache. PHPev hướng tới trải nghiệm như Herd, với ba ưu tiên:
-
-- **Mã nguồn mở.** Giấy phép kép MIT / Apache-2.0: đọc, fork, phân phối tùy ý.
-- **Nhẹ.** Dịch vụ nền dùng khoảng **2 MB RAM** khi rảnh. Không Electron, không WebView2, không kèm
-  web server riêng: router HTTP nằm ngay trong dịch vụ.
-- **Nhanh.** Router có sẵn chạy PHP qua một pool worker `php-cgi`, giữ kết nối FastCGI (keep-alive).
-  Trong các phép đo, nó ngang hoặc nhanh hơn nginx + php-cgi (xem [Hiệu năng](#hiệu-năng)).
+PHPev cài PHP, MariaDB và Composer, cho mỗi thư mục project một địa chỉ như `http://shop.localhost`,
+và cho mỗi project dùng version PHP riêng. Mọi thứ làm bằng lệnh `phpev` hoặc trên dashboard, dùng
+hằng ngày không cần quyền admin.
 
 ## Tính năng
 
-- **Một lệnh để project chạy được.** `phpev import` nhận diện Laravel hoặc PHP thuần, chọn version
-  PHP theo `composer.json`, bật extension còn thiếu, chạy `composer install`, tạo `.env`, tạo
-  database và gán domain cho project.
-- **Nhiều version PHP cùng lúc** (7.0 – 8.5, bản chính thức từ windows.php.net, hoặc thư mục PHP
-  bạn đã có sẵn), chọn theo từng
-  project bằng `.php-version`, theo site, hoặc mặc định chung. Lệnh `php` và `composer` trong mọi
-  terminal tự dùng đúng version của thư mục hiện tại.
-- **MariaDB** (10.6 – 13.0, bản chính thức), mỗi major version một thư mục dữ liệu riêng, chỉ chạy
-  khi cần và tự bật lại sau khi khởi động lại máy.
-- **Composer** được cài và cập nhật sẵn, chạy bằng đúng version PHP của project.
-- **Domain tự động**: `link` một project thì nó thành `http://<tên>.localhost`, sau đó đổi tên hoặc
-  chọn thư mục được phục vụ được;
-  `link` cho từng project. Domain `.localhost` không cần sửa file hosts, không cần quyền admin.
-- **HTTPS theo từng site**, bằng một CA nội bộ chỉ được phép cấp cert cho các TLD local.
-- **Dashboard** trong cửa sổ riêng, nền sáng hoặc tối, tiếng Anh hoặc tiếng Việt: mỗi site một trang
-  (version PHP, HTTPS, extension, log, import và export database, kiểm tra sức khỏe kèm nút Fix, mở
-  bằng editor), version PHP và extension, dịch vụ, **biểu đồ hiệu năng realtime** (req/s, độ trễ
-  p50/p95/p99, route chậm nhất, CPU/RAM từng process), **log realtime** và Settings (port, TLD, dung
-  lượng đĩa và nhiều thứ khác).
-- **Icon tray** để mở dashboard và site, bật/tắt MariaDB, thoát; đồng thời báo khi có bản PHPev mới.
-- **An toàn mặc định**: mọi file tải về đều được kiểm tra SHA-256; chỉ xin quyền admin cho các tính
-  năng tùy chọn; thao tác có tác dụng phụ đều hỏi trước khi chạy.
+- **Site**: link một thư mục là có ngay `http://<tên>.localhost` (hoặc TLD khác như `.test`). Đổi
+  tên site, chọn thư mục được phục vụ, bật HTTPS cho từng site. Rewrite rule trong `.htaccess` của
+  Apache vẫn chạy.
+- **Import project có sẵn**: `phpev import` chọn version PHP theo `composer.json`, bật extension
+  còn thiếu, chạy `composer install`, tạo `.env` và database, rồi link thư mục.
+- **PHP**: nhiều version song song (từ 7.0, bản build chính thức), hoặc thêm thư mục PHP có sẵn.
+  Site dùng `.php-version`, version được ghim cho site, hoặc version mặc định. `php` và `composer`
+  trong mọi terminal tự chạy đúng version của thư mục hiện tại. Bật tắt extension và sửa `php.ini`
+  trên dashboard.
+- **MariaDB**: nhiều version, mỗi version có database riêng; start, stop, restart, đổi version.
+  Tạo, import, export, làm trống và xoá database; sửa `my.ini`. `mysql` và `mysqldump` trong mọi
+  terminal kết nối sẵn tới nó.
+- **Composer**: nhiều version song song, một version mặc định, site nào cần thì dùng version khác.
+- **HTTPS**: certificate authority local, chỉ ký được tên miền local, chỉ được tin cho user của bạn.
+- **Dashboard** (cửa sổ riêng, sáng hoặc tối, tiếng Anh hoặc tiếng Việt):
+  - **Home**: cái gì đang chạy, cái gì cần xử lý, danh sách site.
+  - **Sites**: mỗi site một trang gồm *Overview* (PHP, Composer, HTTPS, thư mục gốc, extension,
+    kiểm tra kèm nút Fix), *Requests* (các request mới nhất), *Logs* và *Database*.
+  - **Runtimes**: PHP, MariaDB (version, database, `my.ini`) và Composer.
+  - **Monitor**: hiệu năng trực tiếp (request, độ trễ, route chậm nhất, CPU và RAM từng process)
+    và log trực tiếp của PHPev, PHP, MariaDB và Laravel.
+  - **Settings**: khởi động cùng Windows, icon khay, giao diện, ngôn ngữ, editor, TLD, port,
+    HTTPS, Windows (Defender, file hosts, kiểm tra), dung lượng, giới thiệu.
+  - `Ctrl K` để tìm site hoặc trang.
+- **Icon khay**: mở dashboard hoặc site, start hoặc stop MariaDB, thoát.
 
 ## Yêu cầu
 
-| | |
-|---|---|
-| Hệ điều hành | Windows 10 (1809 trở lên) hoặc Windows 11, x64 |
-| Dung lượng | ~90 MB mỗi version PHP, ~60 MB mỗi version MariaDB (chưa kể database) |
-| Internet | Lần đầu để tải PHP, MariaDB, Composer, và mỗi ngày một lần kiểm tra cập nhật (tắt được) |
-| Quyền admin | Không cần khi dùng bình thường (các ngoại lệ tùy chọn ở mục [Bảo mật](#bảo-mật)) |
-| Port trống | 80 và 443 (site), 3306 (MariaDB), 7600 (dashboard); đều đổi được |
-
-Không cần cài gì trước: các file exe được build với C runtime tĩnh, còn Visual C++ runtime mà PHP
-cần thì PHPev tự cài nếu máy chưa có. Dashboard mở bằng Microsoft Edge (có sẵn trên Windows) với
-một profile riêng; không có Edge thì mở bằng trình duyệt mặc định.
+- Windows 10 (1809 trở lên) hoặc Windows 11, x64.
+- Port 80 và 443 (site), 3306 (MariaDB), 7600 (dashboard) còn trống; đều đổi được.
+- Có Internet để tải PHP, MariaDB và Composer.
 
 ## Cài đặt
 
-> **Chưa ký số (code signing).** Windows có thể hiện *"Windows protected your PC"* với file tải về:
-> chọn **More info → Run anyway**. Có thể đối chiếu file tải về với `SHA256SUMS.txt` của cùng bản
-> phát hành bằng `Get-FileHash <file>`.
+Tải ở [Releases](https://github.com/duy-lee/PHPev/releases):
 
-### Bằng trình cài đặt (khuyên dùng)
+- **Installer** (`phpev-<version>-setup.exe`): chạy file, chọn thư mục chương trình và thư mục dữ
+  liệu PHPev (mặc định `%USERPROFILE%\.phpev`). Sau đó PHPev có trong Start menu.
+- **Zip** (`phpev-<version>-windows-x64.zip`): giải nén, rồi chạy `.\phpev.exe setup` trong thư
+  mục đó. Lệnh này copy PHPev vào `%USERPROFILE%\.phpev` và thêm vào PATH.
 
-1. Tải `phpev-<version>-setup.exe` từ [Releases](https://github.com/duy-lee/PHPev/releases) và
-   chạy nó.
-2. Chọn **Install for me only** (không cần quyền admin) hoặc **Install for all users**.
-3. Chọn thư mục chương trình và **thư mục dữ liệu PHPev**, nơi chứa PHP, MariaDB, database và cấu
-   hình (mặc định `%USERPROFILE%\.phpev`; nên dùng đường dẫn không có dấu cách và không dấu tiếng
-   Việt). Tick **Start PHPev when I sign in to Windows** nếu muốn PHPev tự chạy khi đăng nhập.
-
-Sau đó PHPev có trong Start menu (bấm vào sẽ mở dashboard) và trong **Settings → Apps**. Mở terminal
-mới và kiểm tra bằng `phpev doctor`.
-
-Với **Install for all users**, mỗi user Windows có thư mục dữ liệu PHPev riêng, được tạo lần đầu họ
-mở PHPev từ Start menu.
-
-### Bằng file zip
-
-1. Tải `phpev-<version>-windows-x64.zip`, chuột phải → **Properties** → tick **Unblock**, rồi giải
-   nén ở đâu cũng được (ví dụ thư mục Downloads).
-2. Mở terminal trong thư mục đó và chạy:
-
-   ```powershell
-   .\phpev.exe setup
-   ```
-
-   `setup` tạo thư mục home của PHPev (`%USERPROFILE%\.phpev`), copy các file exe vào
-   `%USERPROFILE%\.phpev\shims`, thêm đúng một thư mục đó vào PATH **của user**, rồi kiểm tra máy.
-   Sau bước này có thể xóa thư mục vừa giải nén.
-3. **Mở terminal mới** để nhận PATH mới, rồi kiểm tra lại:
-
-   ```powershell
-   phpev doctor
-   ```
-
-> Nếu tên user Windows có dấu (ví dụ `Mê Ga Lô Đôn`), PHP không nạp được `php.ini` từ đường dẫn đó.
-> `setup` sẽ phát hiện và đề xuất dùng `C:\PHPev` làm home; bạn cũng có thể tự chọn bằng
-> `phpev setup --home D:\PHPev` (thư mục mới hoặc đang trống).
+Mở terminal mới và chạy `phpev doctor` để kiểm tra máy. File chưa được ký số: nếu Windows hiện
+*"Windows protected your PC"*, chọn **More info → Run anyway**.
 
 ## Bắt đầu nhanh
 
 ```powershell
-# Cài một version PHP (version đầu tiên sẽ thành mặc định)
-phpev php install 8.4
-
-# Cho một project có sẵn chạy được từ đầu tới cuối
-cd C:\code\my-laravel-app
-phpev import
-
-# Mở dashboard
+phpev php install 8.4      # version cài đầu tiên thành mặc định
+cd C:\code\my-app
+phpev import               # hoặc: phpev link
 phpev dashboard
 ```
 
-Giờ `http://my-laravel-app.localhost` đã chạy app. Dịch vụ nền tự khởi động ở lần đầu một lệnh cần đến nó.
+`http://my-app.localhost` giờ đã chạy project.
 
-## Hướng dẫn sử dụng
-
-### Site và domain
-
-PHPev phục vụ site qua router riêng trên port 80/443. Document root là thư mục `public` nếu có
-`public/index.php` (Laravel, Symfony…), ngược lại là chính thư mục project; `phpev docroot` (hoặc
-trang site) chọn thư mục khác.
-
-```powershell
-cd C:\code\shop
-phpev link                  # thư mục này thành shop.localhost
-phpev link store --php 8.3  # ...thành store.localhost, cố định PHP 8.3
-phpev rename store         # shop.localhost thành store.localhost
-phpev docroot web/dist      # phục vụ thư mục này của project
-phpev docroot --auto        # ...hoặc để PHPev tự chọn lại
-phpev unlink
-
-phpev sites                 # liệt kê site: URL, version PHP, thư mục
-```
-
-Tên site lấy từ tên thư mục: chữ thường, bỏ dấu, ký tự khác đổi thành `-` (`Dự án Mới` → `du-an-moi`).
-
-**Vì sao dùng `.localhost`?** Trình duyệt, `curl` và extension curl của PHP (Laravel `Http::`,
-Guzzle) tự trỏ `*.localhost` về 127.0.0.1, nên không cần file hosts, không cần admin. Nhưng bộ
-phân giải tên của Windows thì không, nên code dùng PHP stream (`file_get_contents`, transport native
-của Symfony HttpClient) hoặc PowerShell sẽ không gọi được `*.localhost`. Khi đó ghi các site vào
-file hosts một lần (một lần UAC):
-
-```powershell
-phpev hosts sync
-```
-
-Cũng có thể dùng TLD khác như `.test`; khi đó file hosts tự cập nhật mỗi khi danh sách site thay đổi:
-
-```powershell
-phpev tld test       # site thành http://<tên>.test
-phpev tld localhost  # quay về mặc định (các dòng hosts của PHPev được gỡ)
-```
-
-**Rewrite rule trong `.htaccess`.** Project viết cho Apache giữ nguyên URL: router đọc các dòng
-`RewriteEngine`, `RewriteBase`, `RewriteCond` và `RewriteRule` trong file `.htaccess` ở document
-root và các thư mục con, giống mod_rewrite (`.htaccess` sâu nhất quyết định, rule chạy lại sau mỗi
-lần rewrite nội bộ, `REQUEST_URI` giữ nguyên như trình duyệt gửi). Hỗ trợ các cờ `L`, `END`, `R`,
-`NC`, `OR`, `QSA`, `QSD`, `F`, `G`, `S`, `E`. Khi site có rule đang bật, file không tồn tại trả về
-404 thay vì chạy `index.php`. Dòng nào PHPev không dùng được (`RewriteMap`, cờ lạ, pattern có
-backreference) sẽ bị bỏ qua và ghi vào `logs\daemon.log`. Các dòng `php_value` và `php_flag` không
-có tác dụng: hãy đặt các thiết lập đó vào file `.user.ini` ở document root, PHP tự đọc file này.
-
-### Import project có sẵn
-
-```powershell
-cd C:\code\my-app
-phpev import                 # hỏi trước mỗi bước có thay đổi
-phpev import --yes           # đồng ý mọi bước (trừ migrate database)
-phpev import --yes --migrate # ...và chạy `php artisan migrate`
-```
-
-`import` chạy các bước sau, chạy lại nhiều lần vẫn an toàn:
-
-1. **Nhận diện** Laravel (`artisan` + `laravel/framework`), project Composer, hoặc thư mục PHP thuần.
-2. **PHP**: dùng `.php-version` nếu có; nếu không thì lấy version cao nhất thỏa `require.php`
-   (và `config.platform.php`). Chưa có version phù hợp thì đề xuất cài.
-3. **Extension**: so các yêu cầu `ext-*` trong `composer.json`/`composer.lock` với bản PHP, đề
-   xuất bật extension còn thiếu. Extension chỉ có trên PECL (redis, imagick…) thì báo lại.
-4. **Composer**: cài Composer nếu chưa có, rồi chạy `composer install` bằng version PHP đã chọn.
-5. **Domain**: link project thành `<thư mục>.localhost` (hoặc theo `--name`).
-6. **`.env`** (Laravel): tạo từ `.env.example`, điền `APP_URL`, kết nối MariaDB và `APP_KEY` mới.
-   `.env` đã có thì **không bao giờ bị sửa**, chỉ báo những chỗ lệch.
-7. **Database**: tạo file SQLite, hoặc cài/bật MariaDB rồi tạo database.
-8. **Front-end**: nhắc chạy `npm install && npm run build` nếu asset chưa được build.
-
-Version PHP đã chọn được lưu trong config của PHPev, không thêm file nào vào repo của bạn.
-
-`import` có thể thêm exclusion Microsoft Defender cho thư mục project để Composer và Artisan chạy
-nhanh hơn. Đổi lại, mã độc ghi vào thư mục đó sẽ không bị quét khi ghi, nên mặc định **tắt**, luôn
-hỏi trước, và `--yes` không tự bật. Dùng `--defender-exclude` để bật mà không cần hỏi.
-
-### Version PHP
-
-```powershell
-phpev php list --available   # version đã cài và có thể tải
-phpev php install 8.3        # bản 8.3.x mới nhất (hoặc version cụ thể: 8.3.36)
-phpev php install 7.1        # các dòng đã ngừng hỗ trợ 7.0 – 7.3: bản cuối cùng (7.1.33)
-phpev php add C:\php\7.1     # thêm một thư mục PHP bạn đã có sẵn
-phpev php use 8.4            # version mặc định khi ở ngoài project
-phpev php remove 7.1.33      # xoá một version (không phải version mặc định)
-phpev php which              # ở đây `php` sẽ chạy version nào, vì sao
-phpev php ini 8.4            # đường dẫn php.ini của version đó
-```
-
-Lệnh `php` và `composer` trong mọi terminal là các shim nhỏ, chọn version theo thứ tự:
-
-1. file `.php-version` ở thư mục hiện tại hoặc thư mục cha gần nhất (`8.4`, `8.4.27`, `php-8.4`);
-2. site chứa thư mục hiện tại (`phpev link --php`, hoặc version do `import` chọn);
-3. version mặc định.
-
-Process con kế thừa lựa chọn này, nên `php artisan serve`, queue worker và script của Composer đều
-chạy cùng version. Đặt `PHPEV_SHIM_DEBUG=1` để shim in ra version đã chọn và lý do.
-
-Mỗi version có `php.ini` riêng do PHPev sinh ra, bật sẵn OPcache và cấu hình CA bundle để PHP gọi
-HTTPS được ngay. Ở trang PHP của dashboard, nút **Details** của mỗi version mở hai tab: *Extensions*
-để bật/tắt extension, và *php.ini* để sửa file. Khi lưu, PHPev kiểm tra file bằng chính PHP đó trước
-(file mà PHP báo lỗi sẽ không được lưu), giữ file cũ thành `php.ini.bak` và khởi động lại các worker
-của version đó. Vẫn có thể sửa trực tiếp file `php.ini`.
-
-PHP 7.0 – 7.3 đã ngừng được hỗ trợ, không còn bản vá bảo mật; chỉ nên dùng cho project cũ. Các bản
-này lấy từ kho lưu trữ của windows.php.net, nơi không công bố mã checksum, nên PHPev chỉ cài bản cuối
-cùng của mỗi dòng, với mã SHA-256 được ghim sẵn trong PHPev.
-
-`phpev php add <thư mục>` (hoặc mục **Add a PHP you already have** ở trang PHP của dashboard, có hộp
-chọn thư mục) nhận một bản PHP 64-bit có `php.exe` và `php-cgi.exe`, ví dụ lấy từ XAMPP hay Laragon.
-PHPev copy nó vào thư mục home và tự tạo `php.ini`; file `php.ini` gốc được giữ lại bên cạnh với tên
-`php.ini.orig`, còn thư mục gốc không bị thay đổi.
-
-### MariaDB
-
-```powershell
-phpev db list --available
-phpev db install 11.4   # bản 11.4.x mới nhất
-phpev db start          # được ghi nhớ: lần sau PHPev khởi động thì MariaDB bật lại
-phpev db stop
-phpev db use 10.11      # đổi version; mỗi major giữ database riêng
-phpev db remove 10.11   # xoá một version (không phải version đang dùng); hỏi có xoá database của nó không
-```
-
-MariaDB lắng nghe ở `127.0.0.1:3306`, user `root`, **không mật khẩu**. Nó chỉ dành cho phát triển
-local và máy khác không truy cập được.
-
-Mỗi phiên bản chính đọc `data\mariadb\<major>\my.ini` khi khởi động, cho các thiết lập của server
-như `sql_mode` (MariaDB mặc định chạy strict, code cũ viết cho MySQL 5.6 có thể không chạy được).
-Sửa file này trong dashboard ở **Services › MariaDB**, nút **Details** của phiên bản đã cài, tab *my.ini*: khi lưu, file cũ được giữ thành
-`my.ini.bak` và MariaDB được khởi động lại; nếu MariaDB không khởi động được với file mới, file cũ sẽ
-được trả lại. Thiết lập áp dụng cho mọi site dùng MariaDB đó. PHPev luôn tự đặt thư mục dữ liệu,
-port, `bind-address`, `log-error`, `max_allowed_packet` và `innodb_log_file_size`.
-
-Lệnh `mysql`, `mysqldump`, `mariadb` và `mariadb-dump` trong mọi terminal chạy client của MariaDB
-đang dùng, đã kết nối sẵn bằng `root` (`-u`, `-h`, `-P` bạn tự truyền được ưu tiên; `-p` chỉ hỏi
-mật khẩu rỗng, bấm Enter):
-
-```powershell
-mysql -e "CREATE DATABASE shop"
-cmd /c "mysql shop < dump.sql"       # import (PowerShell không có `<`; trong cmd: mysql shop < dump.sql)
-mysql shop -e "source C:/path/dump.sql"   # tương tự, không cần cmd
-mysqldump shop > shop.sql            # export
-```
-
-### Composer
-
-Các version Composer được cài song song và dùng chung cho các site. Một version là mặc định; site
-chạy bản mặc định, trừ khi bạn chọn version khác cho site đó.
-
-```powershell
-phpev composer install               # Composer mới nhất (bản cài đầu tiên thành mặc định)
-phpev composer install 2.2           # thêm version khác, ví dụ cho PHP trước 7.2.5
-phpev composer use 2.8               # đặt 2.8.x làm mặc định; cài nếu chưa có
-phpev composer self-update           # cài Composer mới nhất và đặt làm mặc định
-phpev composer list --available      # version đã cài và có thể tải
-phpev composer remove 2.8.12         # khi không site nào dùng (và không phải bản mặc định)
-
-phpev composer pin 2.2               # site của thư mục hiện tại chạy 2.2.x
-phpev composer pin 2.8 --site shop   # site khác
-phpev link --composer 2.8            # ghim ngay khi link
-phpev composer unpin                 # quay về bản mặc định
-phpev composer which                 # Composer nào chạy ở đây, và vì sao
-composer --version                   # chạy bằng PHP và Composer của thư mục hiện tại
-```
-
-`composer` trong terminal đi theo thư mục: trong một site thì dùng PHP và Composer của site đó (kể cả
-thư mục con), ngoài mọi site thì dùng PHP mặc định và Composer mặc định. Composer 2.3 trở lên cần
-PHP 7.2.5: version quá mới cho PHP sẽ bị từ chối kèm thông báo, không tự đổi sang bản khác, nên hãy
-chọn 2.2 cho site chạy PHP cũ hơn. `composer self-update` cũng bị chặn vì mỗi version được dùng
-chung: hãy dùng `phpev composer self-update`. Trong dashboard, chọn version cho site ở mục
-**Composer** của trang site, còn cài, gỡ hoặc đặt mặc định (★) ở **Services › Composer**.
-
-Khi nâng cấp từ 1.0.0-rc.1, `composer.phar` và `composer-2.2.phar` cũ được chuyển thành version,
-bản mới nhất thành mặc định, và các site chạy PHP trước 7.2.5 đang dùng bản 2.2 được ghim 2.2.
-
-### HTTPS
-
-```powershell
-cd C:\code\shop
-phpev secure          # https://shop.localhost; http:// tự chuyển sang https
-phpev unsecure
-phpev ca status
-phpev ca uninstall    # gỡ CA khỏi Windows và PHP, xóa key, tắt HTTPS cho mọi site
-```
-
-Lần `phpev secure` đầu tiên tạo một CA nội bộ và thêm vào kho chứng chỉ gốc tin cậy **của user hiện
-tại** (Windows hỏi xác nhận một lần). CA có *name constraints*: nó chỉ cấp được cert cho `localhost`,
-`test`, `local` và TLD bạn cấu hình, nên kể cả khi lộ key cũng không thể giả mạo website thật. Cert
-của từng site được tạo trong RAM khi cần. CA cũng được thêm vào CA bundle mà PHP dùng.
-
-### Dashboard và icon tray
-
-```powershell
-phpev dashboard             # mở trong cửa sổ app riêng (Microsoft Edge)
-phpev dashboard --browser   # mở trong tab trình duyệt thường
-phpev tray off              # ẩn icon tray (phpev tray on để hiện lại)
-```
-
-Dashboard chạy ở `http://127.0.0.1:7600`, gồm các trang:
-
-| Trang | Làm được gì |
-|---|---|
-| **Home** | Cái gì đang chạy và cái gì cần xử lý, site, dịch vụ và RAM; ba bước bắt đầu khi mới cài |
-| **Sites** | Mỗi site một trang: *Overview* (version PHP, HTTPS, Composer, extension, worker, sức khỏe kèm nút Fix, unlink), *Requests*, *Logs* và *Database* (thông tin kết nối, bảng, import và export `.sql`). Mở site, thư mục, terminal hoặc editor |
-| **PHP** | Cài version (có tiến độ) hoặc thêm thư mục PHP có sẵn, đặt mặc định, bật/tắt extension, sửa `php.ini`, restart worker |
-| **Services** | Mỗi dịch vụ một thẻ và một trang: *MariaDB* (bật/tắt, đổi hoặc cài version, sửa `my.ini`) và *Composer* (cài hoặc gỡ version, đặt bản mặc định bằng ★, xem site nào đang dùng) |
-| **Performance** | Realtime: req/s, độ trễ p50/p95, histogram độ trễ, mã trạng thái, route chậm nhất, CPU/RAM từng process; lọc theo site, có/không tính file tĩnh |
-| **Logs** | Theo dõi realtime log của PHPev, PHP, MariaDB và Laravel (`storage/logs/*.log`), có ô lọc |
-| **Settings** | Chạy khi đăng nhập, icon tray, giao diện, ngôn ngữ, kiểm tra cập nhật, editor; TLD; port; HTTPS; Defender, file hosts và các kiểm tra; dung lượng đĩa và dọn dẹp; thông tin |
-
-`Ctrl K` để tìm site, trang hoặc dịch vụ. Menu và danh sách site thu gọn được; dashboard nhớ lựa chọn này.
-
-Dữ liệu hiệu năng chỉ nằm trong RAM (số liệu gộp theo giây của 10 phút gần nhất và 2 000 request gần
-nhất). Query string không bao giờ được lưu, và ID trong URL được gom nhóm (`/users/42` → `/users/{n}`).
-
-**Cửa sổ dashboard** dùng một profile Edge riêng (`cache\dashboard` trong thư mục PHPev), không có
-extension, sync hay GPU process, nên chỉ tốn khoảng 120 MB và không làm Edge của bạn nặng thêm. Link
-trong cửa sổ mở bằng trình duyệt mặc định.
-
-**Ngôn ngữ:** tiếng Anh hoặc tiếng Việt, theo ngôn ngữ hiển thị của Windows trừ khi bạn chọn trong
-Settings. Lệnh `phpev` vẫn dùng tiếng Anh.
-
-**Cập nhật:** mỗi ngày một lần PHPev hỏi GitHub xem có bản mới không (không gửi thông tin gì về máy
-bạn) và hiện ở Home và tray, kèm *Skip this version*. Tắt trong Settings hoặc đặt
-`check_updates = false` trong `[ui]` của `config.toml`.
-
-**Icon tray**: click trái để mở dashboard. Menu chuột phải gồm *Open dashboard*, *Update available*
-(khi có bản mới), *Sites*, *Start/Stop MariaDB*, *Start with Windows* và *Exit PHPev*. Cửa sổ
-dashboard tự đóng khi PHPev dừng.
-
-### Dịch vụ chạy nền
-
-`phpev-daemon.exe` chạy router, các worker PHP, MariaDB và dashboard. Nó tự khởi động khi một lệnh
-cần đến, và vẫn chạy khi bạn đóng terminal.
-
-```powershell
-phpev status         # đang chạy gì, port, PID và RAM
-phpev start
-phpev stop           # dừng tất cả (MariaDB được tắt êm)
-phpev autostart on   # tự chạy khi đăng nhập Windows (không cần admin)
-phpev autostart off
-```
-
-Worker PHP khởi động ở request đầu tiên: mỗi version PHP 2 worker, tăng tới 8 khi tải cao, giảm lại
-sau 60 giây rảnh và dừng hẳn sau 10 phút không có request. Process bị crash được tự khởi động lại
-(có giãn cách thời gian). Mọi process con gắn với dịch vụ nên không còn process mồ côi kể cả khi dịch
-vụ bị kill; MariaDB được tắt êm khi Windows log off hoặc shutdown.
-
-## Danh sách lệnh
+## Lệnh
 
 | Lệnh | Mô tả |
 |---|---|
-| `phpev setup [--home DIR]` | Tạo home của PHPev, đưa shim vào PATH, kiểm tra máy |
-| `phpev doctor [--fix-path] [--defender-exclude]` | Kiểm tra sự cố (thứ tự PATH, port, runtime, CA…) |
-| `phpev php list\|install\|add\|remove\|use\|ini\|which\|warm` | Quản lý version PHP |
-| `phpev db list\|install\|remove\|start\|stop\|use` | Quản lý MariaDB |
-| `phpev composer install\|use\|self-update\|list\|remove` | Quản lý các version Composer và bản mặc định |
-| `phpev composer pin <version>\|unpin [--site <name>]` | Chọn version Composer cho một site |
-| `phpev start\|stop\|status` | Điều khiển dịch vụ nền |
-| `phpev autostart on\|off` | Chạy dịch vụ khi đăng nhập |
-| `phpev dashboard [--browser]` | Mở dashboard |
-| `phpev tray on\|off` | Hiện/ẩn icon tray |
-| `phpev link [NAME] [--php VER]` / `unlink [NAME]` | Phục vụ một thư mục |
-| `phpev rename <MỚI> [--site TÊN]` | Đổi tên một site |
-| `phpev docroot [THƯ_MỤC] [--auto] [--site TÊN]` | Xem hoặc chọn thư mục mà site phục vụ |
+| `phpev setup [--home DIR]` | Tạo thư mục PHPev, thêm vào PATH, kiểm tra máy |
+| `phpev doctor [--fix-path] [--defender-exclude]` | Kiểm tra lỗi (PATH, port, chứng chỉ, …) |
+| `phpev php list\|install\|add\|remove\|use\|ini\|which\|warm` | Version PHP |
+| `phpev db list\|install\|remove\|start\|stop\|use` | Version MariaDB |
+| `phpev composer install\|use\|self-update\|list\|remove\|pin\|unpin\|which` | Version Composer |
+| `phpev link [NAME] [--php VER]` / `phpev unlink [NAME]` | Phục vụ / ngừng phục vụ thư mục hiện tại |
+| `phpev rename <NEW>` | Đổi tên site |
+| `phpev docroot [FOLDER] [--auto]` | Xem hoặc chọn thư mục site phục vụ |
 | `phpev sites` | Liệt kê site |
-| `phpev import [DIR] [--name N] [--yes] [--migrate] [--defender-exclude]` | Cho project có sẵn chạy được |
-| `phpev secure [NAME]` / `unsecure [NAME]` | HTTPS cho một site |
-| `phpev ca status\|uninstall` | Quản lý CA nội bộ |
+| `phpev import [DIR] [--yes] [--migrate]` | Cho project có sẵn chạy được |
+| `phpev secure [NAME]` / `phpev unsecure [NAME]` | HTTPS cho site |
+| `phpev ca status\|uninstall` | Certificate authority local |
 | `phpev tld [TLD]` | Xem hoặc đổi TLD (mặc định `localhost`) |
-| `phpev hosts sync` | Ghi mọi site vào file hosts của Windows |
-| `phpev uninstall [--purge] [--yes]` | Gỡ PHPev khỏi máy (hỏi có giữ database không) |
+| `phpev hosts sync` | Ghi các site vào file hosts của Windows |
+| `phpev start\|stop\|status` | Service chạy nền |
+| `phpev autostart on\|off` | Khởi động PHPev khi đăng nhập |
+| `phpev dashboard [--browser]` | Mở dashboard |
+| `phpev tray on\|off` | Hiện hoặc ẩn icon khay |
+| `phpev uninstall [--purge]` | Gỡ PHPev (hỏi có giữ database không) |
 
-Chạy `phpev <lệnh> --help` để xem đầy đủ tùy chọn.
+`phpev <lệnh> --help` để xem mọi tuỳ chọn.
 
-## Cấu hình
+## Cần biết
 
-Cấu hình nằm ở `%USERPROFILE%\.phpev\config.toml`. CLI và dashboard tự cập nhật file này, nhưng đây
-là TOML thuần nên sửa tay cũng an toàn. Thay đổi về site có hiệu lực ở request kế tiếp; đổi port
-bằng tay thì cần `phpev stop` rồi `phpev start` (đổi trong Settings của dashboard thì PHPev tự khởi
-động lại).
-
-```toml
-php = "8.4"           # version PHP mặc định
-mariadb = "11.4"      # major version MariaDB đang dùng
-tld = "localhost"
-# tray = false        # ẩn icon tray
-
-[ports]
-http = 80
-https = 443
-mariadb = 3306
-dashboard = 7600
-
-[ui]                  # lựa chọn của dashboard; đều tùy chọn
-theme = "dark"        # light | dark (mặc định: theo Windows)
-language = "vi"       # en | vi (mặc định: theo Windows)
-check_updates = false # mặc định: bật
-editor = "vscode"     # dùng cho "Open in editor"
-
-[[sites]]
-name = "shop"
-path = 'C:\code\shop'
-php = "8.3"           # tùy chọn: cố định version PHP
-secure = true         # tùy chọn: HTTPS
-```
-
-Biến môi trường:
-
-| Biến | Tác dụng |
-|---|---|
-| `PHPEV_HOME` | Dùng thư mục home khác (do `phpev setup --home` đặt) |
-| `PHPEV_SHIM_DEBUG=1` | Shim `php`/`composer` in ra version đã chọn và lý do |
-| `PHPEV_NO_METRICS=1` | Tắt ghi số liệu request trong dịch vụ (dùng khi benchmark) |
-
-Thư mục:
-
-```
-%USERPROFILE%\.phpev\
-├── shims\          thư mục duy nhất trong PATH: php.exe, composer.exe, mysql.exe, …, phpev*.exe
-├── bin\            php\<version>\, mariadb\<version>\, composer\, cacert.pem
-├── data\mariadb\   database, mỗi major version một thư mục
-├── certs\          CA nội bộ
-├── logs\           daemon.log, php-<version>.log, mariadb-<version>.err
-├── state.json      những gì cần khôi phục khi khởi động, và lần kiểm tra cập nhật gần nhất
-├── cache\          file tải về, và profile Edge của cửa sổ dashboard
-└── config.toml
-```
-
-## Cách hoạt động
-
-```
-                 ┌──────────────────────── phpev-daemon.exe (≈2 MB RAM khi rảnh) ─────────────────────┐
- trình duyệt ─80/443─▶ router HTTP/HTTPS ── file tĩnh                                                  │
-                 │        │                                                                            │
-                 │        └── FastCGI (keep-alive) ──▶ pool php-cgi cho mỗi version PHP (2–8 worker)   │
-                 │                                                                                     │
- dashboard ─7600─▶ API v1 (JSON + SSE) ── metrics, log, job          MariaDB (được giám sát)           │
- icon tray ──────▶ cửa sổ ẩn (đồng thời xử lý Windows shutdown)                                        │
-                 └──────────────▲──────────────────────────────────────────────────────────────────────┘
-                                │ named pipe
- terminal: phpev.exe ───────────┘        shim php.exe / composer.exe ──▶ php.exe thật đúng version
-```
-
-- **`phpev.exe`**: dòng lệnh, giao tiếp với dịch vụ qua named pipe riêng của từng user.
-- **`phpev-daemon.exe`**: dịch vụ nền viết bằng Rust/tokio, gồm router (hyper, rustls), giám sát
-  process, dashboard và icon tray. Mọi process con chạy trong một Job Object kill-on-close.
-- **`php.exe` / `composer.exe`**: shim rất nhỏ, chọn version PHP rồi chạy bản thật.
-  `mysql.exe` / `mysqldump.exe` (và `mariadb.exe` / `mariadb-dump.exe`) cũng là shim đó, chạy client
-  của MariaDB đang dùng.
-- **`phpev-elevate.exe`**: chạy vài thao tác cần quyền admin, mỗi lần một hộp thoại UAC.
-
-Dashboard là một app Preact nhỏ nhúng trong binary của dịch vụ. Nó chỉ dùng API đã công bố
-(`/api/v1`), nên có thể thay bằng giao diện khác.
-
-## Hiệu năng
-
-Đo trên máy phát triển (Windows 11, PHP 8.4, 8 worker PHP, 8 kết nối đồng thời):
-
-| Kịch bản | PHPev | nginx 1.30 + php-cgi |
-|---|---|---|
-| `ping.php`, tuần tự, TTFB trung vị | 1,4 ms | 1,3 ms |
-| Trang welcome Laravel, tuần tự, TTFB trung vị | 42,0 ms | 43,1 ms |
-| `ping.php`, 8 kết nối | 5 700–6 900 req/s, 0 lỗi | 4 400–7 600 req/s, 32–57 lỗi, có request treo 60 s |
-
-Số liệu khác: RAM dịch vụ khi rảnh **~2 MB** (private working set, như cột Memory của Task
-Manager); biểu đồ realtime chỉ tốn **0,07%** CPU khi đang mở; chi phí ghi số liệu request nhỏ hơn
-mức nhiễu khi đo; shim `php` tốn thêm khoảng một lần tạo process (~11 ms) mỗi lần gọi; mở dashboard
-từ tray mất khoảng **0,6 s**.
-
-Đây là số đo trên một máy. Mời bạn mở issue chia sẻ số đo của mình.
-
-## Bảo mật
-
-- **Mọi thứ chỉ lắng nghe trên loopback** (`127.0.0.1` / `::1`).
-- **Dashboard**: mỗi lần dịch vụ khởi động sinh một token ngẫu nhiên mới, đổi lấy cookie `HttpOnly`,
-  `SameSite=Strict`. Có kiểm tra `Host` và `Origin`, yêu cầu JSON cho thao tác thay đổi (chống CSRF),
-  gửi Content-Security-Policy chặt. Không có web shell: dashboard chỉ gọi được một tập API cố định.
-- **File tải về** (PHP, MariaDB, Composer) lấy từ nguồn chính thức và được kiểm tra SHA-256 trước khi dùng.
-- **Mạng**: ngoài các lần tải về đó, mỗi ngày PHPev gửi một request tới API releases của GitHub để
-  tìm bản mới; không gửi định danh nào và tắt được.
-- **Quyền admin** chỉ được xin (mỗi lần một UAC) cho các thao tác tùy chọn: ghi file hosts,
-  exclusion Defender, đưa shim lên trước một PHP khác trong System PATH, cài Visual C++ runtime.
-- **CA nội bộ** bị giới hạn bằng name constraints ở các TLD local và chỉ được tin cho user hiện tại.
-- **MariaDB** dùng `root` không mật khẩu và chỉ truy cập được từ máy này. Đừng dùng PHPev để host
-  bất cứ thứ gì ra mạng.
-
-Phát hiện lỗ hổng? Vui lòng báo riêng qua
-[GitHub Security Advisories](https://github.com/duy-lee/PHPev/security/advisories/new), đừng mở issue công khai.
-
-## Xử lý sự cố
-
-**`php -v` ra một PHP khác (XAMPP, Laragon…).**
-Windows ghép *System PATH* trước *User PATH*, nên PHP trong System PATH được ưu tiên. `phpev doctor`
-cho biết đó là PHP nào. Sửa bằng `phpev doctor --fix-path` (đưa PHPev lên trước, cần admin) hoặc gỡ
-PHP cũ khỏi System PATH, rồi mở terminal mới.
-Lưu ý `where php` chạy khác nhau: trong `cmd` nó là `where.exe`, còn trong PowerShell `where` là
-alias của `Where-Object` (hãy dùng `where.exe php`).
-
-**Port 80, 443 hoặc 3306 bị chiếm.**
-`phpev status` và `phpev doctor` cho biết chương trình nào đang giữ port (thường là Apache/MySQL của
-XAMPP, IIS hoặc Skype). Tắt chương trình đó, hoặc đổi port trong mục `[ports]` của `config.toml`.
-
-**`file_get_contents('http://app.localhost')` lỗi trong PHP.**
-Windows không phân giải `*.localhost`; chạy `phpev hosts sync` một lần.
-
-**Trình duyệt cảnh báo chứng chỉ.**
-Chạy `phpev ca status`. Nếu CA chưa được tin, chạy lại `phpev secure` rồi khởi động lại trình duyệt.
-Firefox dùng kho chứng chỉ riêng: bật `security.enterprise_roots.enabled` trong `about:config`.
-
-**Composer hoặc Artisan chậm.**
-Nguyên nhân thường là antivirus quét realtime. `phpev doctor --defender-exclude` loại trừ home của
-PHPev, `phpev import --defender-exclude` loại trừ một project. Đặt code trên
-[Dev Drive](https://learn.microsoft.com/windows/dev-drive/) là lựa chọn an toàn hơn.
-
-**Lỗi khác.**
-Xem `%USERPROFILE%\.phpev\logs\daemon.log` hoặc trang Logs của dashboard, rồi
-[mở issue](https://github.com/duy-lee/PHPev/issues) kèm kết quả của `phpev doctor` và `phpev status`.
-
-## Gỡ cài đặt
-
-Cài bằng `setup.exe`: gỡ **PHPev** trong **Settings → Apps** (hoặc chạy `phpev uninstall`, lệnh này
-mở đúng trình gỡ đó). Trình gỡ sẽ hỏi có xoá luôn database và cấu hình không; mặc định là giữ lại.
-
-Cài bằng file zip:
-
-```powershell
-phpev uninstall           # hỏi có xoá database và config.toml không (mặc định: giữ)
-phpev uninstall --purge   # xoá cả hai
-phpev uninstall --yes     # không hỏi gì; giữ lại cả hai
-```
-
-`uninstall` liệt kê những gì sẽ làm và hỏi trước khi thay đổi. Lệnh này dừng PHPev và MariaDB, tắt
-tự chạy khi đăng nhập, gỡ CA của PHPev và mục PHPev trong PATH, rồi xoá những gì PHPev đã tạo trong
-thư mục home. Nếu
-PHPev đã thay đổi cấu hình cần quyền admin (dòng trong file hosts, System PATH, exclusion Microsoft
-Defender cho home hoặc các project), nó gỡ hết sau **một** lần UAC. Thư mục project của bạn không
-bao giờ bị đụng tới.
-
-Database (`data\`) và `config.toml` nếu được giữ lại sẽ nằm nguyên trong thư mục home, cài lại PHPev
-sẽ dùng lại được. Muốn xoá chúng thì phải gõ `delete` để xác nhận.
+- **PHP nào được chạy:** file `.php-version` trong thư mục hoặc thư mục cha, rồi đến version được
+  ghim cho site, rồi version mặc định. `phpev php which` cho biết lý do.
+- **`.localhost` và PHP:** trình duyệt và curl tự hiểu `*.localhost`, nhưng các hàm PHP như
+  `file_get_contents` thì không. Chạy `phpev hosts sync` một lần, hoặc dùng `phpev tld test`.
+- **MariaDB** chạy ở `127.0.0.1:3306`, user `root`, không mật khẩu: chỉ dùng để phát triển local.
+- **Cấu hình** nằm ở `%USERPROFILE%\.phpev\config.toml`; log ở `%USERPROFILE%\.phpev\logs`.
+- **`php -v` ra PHP khác (XAMPP, Laragon):** PHP đó nằm trong PATH hệ thống, đứng trước PHPev.
+  `phpev doctor --fix-path` đưa PHPev lên trước.
+- **Port bị chiếm:** `phpev doctor` cho biết chương trình nào đang dùng; đổi port trong Settings.
 
 ## Build từ mã nguồn
 
-Cần: [Rust](https://rustup.rs/) (stable) và Visual Studio 2022 Build Tools với workload
-*Desktop development with C++* (MSVC linker, Windows SDK và `rc.exe`).
+Cần [Rust](https://rustup.rs/) (stable) và Visual Studio 2022 Build Tools (*Desktop development
+with C++*).
 
 ```powershell
-git clone https://github.com/duy-lee/PHPev.git
-cd PHPev
 cargo build --release
 .\target\release\phpev.exe setup
 ```
 
-Bản release link C runtime tĩnh (xem `.cargo/config.toml`), nên chạy được trên Windows mới cài.
+Không có Visual Studio thì dùng toolchain GNU với [WinLibs](https://winlibs.com/) trong PATH:
+`cargo +stable-x86_64-pc-windows-gnu build --release`.
 
-Không có Visual Studio thì có thể build bằng toolchain GNU với [WinLibs](https://winlibs.com/)
-MinGW-w64 (MSVCRT) trong PATH:
-
-```powershell
-rustup toolchain install stable-x86_64-pc-windows-gnu
-winget install BrechtSanders.WinLibs.POSIX.MSVCRT
-cargo +stable-x86_64-pc-windows-gnu build --release
-```
-
-Cấu trúc project:
-
-| Crate | Kết quả | Vai trò |
-|---|---|---|
-| `crates/core` | thư viện | Config, tải file, PHP/MariaDB/Composer, site, CA, kiểu dữ liệu API, các thao tác dùng chung |
-| `crates/cli` | `phpev.exe` | Dòng lệnh |
-| `crates/daemon` | `phpev-daemon.exe` | Dịch vụ nền, router, dashboard (`crates/daemon/dashboard`), tray |
-| `crates/shim` | `phpev-shim.exe` | Được cài thành `php.exe` và `composer.exe` |
-| `crates/elevate` | `phpev-elevate.exe` | Các thao tác cần quyền admin |
-
-Trình cài đặt được build từ `installer/phpev.iss` bằng [Inno Setup](https://jrsoftware.org/isinfo.php)
-6 trở lên, sau khi build release: `ISCC.exe /DAppVersion=0.1.2 installer\phpev.iss` (file ra nằm trong `dist\`).
-
-Kiểm tra trước mỗi commit:
-
-```powershell
-cargo fmt --check
-cargo clippy --all-targets -- -D warnings
-cargo test
-```
-
-## Lộ trình
-
-Phase 1 (mọi thứ ở trên) đã hoàn tất. Dự kiến tiếp theo:
-
-- [x] CI và build bản phát hành
-- [x] Trình cài đặt Windows (`setup.exe`), có trong Settings → Apps
-- [ ] Ký số bản phát hành, gói `winget` và Scoop
-- [ ] Bật/tắt Xdebug theo version PHP
-- [x] Rewrite rule trong `.htaccess` (một phần mod_rewrite)
-- [ ] Backend nginx hoặc Apache tùy chọn cho từng site (cho phần còn lại của `.htaccess` và rewrite rule kiểu nginx)
-- [ ] Thêm dịch vụ: mail catcher, Redis, queue worker, quản lý version Node.js
-
-Mời bạn góp ý và bình chọn ở [issues](https://github.com/duy-lee/PHPev/issues).
-
-## Đóng góp
-
-Mọi đóng góp đều được hoan nghênh, từ báo lỗi tới code.
-
-1. Với thay đổi lớn, hãy mở issue trước để thống nhất cách làm.
-2. Fork repo và tạo branch mới.
-3. Giữ các bước kiểm tra ở mục [Build từ mã nguồn](#build-từ-mã-nguồn) luôn đạt, và thêm test cho logic mới.
-4. Mở pull request, mô tả thay đổi gì và đã test thế nào.
-
-PHPev chú trọng giữ nhỏ và nhanh: nếu thay đổi có thể ảnh hưởng tới RAM, kích thước hoặc độ trễ,
-hãy nêu rõ trong pull request.
-
-## Giấy phép
-
-PHPev dùng giấy phép kép, bạn chọn một trong hai:
-
-- [MIT License](LICENSE-MIT)
-- [Apache License, Version 2.0](LICENSE-APACHE)
-
-Trừ khi bạn ghi rõ khác đi, mọi đóng góp bạn chủ động gửi để đưa vào dự án, theo định nghĩa của
-giấy phép Apache-2.0, đều được cấp phép kép như trên, không kèm điều khoản bổ sung nào.
-
-PHP, MariaDB và Composer được tải từ nguồn chính thức khi chạy và giữ giấy phép riêng của chúng.
-Dashboard kèm [Preact](https://preactjs.com/), [htm](https://github.com/developit/htm) (MIT) và
-[uPlot](https://github.com/leeoniya/uPlot) (MIT); giấy phép của chúng nằm trong
-`crates/daemon/dashboard/vendor/`.
-
-## Lời cảm ơn
-
-- [Laravel Herd](https://herd.laravel.com/) và [Laravel Valet](https://laravel.com/docs/valet), vì đã
-  cho thấy lập trình PHP local có thể dễ chịu tới mức nào.
-- [hyper](https://hyper.rs/), [tokio](https://tokio.rs/), [rustls](https://github.com/rustls/rustls)
-  và [rcgen](https://github.com/rustls/rcgen), nền tảng của dịch vụ.
-- [windows.php.net](https://windows.php.net/), [MariaDB Foundation](https://mariadb.org/) và
-  [Composer](https://getcomposer.org/), vì bản build Windows chính thức và API tải về.
-
-PHPev không liên kết với Laravel, PHP, MariaDB hay Microsoft.
+Demo dashboard (dữ liệu mẫu, không cần PHPev) chạy bằng `node demo/serve.mjs`.
