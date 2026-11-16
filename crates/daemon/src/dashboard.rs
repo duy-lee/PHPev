@@ -611,10 +611,13 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
                     installed: installed
                         .iter()
                         .map(|v| {
+                            let pool = pools.iter().find(|p| &p.version == v);
                             Ok(PhpVersionInfo {
                                 version: v.clone(),
                                 default: default_version.as_deref() == Some(v.as_str()),
-                                workers: pools.iter().find(|p| &p.version == v).map_or(0, |p| p.workers.len()),
+                                workers: pool.map_or(0, |p| p.workers.len()),
+                                workers_memory_kb: pool
+                                    .map_or(0, |p| p.workers.iter().filter_map(|w| w.memory_kb).sum()),
                                 pinned_by: ops::sites_pinned_to(&l, v)?,
                             })
                         })

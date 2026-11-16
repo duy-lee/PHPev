@@ -1,6 +1,7 @@
 // PHP: the installed versions (one of them the default), their extensions and php.ini, versions to install.
 import { html, useState } from '/vendor/htm-preact-standalone.mjs';
 import { t } from '../i18n.js';
+import { mb } from '../format.js';
 import { api, res, useApi } from '../api.js';
 import { act, showToast } from '../ui/feedback.js';
 import { confirmAction, Dialog } from '../ui/dialog.js';
@@ -123,7 +124,7 @@ export function Php({ startJob }) {
             onClick=${() => act(api('PUT', '/php/default', { version: line(v.version) }), reload)} /></td>
           <td><span class="ver">${v.version}</span>${v.default && html` <span class="badge accent">${t('php.default')}</span>`}${eol(v.version) && html` <span class="badge warn">${t('php.eol')}</span>`}</td>
           <td class="t2"><${SiteLinks} names=${usedBy(v.version)} /></td>
-          <td class="t2 tnum">${v.workers ? html`<span class="status"><span class="dot ok"></span>${v.workers}</span>` : html`<span class="muted">—</span>`}</td>
+          <td class="t2 tnum">${v.workers ? html`<span class="status"><span class="dot ok"></span>${v.workers}${v.workers_memory_kb > 0 && ` · ${mb(v.workers_memory_kb)}`}</span>` : html`<span class="muted">—</span>`}</td>
           <td><div class="row-acts">
             <button class="btn ghost square sm" disabled=${!v.workers} aria-label=${t('php.restart')} title=${t('php.restart')}
               onClick=${() => act(api('POST', `/php/${v.version}/restart`), reload)}><${Icon} name="rotate-cw" size=${14} /></button>

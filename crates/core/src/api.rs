@@ -264,6 +264,8 @@ pub struct PhpVersionInfo {
     pub default: bool,
     /// Running php-cgi workers.
     pub workers: usize,
+    /// Their private memory together.
+    pub workers_memory_kb: u64,
     /// Linked sites that lose their PHP if this version is removed.
     pub pinned_by: Vec<String>,
 }
