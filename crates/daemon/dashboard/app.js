@@ -6,7 +6,8 @@ import { t, setStrings } from './i18n.js';
 import { api, useApi } from './api.js';
 import { Icon } from './icons.js';
 import { Toasts, showToast } from './ui/feedback.js';
-import { DialogHost } from './ui/dialog.js';
+import { DialogHost, confirmAction } from './ui/dialog.js';
+import { MenuButton } from './ui/controls.js';
 import { JobDialog } from './ui/job-dialog.js';
 import { Palette } from './ui/palette.js';
 import { prefs } from './ui/prefs.js';
@@ -131,10 +132,22 @@ function Sidebar({ route, onSearch, go }) {
     <div class="side-foot">
       <span class="dot ok" role="img" aria-label=${t('nav.running')}></span>
       <span class="who"><b>${t('nav.running')}</b><span>${db?.running ? t('nav.mariadb_running') : t('nav.mariadb_off')}</span></span>
-      <button class="btn ghost square sm" disabled aria-label=${t('nav.power')} title=${t('nav.power_soon')}><${Icon} name="power" size=${15} /></button>
+      <${MenuButton} label=${t('nav.power')} icon="power" items=${powerMenu()} />
     </div>
   </aside>`;
 }
+
+/** Asks, then sends `path`; the page closes itself when PHPev goes away (see useDaemonWatch). */
+async function powerAction(path, what, danger) {
+  const ok = await confirmAction({ title: t(`nav.${what}_title`), body: t(`nav.${what}_body`), confirmLabel: t(`nav.${what}`), danger });
+  if (ok) api('POST', path).then((r) => showToast(r.message), (e) => showToast(e.message, true));
+}
+
+const powerMenu = () => [
+  { label: t('nav.open_logs'), icon: 'scroll-text', onClick: () => location.replace('#/logs') },
+  { label: t('nav.restart'), icon: 'rotate-cw', onClick: () => powerAction('/daemon/restart', 'restart', false) },
+  { label: t('nav.stop'), icon: 'power', danger: true, divider: true, onClick: () => powerAction('/daemon/stop', 'stop', true) },
+];
 
 function Topbar({ page, route, mini, onToggle, theme, onTheme }) {
   const toggle = mini ? t('nav.expand') : t('nav.collapse');

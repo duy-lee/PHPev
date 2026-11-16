@@ -466,13 +466,18 @@ impl Daemon {
         let mut cmd = std::process::Command::new(exe);
         cmd.arg(launcher::RESTART_ARG);
         launcher::spawn(cmd)?;
-        log_info!("restarting to apply new settings");
+        log_info!("restarting");
+        self.stop_soon();
+        Ok(())
+    }
+
+    /// Stops PHPev in a moment, so the reply that asked for it goes out first.
+    pub(crate) fn stop_soon(&self) {
         let shutdown = self.shutdown.clone();
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_millis(400)).await;
             let _ = shutdown.send(None);
         });
-        Ok(())
     }
 
     /// Stops everything but keeps `state.json`, so the next start restores MariaDB.

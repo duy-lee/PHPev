@@ -1060,6 +1060,15 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
         // Held open by every dashboard page: when it drops, PHPev has stopped
         // and the page closes its window (tray "Exit", `phpev stop`).
         (Method::GET, ["events"]) => Ok(events_stream()),
+        // The sidebar's power menu (the page asks first). Restart opens the dashboard again.
+        (Method::POST, ["daemon", "restart"]) => {
+            d.daemon.restart()?;
+            message(tr("msg.restarting", &[]))
+        }
+        (Method::POST, ["daemon", "stop"]) => {
+            d.daemon.stop_soon();
+            message(tr("msg.stopping", &[]))
+        }
 
         (Method::GET, ["metrics", "requests"]) => {
             let uri = req.uri();
