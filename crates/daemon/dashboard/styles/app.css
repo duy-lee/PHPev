@@ -342,6 +342,7 @@ textarea.code:focus { outline: none; border-color: var(--accent); box-shadow: 0 
   .stat:nth-child(n+3) { border-top: 1px solid var(--line); }
 }
 .spark { display: block; color: var(--accent); }
+.spark.idle { color: var(--line-2); }
 
 .banner { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px; border: 1px solid var(--accent-line); border-radius: 8px; background: var(--accent-soft); }
 .banner > .icon { color: var(--accent-text); }

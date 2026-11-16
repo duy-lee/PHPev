@@ -238,21 +238,25 @@ impl Metrics {
             .collect()
     }
 
-    /// PHP requests per host over the last `window` seconds (Home's site cards).
-    pub fn host_counts(&self, window: u32) -> HashMap<String, u64> {
-        let since = (now_ms() / 1000).saturating_sub(u64::from(window.clamp(1, KEEP_SECONDS as u32)));
+    /// PHP requests per host over the last `window` seconds (the site tables):
+    /// the total, and the same split into `buckets` counts, oldest first.
+    pub fn host_activity(&self, window: u32, buckets: usize) -> HashMap<String, (u64, Vec<u32>)> {
+        let window = u64::from(window.clamp(1, KEEP_SECONDS as u32));
+        let buckets = buckets.max(1);
+        let since = (now_ms() / 1000).saturating_sub(window);
         let inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         inner
             .by_host
             .iter()
             .map(|(host, series)| {
-                let count = series
-                    .0
-                    .iter()
-                    .filter(|s| s.sec >= since)
-                    .map(|s| u64::from(s.php.count))
-                    .sum();
-                (host.clone(), count)
+                let mut trend = vec![0u32; buckets];
+                let mut total = 0u64;
+                for s in series.0.iter().filter(|s| s.sec >= since) {
+                    let slot = (((s.sec - since) * buckets as u64) / window).min(buckets as u64 - 1) as usize;
+                    trend[slot] += s.php.count;
+                    total += u64::from(s.php.count);
+                }
+                (host.clone(), (total, trend))
             })
             .collect()
     }
@@ -416,6 +420,19 @@ mod tests {
             bytes: None,
             php,
         }
+    }
+
+    #[test]
+    fn host_activity_splits_the_window_into_buckets() {
+        let m = Metrics::default();
+        let now = now_ms();
+        m.record(rec(now - 590_000, "/old", 200, 1, true));
+        m.record(rec(now - 1_000, "/new", 200, 1, true));
+        m.record(rec(now - 1_000, "/new.css", 200, 1, false));
+        let (total, trend) = m.host_activity(600, 30)["a.localhost"].clone();
+        assert_eq!(total, 2);
+        assert_eq!(trend.len(), 30);
+        assert_eq!((trend[0], trend[29], trend.iter().sum::<u32>()), (1, 1, 2));
     }
 
     #[test]

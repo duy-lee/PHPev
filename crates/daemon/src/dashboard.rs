@@ -311,9 +311,10 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
 
         // ---- sites
         (Method::GET, ["sites"]) => {
-            let counts = d.daemon.metrics.host_counts(600);
+            let activity = d.daemon.metrics.host_activity(600, 30);
+            let with_databases = query_param(req.uri(), "databases").as_deref() == Some("1");
             let l = layout.clone();
-            let mut list = blocking(move || site_list(&l)).await?;
+            let mut list = blocking(move || site_list(&l, with_databases)).await?;
             for site in &mut list {
                 // Metrics key requests by host, lower case and without the port.
                 let host = site
@@ -324,7 +325,10 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
                     .split([':', '/'])
                     .next()
                     .unwrap_or("");
-                site.requests_10m = counts.get(&host.to_ascii_lowercase()).copied().unwrap_or(0);
+                if let Some((total, trend)) = activity.get(&host.to_ascii_lowercase()) {
+                    site.requests_10m = *total;
+                    site.requests_trend = trend.clone();
+                }
             }
             ok(&list)
         }
@@ -1034,7 +1038,11 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
         (Method::GET, ["metrics", "stream"]) => {
             let host = query_param(req.uri(), "host").filter(|h| !h.is_empty());
             let include_static = query_param(req.uri(), "static").as_deref() == Some("1");
-            Ok(metrics_stream(d.daemon.clone(), host, include_static))
+            let window = query_param(req.uri(), "window")
+                .and_then(|w| w.parse().ok())
+                .unwrap_or(60u32)
+                .clamp(10, 600);
+            Ok(metrics_stream(d.daemon.clone(), host, include_static, window))
         }
 
         // ---- logs (M9)
@@ -1328,14 +1336,14 @@ fn event<T: Serialize>(value: &T) -> Option<Bytes> {
 
 /// Live performance: request stats and per-process CPU/RAM every second, only
 /// while a client is connected (§14.4).
-fn metrics_stream(daemon: Arc<Daemon>, host: Option<String>, include_static: bool) -> Response<Body> {
+fn metrics_stream(daemon: Arc<Daemon>, host: Option<String>, include_static: bool, window: u32) -> Response<Body> {
     let (tx, rx) = mpsc::channel::<Bytes>(4);
     tokio::spawn(async move {
         let mut cpu = CpuSampler::default();
         let mut tick = tokio::time::interval(Duration::from_secs(1));
         loop {
             tick.tick().await;
-            let requests = daemon.metrics.stats(60, host.as_deref(), include_static);
+            let requests = daemon.metrics.stats(window, host.as_deref(), include_static);
             let processes = cpu.sample(&daemon).await;
             let Some(ev) = event(&LiveMetrics { requests, processes }) else {
                 return;
@@ -1529,9 +1537,18 @@ fn composer_info(layout: &phpev_core::layout::Layout) -> io::Result<ComposerInfo
     })
 }
 
-fn site_list(layout: &phpev_core::layout::Layout) -> io::Result<Vec<SiteInfo>> {
+fn site_list(layout: &phpev_core::layout::Layout, with_databases: bool) -> io::Result<Vec<SiteInfo>> {
     let config = Config::load(&layout.config_file())?;
-    sites::all(&config).iter().map(|s| site_info(layout, s)).collect()
+    sites::all(&config)
+        .iter()
+        .map(|s| {
+            let mut info = site_info(layout, s)?;
+            if with_databases {
+                info.databases = crate::site_page::database_names(&config, s);
+            }
+            Ok(info)
+        })
+        .collect()
 }
 
 fn site_info(layout: &phpev_core::layout::Layout, s: &sites::Site) -> io::Result<SiteInfo> {
@@ -1547,6 +1564,8 @@ fn site_info(layout: &phpev_core::layout::Layout, s: &sites::Site) -> io::Result
         secure: s.secure,
         framework: phpev_core::project::detect(&s.path),
         requests_10m: 0,
+        requests_trend: Vec::new(),
+        databases: Vec::new(),
     })
 }
 

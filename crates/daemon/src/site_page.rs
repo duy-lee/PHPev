@@ -166,6 +166,11 @@ fn site_databases(config: &Config, site: &sites::Site) -> (Vec<SiteDb>, Vec<Site
     (connections, entries)
 }
 
+/// Names of the databases of PHPev's MariaDB that belong to `site` (the Sites table).
+pub fn database_names(config: &Config, site: &sites::Site) -> Vec<String> {
+    site_databases(config, site).1.into_iter().map(|e| e.database).collect()
+}
+
 /// The databases of PHPev's MariaDB that belong to `site` (see [`site_databases`]).
 fn entries(layout: &Layout, site: &sites::Site) -> io::Result<(Config, Vec<SiteDbEntry>)> {
     let config = Config::load(&layout.config_file())?;

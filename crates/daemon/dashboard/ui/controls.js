@@ -245,12 +245,12 @@ export function buckets(values, count) {
 }
 
 /** A small line of the last values, without axes: `values` one per second, drawn as 30 points. */
-export function Spark({ values, width = 64, height = 20 }) {
+export function Spark({ values, width = 64, height = 20, idle = false }) {
   const points = buckets(values, 30);
   const max = Math.max(1, ...points);
   const step = width / Math.max(1, points.length - 1);
   const d = points.map((v, i) => `${(i * step).toFixed(1)},${(height - 2 - (v / max) * (height - 4)).toFixed(1)}`).join(' ');
-  return html`<svg class="spark" width=${width} height=${height} viewBox="0 0 ${width} ${height}" aria-hidden="true">
+  return html`<svg class="spark ${idle ? 'idle' : ''}" width=${width} height=${height} viewBox="0 0 ${width} ${height}" aria-hidden="true">
     <polyline points=${d} fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" /></svg>`;
 }
 

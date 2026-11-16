@@ -3,9 +3,12 @@ import { html, useState, useEffect } from '/vendor/htm-preact-standalone.mjs';
 import { t, LANG } from '../i18n.js';
 import { mb, fmtMs } from '../format.js';
 import { Chart } from '../ui/chart.js';
-import { Select, Switch, Empty, Loading } from '../ui/controls.js';
+import { Select, Switch, Tabs, Empty, Loading } from '../ui/controls.js';
+import { prefs } from '../ui/prefs.js';
 
 const HISTORY = 60; // seconds of process history kept in the browser
+/** Request windows offered, in seconds; the first is the default. */
+const WINDOWS = [60, 300, 600];
 /** Buckets above this take the second chart colour: slow requests. */
 const SLOW_MS = 250;
 
@@ -15,6 +18,7 @@ const slowBucket = (label) => label.startsWith('>') || Number(label.match(/\d+/)
 export function Performance() {
   const [host, setHost] = useState('');
   const [withStatic, setWithStatic] = useState(false);
+  const [windowSecs, setWindowSecs] = useState(() => (WINDOWS.includes(Number(prefs.get('perfWindow'))) ? Number(prefs.get('perfWindow')) : WINDOWS[0]));
   const [live, setLive] = useState(null);
   const [procHistory, setProcHistory] = useState([]); // [{t, groups: {name: {cpu, kb}}}]
   const [visible, setVisible] = useState(document.visibilityState === 'visible');
@@ -33,7 +37,7 @@ export function Performance() {
   // One stream while the tab is visible; closing it stops all sampling in the daemon.
   useEffect(() => {
     if (!visible) return;
-    const source = new EventSource(`/api/v1/metrics/stream?host=${encodeURIComponent(host)}&static=${withStatic ? 1 : 0}`);
+    const source = new EventSource(`/api/v1/metrics/stream?host=${encodeURIComponent(host)}&static=${withStatic ? 1 : 0}&window=${windowSecs}`);
     source.onmessage = (e) => {
       const m = JSON.parse(e.data);
       setLive(m);
@@ -46,12 +50,15 @@ export function Performance() {
       setProcHistory((h) => [...h.slice(-(HISTORY - 1)), { t: m.requests.generated_ms, groups }]);
     };
     return () => source.close();
-  }, [host, withStatic, visible]);
+  }, [host, withStatic, windowSecs, visible]);
 
   const filters = (hosts) => html`<div class="acts">
     <label class="sr-only" for="perf-host">${t('perf.all_sites')}</label>
     <${Select} id="perf-host" label=${t('perf.all_sites')} value=${host} onChange=${(v) => { setHost(v); setProcHistory([]); }}
       options=${[{ value: '', label: t('perf.all_sites') }, ...hosts.map((h) => ({ value: h }))]} />
+    <${Tabs} role="radiogroup" label=${t('perf.window')} value=${String(windowSecs)}
+      onChange=${(v) => { setWindowSecs(Number(v)); prefs.set('perfWindow', v); }}
+      tabs=${WINDOWS.map((w) => ({ id: String(w), label: t('perf.minutes', { n: w / 60 }) }))} />
     <label class="row-flex small t2" style="gap: 6px; flex-wrap: nowrap">
       <${Switch} checked=${withStatic} label=${t('perf.include_static')} onChange=${setWithStatic} />${t('perf.static_short')}</label>
   </div>`;
@@ -75,7 +82,7 @@ export function Performance() {
 
     <div class="stats">
       <div class="stat"><div class="k">${t('perf.rps_short')}</div>
-        <div class="v">${(r.total / Math.max(1, r.window_secs)).toLocaleString(LANG, { maximumFractionDigits: 1 })}<small>${t('perf.in_all', { count: r.total.toLocaleString(LANG), window: r.window_secs })}</small></div></div>
+        <div class="v">${(r.total / Math.max(1, r.window_secs)).toLocaleString(LANG, { maximumFractionDigits: 1 })}<small>${t('perf.in_all', { count: r.total.toLocaleString(LANG), window: Math.round(r.window_secs / 60) })}</small></div></div>
       <div class="stat"><div class="k">${t('perf.median')}</div><div class="v">${fmtMs(r.p50_ms)}</div></div>
       <div class="stat"><div class="k">p95 · p99</div><div class="v">${fmtMs(r.p95_ms)}<small>${fmtMs(r.p99_ms)}</small></div></div>
       <div class="stat"><div class="k">${t('perf.server_errors')}</div>

@@ -149,7 +149,7 @@ function SiteList({ sites, tld }) {
       </div>
     </div>
     <section class="card clip"><div class="scroll-x"><table class="table">
-      <thead><tr><th>${t('home.col_site')}</th><th>${t('sites.framework')}</th><th>PHP</th><th>Composer</th>
+      <thead><tr><th>${t('home.col_site')}</th><th>${t('sites.framework')}</th><th>PHP</th><th>Composer</th><th>${t('sites.database')}</th>
         <th class="num">${t('home.requests_10m')}</th><th class="fit"><span class="sr-only">${t('sites.actions')}</span></th></tr></thead>
       <tbody>${shown.map((s) => {
         const php = res(s.php);
@@ -160,6 +160,7 @@ function SiteList({ sites, tld }) {
             ? html`<span class="badge mono ${/^[57]\./.test(php.value) ? 'warn' : ''}">${php.value}</span>${s.php_pinned && html` <span class="small muted">${t('sites.pinned')}</span>`}`
             : html`<span class="badge danger" title=${php.error}>${t('home.no_php')}</span>`}</td>
           <td class="mono t2">${s.composer_pinned ?? html`<span class="muted">${t('site.default')}</span>`}</td>
+          <td class="mono t2">${s.databases?.length ? s.databases.join(', ') : html`<span class="muted">—</span>`}</td>
           <td class="num ${s.requests_10m ? '' : 'muted'}">${s.requests_10m ? s.requests_10m.toLocaleString() : t('home.idle')}</td>
           <td><${MenuButton} label=${t('sites.more_for', { name: s.name })} items=${siteMenu(s)} /></td>
         </tr>`;
@@ -169,7 +170,7 @@ function SiteList({ sites, tld }) {
 }
 
 export function Sites({ route, startJob }) {
-  const [{ data: sites, error }, reload] = useApi('/sites', 5000);
+  const [{ data: sites, error }, reload] = useApi('/sites?databases=1', 5000);
   const [{ data: settings }] = useApi('/settings');
   if (!sites) return html`<div class="page-head"><div class="grow"><h1>${t('sites.title')}</h1></div></div><${Loading} error=${error} />`;
   if (sites.length === 0) {

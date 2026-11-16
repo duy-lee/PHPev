@@ -34,6 +34,12 @@ pub struct SiteInfo {
     /// PHP requests in the last 10 minutes (only filled by `GET /sites`).
     #[serde(default)]
     pub requests_10m: u64,
+    /// The same, in 30 steps of 20 seconds, oldest first (only filled by `GET /sites`).
+    #[serde(default)]
+    pub requests_trend: Vec<u32>,
+    /// PHPev databases of the site (only filled by `GET /sites?databases=1`: it reads project files).
+    #[serde(default)]
+    pub databases: Vec<String>,
 }
 
 /// Everything the site page shows (`GET /sites/<name>`).

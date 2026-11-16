@@ -91,12 +91,13 @@ function SitesTable({ sites }) {
           <button class="btn" onClick=${startLinking}><${Icon} name="plus" size=${15} />${t('sites.link_title')}</button>
         </${Empty}>`
       : html`<div class="scroll-x"><table class="table">
-        <thead><tr><th>${t('home.col_site')}</th><th>PHP</th><th class="num">${t('home.requests_10m')}</th><th class="fit"></th></tr></thead>
+        <thead><tr><th>${t('home.col_site')}</th><th>PHP</th><th>${t('home.col_trend')}</th><th class="num">${t('home.col_requests')}</th><th class="fit"></th></tr></thead>
         <tbody>${sortSites(sites, order).map((s) => {
           const php = res(s.php);
           return html`<tr class="click" key=${s.name} onClick=${go(siteHref(s.name))}>
             <td><a href=${siteHref(s.name)} class="cell-link" onClick=${go(siteHref(s.name))}><${SiteCell} site=${s} /></a></td>
             <td>${php.ok ? html`<span class="badge mono ${oldPhp(php.value) ? 'warn' : ''}">${line(php.value)}</span>` : html`<span class="badge danger">${t('home.no_php')}</span>`}</td>
+            <td><${Spark} values=${s.requests_trend?.length ? s.requests_trend : [0, 0]} width=${88} idle=${!s.requests_10m} /></td>
             <td class="num ${s.requests_10m ? '' : 'muted'}">${s.requests_10m ? num(s.requests_10m) : t('home.idle')}</td>
             <td><span class="chev"><${Icon} name="chevron-right" size=${15} /></span></td>
           </tr>`;
