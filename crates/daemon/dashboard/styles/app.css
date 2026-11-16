@@ -299,8 +299,8 @@ button.select .icon { color: var(--text-3); }
 .ver { font: 500 13px var(--mono); }
 .row-acts { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
 .flip { transform: rotate(180deg); }
-.plain-link { color: inherit; }
-.plain-link:hover { color: var(--accent-text); }
+.link { color: var(--accent-text); }
+.link:hover { text-decoration: underline; text-underline-offset: 2px; }
 .table tr.panel-row td { height: auto; padding: 0; }
 .subpanel { display: flex; flex-direction: column; gap: 12px; padding: 14px 16px 16px 54px; background: var(--subtle); border-top: 1px solid var(--line); }
 .note { display: flex; align-items: flex-start; gap: 6px; margin: 0; font-size: 12px; color: var(--text-3); }

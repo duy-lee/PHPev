@@ -17,13 +17,16 @@ const VALID_NAME = /^[A-Za-z0-9_$-]{1,64}$/;
 const FILTER_FROM = 8;
 
 /** Databases of one installed major. `running`: it is the server that runs now (the only one SQL can reach). */
-export function DatabasesPanel({ major, running, port, startJob }) {
+export function DatabasesPanel({ major, running, port, startJob, onCount }) {
   const [state, setState] = useState(null);
   const [name, setName] = useState('');
   const [filter, setFilter] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const load = () => api('GET', `/mariadb/${major}/databases`).then((data) => setState({ data }), (e) => setState({ error: e.message }));
+  const load = () => api('GET', `/mariadb/${major}/databases`).then((data) => {
+    setState({ data });
+    onCount?.(data.databases.length);
+  }, (e) => setState({ error: e.message }));
   // Not polled: each call starts the database client. Reloaded after every change and when the server switches.
   useEffect(() => {
     setState(null);

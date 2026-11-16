@@ -117,7 +117,7 @@ function Ports({ s }) {
         onInput=${(e) => setPorts({ ...ports, [key]: e.target.value })} /></label>
     </${SetRow}>`)}
     <div class="card-foot"><span class="small muted grow">${t('settings.ports_note')}</span>
-      <button class="btn ghost sm" disabled=${!changed} onClick=${() => setPorts(s.ports)}>${t('common.cancel')}</button>
+      <button class="btn ghost sm" disabled=${!changed} onClick=${() => setPorts(s.ports)}>${t('common.reset')}</button>
       <button class="btn primary sm" disabled=${!changed} onClick=${save}>${t('settings.save_restart')}</button></div>
   </section>`;
 }
@@ -131,7 +131,6 @@ function Https({ s }) {
     <${SetRow} icon="lock" title=${t('settings.secure_sites')}
       desc=${s.secure_sites.length ? s.secure_sites.join(', ') : t('settings.secure_none')} />
     <${SetRow} icon="network" title=${t('settings.port_https')} desc=${`127.0.0.1:${s.ports.https}`} />
-    <div class="card-foot"><span class="small muted">${t('settings.https_note')}</span></div>
   </section>`;
 }
 

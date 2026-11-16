@@ -258,7 +258,8 @@ function EditorButton({ siteName, onFallback }) {
   };
   const chosenName = info?.editors.find((e) => e.id === info.chosen)?.name;
   return html`<div class="split" style="position: relative">
-    <button class="btn" title=${chosenName ?? t('site.choose_editor')} onClick=${main}><${Icon} name="code" size=${15} />${chosenName ?? t('site.editor')}</button>
+    <button class="btn square" title=${chosenName ? t('site.open_in_editor', { editor: chosenName }) : t('site.choose_editor')}
+      aria-label=${chosenName ? t('site.open_in_editor', { editor: chosenName }) : t('site.choose_editor')} onClick=${main}><${Icon} name="code" size=${15} /></button>
     <button class="btn" aria-label=${t('site.choose_editor')} title=${t('site.choose_editor')} aria-haspopup="menu" aria-expanded=${menu ? 'true' : 'false'}
       onClick=${() => setMenu(!menu)}><${Icon} name="chevron-down" size=${14} /></button>
     ${menu && html`
@@ -279,7 +280,7 @@ function Requests({ siteHost }) {
   return html`
     <div class="stats">
       <div class="stat"><div class="k"><${Icon} name="activity" size=${14} />${t('site.requests_10_min')}</div><div class="v">${r.total.toLocaleString(LANG)}</div></div>
-      <div class="stat"><div class="k">${t('site.median')}</div><div class="v">${fmtMs(r.p50_ms)}</div></div>
+      <div class="stat"><div class="k">${t('perf.median')}</div><div class="v">${fmtMs(r.p50_ms)}</div></div>
       <div class="stat"><div class="k">p95 · p99</div><div class="v">${fmtMs(r.p95_ms)}<small>${fmtMs(r.p99_ms)}</small></div></div>
       <div class="stat"><div class="k">${t('site.status_codes')}</div><div class="v text">
         <span class="badge ok">2xx ${r.status.s2xx}</span><span class="badge">3xx ${r.status.s3xx}</span>

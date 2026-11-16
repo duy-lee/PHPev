@@ -76,9 +76,9 @@ export function Performance() {
     <div class="stats">
       <div class="stat"><div class="k">${t('perf.rps_short')}</div>
         <div class="v">${(r.total / Math.max(1, r.window_secs)).toLocaleString(LANG, { maximumFractionDigits: 1 })}<small>${t('perf.in_all', { count: r.total.toLocaleString(LANG), window: r.window_secs })}</small></div></div>
-      <div class="stat"><div class="k">${t('site.median')}</div><div class="v">${fmtMs(r.p50_ms)}</div></div>
+      <div class="stat"><div class="k">${t('perf.median')}</div><div class="v">${fmtMs(r.p50_ms)}</div></div>
       <div class="stat"><div class="k">p95 · p99</div><div class="v">${fmtMs(r.p95_ms)}<small>${fmtMs(r.p99_ms)}</small></div></div>
-      <div class="stat"><div class="k">${t('site.server_errors')}</div>
+      <div class="stat"><div class="k">${t('perf.server_errors')}</div>
         <div class="v"><span class=${errors ? 'danger-t' : ''}>${errors}</span><small>5xx · ${errorShare} %</small></div></div>
     </div>
 
@@ -94,7 +94,11 @@ export function Performance() {
           <span>${label}</span><div><div class="bar ${slowBucket(label) ? 'slow' : ''}" style=${`width: ${(count / maxCount) * 100}%`}></div></div>
           <span class="num">${count.toLocaleString(LANG)}</span></div>`)}</div>
       </section>
-      <section class="card clip">
+      ${names.length > 0 && html`<${Chart} title=${t('perf.cpu')} labels=${names}
+        data=${[px, ...names.map((n) => procHistory.map((h) => h.groups[n]?.cpu ?? null))]} />`}
+    </div>
+
+    <section class="card clip">
         <div class="card-head"><h2>${t('perf.slowest')}</h2></div>
         ${r.slowest.length === 0 ? html`<${Empty} icon="activity" title=${t('perf.none', { window: r.window_secs })} />` : html`<div class="scroll-x"><table class="table dense">
           <thead><tr><th>${t('perf.route')}</th><th class="num">${t('perf.count')}</th><th class="num">${t('perf.avg')}</th><th class="num">p95</th><th class="num">${t('perf.max')}</th></tr></thead>
@@ -103,11 +107,7 @@ export function Performance() {
             <td class="num mono ${s.p95_ms > 300 ? 'warn-t' : ''}">${fmtMs(s.p95_ms)}</td><td class="num mono muted">${fmtMs(s.max_ms)}</td></tr>`)}</tbody>
         </table></div>
         <div class="foot">${t('perf.slowest_note', { n: 2000 })}</div>`}
-      </section>
-    </div>
-
-    ${names.length > 0 && html`<div class="charts"><${Chart} title=${t('perf.cpu')} labels=${names}
-      data=${[px, ...names.map((n) => procHistory.map((h) => h.groups[n]?.cpu ?? null))]} /></div>`}
+    </section>
 
     <section class="card clip">
       <div class="card-head"><h2>${t('perf.processes')}</h2><span class="sub">${live.processes.length}</span></div>

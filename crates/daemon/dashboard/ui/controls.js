@@ -276,7 +276,7 @@ export function CopyButton({ text, label }) {
 /** Sites named in a list cell ("used by"), each a link to its page; a dash when there are none. */
 export function SiteLinks({ names }) {
   if (!names.length) return html`<span class="muted">—</span>`;
-  return names.map((name, i) => html`${i > 0 && ', '}<a class="plain-link" href=${`#/sites/${encodeURIComponent(name)}`}
+  return names.map((name, i) => html`${i > 0 && ', '}<a class="link" href=${`#/sites/${encodeURIComponent(name)}`}
     onClick=${(e) => { e.preventDefault(); location.replace(`#/sites/${encodeURIComponent(name)}`); }}>${name}</a>`);
 }
 

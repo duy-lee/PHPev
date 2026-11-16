@@ -1,5 +1,5 @@
 // Runtimes › MariaDB: the server, then Versions / Databases / my.ini (#/services/mariadb/<tab>).
-import { html, useState } from '/vendor/htm-preact-standalone.mjs';
+import { html, useState, useEffect } from '/vendor/htm-preact-standalone.mjs';
 import { t } from '../i18n.js';
 import { api, useApi } from '../api.js';
 import { mb } from '../format.js';
@@ -37,8 +37,16 @@ function Available({ onInstall }) {
 
 export function MariaDb({ startJob, route = [] }) {
   const [{ data, error }, reload] = useApi('/mariadb', 3000);
+  const [dbCount, setDbCount] = useState(null);
   const tab = TABS.includes(route[2]) ? route[2] : 'versions';
   const running = data?.running;
+  // Databases and my.ini are those of the active major; another major's show once it is made active.
+  const current = data?.installed.length ? data.active ?? major(data.installed[0]) : null;
+  // For the count on the Databases tab (once per major and server); the panel updates it after each change.
+  useEffect(() => {
+    if (!current) return;
+    api('GET', `/mariadb/${current}/databases`).then((r) => setDbCount(r.databases.length), () => setDbCount(null));
+  }, [current, running?.version]);
   const head = html`<div class="page-head">
     <div class="grow"><h1 class="row-flex">MariaDB${data?.installed.length > 0 && (running
         ? html`<span class="badge ok"><span class="dot ok"></span>${t('common.running')}</span>`
@@ -72,13 +80,11 @@ export function MariaDb({ startJob, route = [] }) {
     });
     if (answer) act(api('DELETE', `/mariadb/${v}`, { delete_data: answer.choice }), reload);
   };
-  // Databases and my.ini are those of the active major; another major's show once it is made active.
-  const current = data.active ?? major(data.installed[0]);
   const go = (id) => location.replace(`#/services/mariadb${id === 'versions' ? '' : `/${id}`}`);
 
   return html`${head}
     <${Tabs} label=${t('services.sections')} value=${tab} onChange=${go}
-      tabs=${[{ id: 'versions', label: t('services.versions') }, { id: 'databases', label: t('services.databases') }, { id: 'ini', label: 'my.ini' }]} />
+      tabs=${[{ id: 'versions', label: t('services.versions') }, { id: 'databases', label: t('services.databases'), count: dbCount }, { id: 'ini', label: 'my.ini' }]} />
 
     ${tab === 'versions' && html`<section class="card clip">
         <div class="card-head"><h2>${t('services.installed')}</h2><span class="sub">${t('services.switch_note')}</span></div>
@@ -99,7 +105,7 @@ export function MariaDb({ startJob, route = [] }) {
       <${Available} onInstall=${install} />`}
 
     ${tab === 'databases' && html`<${DatabasesPanel} major=${current} running=${!!running && major(running.version) === current}
-      port=${data.port} startJob=${startJob} />`}
+      port=${data.port} startJob=${startJob} onCount=${setDbCount} />`}
 
     ${tab === 'ini' && html`<div class="callout" style="margin: 0 0 12px"><${Icon} name="info" size=${15} /><span>${t('services.my_ini_note', { major: current })}</span></div>
       <${IniEditor} key=${current} path=${`/mariadb/${current}/ini`} label=${t('services.my_ini_label', { major: current })}
