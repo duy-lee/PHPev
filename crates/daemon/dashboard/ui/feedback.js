@@ -23,10 +23,13 @@ export function Toasts() {
       <${Icon} name=${m.error ? 'error' : 'check-circle'} />
       <span class="grow">${m.text}</span>
       ${m.action && html`<a href="#" onClick=${(e) => { e.preventDefault(); dismiss(m.id); m.action.run(); }}>${m.action.label}</a>`}
-      <button class="icon-btn ghost sm" aria-label=${t('common.close')} onClick=${() => dismiss(m.id)}><${Icon} name="close" size=${15} /></button>
+      <button class="btn ghost square sm" aria-label=${t('common.close')} onClick=${() => dismiss(m.id)}><${Icon} name="x" size=${14} /></button>
     </div>`)}
   </div>`;
 }
+
+/** Copies `text` and says so; shows the text when the clipboard is refused. */
+export const copy = (text) => navigator.clipboard.writeText(text).then(() => showToast(t('common.copied')), () => showToast(text));
 
 // Runs an API action, reports the outcome, then refreshes.
 export async function act(promise, refresh) {

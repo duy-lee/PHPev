@@ -17,7 +17,12 @@ export async function api(method, path, body) {
 // Rust `Result<T, String>` arrives as {"Ok": T} or {"Err": "message"}.
 export const res = (r) => (r && 'Ok' in r ? { ok: true, value: r.Ok } : { ok: false, error: r?.Err ?? '?' });
 
-// Loads `path`, reloading every `everyMs` while the tab is visible.
+const REFRESH = 'phpev:refresh';
+
+/** Reloads everything shown (after a change seen by several places: a site linked or unlinked). */
+export const refreshAll = () => dispatchEvent(new Event(REFRESH));
+
+// Loads `path`, reloading every `everyMs` while the tab is visible, and on refreshAll().
 export function useApi(path, everyMs) {
   const [state, setState] = useState({ data: null, error: null });
   const load = useCallback(() => {
@@ -25,12 +30,14 @@ export function useApi(path, everyMs) {
   }, [path]);
   useEffect(() => {
     load();
-    if (!everyMs) return;
+    addEventListener(REFRESH, load);
+    if (!everyMs) return () => removeEventListener(REFRESH, load);
     // Nothing is fetched while the window is minimised or hidden; on return, at once.
     const timer = setInterval(() => document.visibilityState === 'visible' && load(), everyMs);
     const onShow = () => document.visibilityState === 'visible' && load();
     document.addEventListener('visibilitychange', onShow);
     return () => {
+      removeEventListener(REFRESH, load);
       clearInterval(timer);
       document.removeEventListener('visibilitychange', onShow);
     };

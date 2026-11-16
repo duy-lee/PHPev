@@ -2,6 +2,7 @@
 import { html, useState, useRef, useEffect, useLayoutEffect } from '/vendor/htm-preact-standalone.mjs';
 import { t } from '../i18n.js';
 import { Icon } from '../icons.js';
+import { copy } from './feedback.js';
 
 /** On/off switch. */
 export function Switch({ checked, onChange, label, disabled = false }) {
@@ -126,7 +127,7 @@ export function Select({ value, options, onChange, label, id }) {
 
   return html`<button ref=${button} type="button" class="select" id=${id} aria-label=${label} aria-haspopup="listbox"
       aria-expanded=${open ? 'true' : 'false'} onClick=${() => (open ? close() : show())} onKeyDown=${onButtonKey}>
-      <span class="select-value">${current ? current.label ?? current.value : ''}</span><${Icon} name="chevron-down" size=${15} /></button>
+      <span class="select-value">${current ? current.label ?? current.value : ''}</span><${Icon} name="chevron-down" size=${14} /></button>
     ${open && html`<div ref=${list} class="dropdown" role="listbox" tabindex="-1" aria-label=${label}
       aria-activedescendant=${active >= 0 ? `${uid.current}-${active}` : undefined}
       style=${place ?? { visibility: 'hidden', top: '0px', left: '0px' }} onKeyDown=${onListKey}>
@@ -135,35 +136,148 @@ export function Select({ value, options, onChange, label, id }) {
         <div id=${`${uid.current}-${i}`} role="option" class="dropdown-item ${i === active ? 'active' : ''}"
           aria-selected=${o.value === value ? 'true' : 'false'} aria-disabled=${o.disabled ? 'true' : undefined}
           onMouseMove=${() => !o.disabled && i !== active && setActive(i)} onClick=${() => pick(o)}>
-          <span class="tick">${o.value === value && html`<${Icon} name="check" size=${15} />`}</span>
+          <span class="tick">${o.value === value && html`<${Icon} name="check" size=${14} />`}</span>
           <span class="grow"><span class="dropdown-label" title=${o.label ?? o.value}>${o.label ?? o.value}</span>
             ${o.hint && html`<span class="dropdown-hint">${o.hint}</span>`}</span>
         </div>`)}
     </div>`}`;
 }
 
-/** Pill tabs: `tabs` = [{ id, label, count? }]. */
+/** Tabs (underlined) or, with role="radiogroup", a segmented control: `tabs` = [{ id, label, count? }]. */
 export function Tabs({ value, tabs, onChange, label, role = 'tablist' }) {
   const item = role === 'tablist' ? 'tab' : 'radio';
   const state = role === 'tablist' ? 'aria-selected' : 'aria-checked';
-  return html`<div class="tabs" role=${role} aria-label=${label} onKeyDown=${arrowKeys}>
+  return html`<div class=${role === 'tablist' ? 'tabs' : 'seg'} role=${role} aria-label=${label} onKeyDown=${arrowKeys}>
     ${tabs.map((tab) => html`<button role=${item} ...${{ [state]: tab.id === value ? 'true' : 'false' }}
-      tabindex=${tab.id === value ? 0 : -1} onClick=${() => onChange(tab.id)}>${tab.label}${tab.count ? html`<span class="pill danger">${tab.count}</span>` : ''}</button>`)}
+      tabindex=${tab.id === value ? 0 : -1} onClick=${() => onChange(tab.id)}>${tab.label}${tab.count ? html`<span class="n">${tab.count}</span>` : ''}</button>`)}
   </div>`;
 }
 
 /** The star of a version list: filled on the default (`on`), else a button that makes this one the default. */
 export function DefaultStar({ on, label, onLabel, onClick }) {
   return on
-    ? html`<span class="icon-btn star on" role="img" aria-label=${onLabel} title=${onLabel}><${Icon} name="star" size=${16} /></span>`
-    : html`<button class="icon-btn star" aria-label=${label} title=${label} onClick=${onClick}><${Icon} name="star" size=${16} /></button>`;
+    ? html`<span class="star on" role="img" aria-label=${onLabel} title=${onLabel}><${Icon} name="star" size=${15} /></span>`
+    : html`<button class="star" aria-label=${label} title=${label} onClick=${onClick}><${Icon} name="star" size=${15} /></button>`;
 }
 
 /** Trash button of a version list; disabled with the reason as its tooltip when `blocked` says why. */
 export function RemoveButton({ blocked, onClick }) {
   const label = t('common.remove');
-  return html`<button class="icon-btn" disabled=${!!blocked} aria-label=${label} title=${blocked || label}
-    onClick=${onClick}><${Icon} name="trash" size=${16} /></button>`;
+  return html`<button class="btn ghost square sm" disabled=${!!blocked} aria-label=${label} title=${blocked || label}
+    onClick=${onClick}><${Icon} name="trash" size=${15} /></button>`;
+}
+
+/**
+ * A button that opens a menu of actions (the ⋯ of a row): `items` = [{ label, icon, hint, onClick,
+ * danger, disabled, title, divider }]; `divider` draws a line above the item. The menu is fixed to
+ * the window, so a table or a scrolling area never clips it.
+ */
+export function MenuButton({ label, items, icon = 'ellipsis', small = true, text = null }) {
+  const [open, setOpen] = useState(false);
+  const [place, setPlace] = useState(null);
+  const button = useRef(null);
+  const menu = useRef(null);
+  const close = (focus = true) => {
+    setOpen(false);
+    if (focus) button.current?.focus();
+  };
+  useLayoutEffect(() => {
+    if (!open || place || !menu.current) return;
+    const b = button.current.getBoundingClientRect();
+    const w = menu.current.offsetWidth;
+    const h = menu.current.offsetHeight;
+    const up = b.bottom + 4 + h > innerHeight - 8 && b.top - 4 - h > 8;
+    setPlace({
+      ...(up ? { bottom: `${innerHeight - b.top + 4}px` } : { top: `${b.bottom + 4}px` }),
+      ...(b.right - w >= 8 ? { right: `${innerWidth - b.right}px` } : { left: `${b.left}px` }),
+    });
+  }, [open, place]);
+  useEffect(() => {
+    if (!open || !place) return;
+    menu.current?.querySelector('[role="menuitem"]:not([aria-disabled="true"])')?.focus();
+    const onDown = (e) => !button.current?.contains(e.target) && !menu.current?.contains(e.target) && close(false);
+    const onMove = (e) => !menu.current?.contains(e.target) && close(false);
+    document.addEventListener('mousedown', onDown);
+    addEventListener('scroll', onMove, true);
+    addEventListener('resize', onMove);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      removeEventListener('scroll', onMove, true);
+      removeEventListener('resize', onMove);
+    };
+  }, [open, place]);
+  const onKey = (e) => {
+    const usable = [...menu.current.querySelectorAll('[role="menuitem"]:not([aria-disabled="true"])')];
+    const at = usable.indexOf(document.activeElement);
+    const moves = { ArrowDown: 1, ArrowUp: -1 };
+    if (e.key === 'Escape') { e.preventDefault(); close(); }
+    else if (e.key === 'Tab') close(false);
+    else if (e.key in moves && usable.length) {
+      e.preventDefault();
+      usable[(at + moves[e.key] + usable.length) % usable.length].focus();
+    }
+  };
+  const run = (item) => {
+    if (item.disabled) return;
+    close();
+    item.onClick?.();
+  };
+  return html`<button ref=${button} type="button" class="btn ghost ${text ? '' : 'square'} ${small ? 'sm' : ''}" aria-label=${label}
+      title=${label} aria-haspopup="menu" aria-expanded=${open ? 'true' : 'false'}
+      onClick=${() => { setPlace(null); setOpen(!open); }}><${Icon} name=${icon} size=${15} />${text}</button>
+    ${open && html`<div ref=${menu} class="menu" role="menu" aria-label=${label} onKeyDown=${onKey}
+      style=${place ?? { visibility: 'hidden', top: '0px', left: '0px' }}>
+      ${items.filter(Boolean).map((item) => html`${item.divider && html`<hr />`}
+        <button type="button" role="menuitem" class="mi ${item.danger ? 'danger' : ''}" tabindex="-1"
+          aria-disabled=${item.disabled ? 'true' : undefined} title=${item.title} onClick=${() => run(item)}>
+          ${item.icon && html`<${Icon} name=${item.icon} size=${14} />`}
+          <span class="grow"><span class="lab">${item.label}</span>${item.hint && html`<span class="hint">${item.hint}</span>`}</span>
+        </button>`)}
+    </div>`}`;
+}
+
+/** Sums `values` (one per second) into `buckets` points, oldest first. */
+export function buckets(values, count) {
+  const size = Math.max(1, Math.ceil(values.length / count));
+  const out = [];
+  for (let i = 0; i < values.length; i += size) out.push(values.slice(i, i + size).reduce((a, b) => a + (b ?? 0), 0));
+  return out;
+}
+
+/** A small line of the last values, without axes: `values` one per second, drawn as 30 points. */
+export function Spark({ values, width = 64, height = 20, idle = false }) {
+  const points = buckets(values, 30);
+  const max = Math.max(1, ...points);
+  const step = width / Math.max(1, points.length - 1);
+  const d = points.map((v, i) => `${(i * step).toFixed(1)},${(height - 2 - (v / max) * (height - 4)).toFixed(1)}`).join(' ');
+  return html`<svg class="spark ${idle ? 'idle' : ''}" width=${width} height=${height} viewBox="0 0 ${width} ${height}" aria-hidden="true">
+    <polyline points=${d} fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" /></svg>`;
+}
+
+/** An area chart without axes that fills its box's width: `values` one per second. */
+export function AreaChart({ values, height = 64, count = 60 }) {
+  const points = buckets(values, count);
+  const max = Math.max(1, ...points);
+  const w = 320;
+  const step = w / Math.max(1, points.length - 1);
+  const line = points.map((v, i) => `${(i * step).toFixed(1)},${(height - 2 - (v / max) * (height - 6)).toFixed(1)}`).join(' ');
+  return html`<svg class="area-chart" viewBox="0 0 ${w} ${height}" preserveAspectRatio="none" style=${`height: ${height}px`} aria-hidden="true">
+    <polygon points=${`0,${height} ${line} ${w},${height}`} class="area" />
+    <polyline points=${line} class="ln" /></svg>`;
+}
+
+/** Copies `text` (an address, a path); `label` names what is copied. */
+export function CopyButton({ text, label }) {
+  const name = `${t('common.copy')} ${label}`.trim();
+  return html`<button type="button" class="copy" aria-label=${name} title=${name} onClick=${(e) => { e.stopPropagation(); copy(text); }}>
+    <${Icon} name="copy" size=${13} /></button>`;
+}
+
+/** Sites named in a list cell ("used by"), each a link to its page; a dash when there are none. */
+export function SiteLinks({ names }) {
+  if (!names.length) return html`<span class="muted">—</span>`;
+  return names.map((name, i) => html`${i > 0 && ', '}<a class="link" href=${`#/sites/${encodeURIComponent(name)}`}
+    onClick=${(e) => { e.preventDefault(); location.replace(`#/sites/${encodeURIComponent(name)}`); }}>${name}</a>`);
 }
 
 /** A settings row: icon, title and description, control on the right. */
@@ -176,11 +290,11 @@ export function SetRow({ icon, title, desc, tone = '', children }) {
 }
 
 export function Empty({ icon = 'info', title, children }) {
-  return html`<div class="empty"><${Icon} name=${icon} size=${26} /><b>${title}</b>${children && html`<div>${children}</div>`}</div>`;
+  return html`<div class="empty"><span class="ico"><${Icon} name=${icon} size=${20} /></span><b>${title}</b>${children && html`<div>${children}</div>`}</div>`;
 }
 
 /** Placeholder while a page loads, or its error. */
 export function Loading({ error, height = 220 }) {
-  if (error) return html`<div class="card pad" role="alert"><span class="pill danger">${t('common.error', { message: error })}</span></div>`;
+  if (error) return html`<div class="card pad" role="alert"><span class="badge danger">${t('common.error', { message: error })}</span></div>`;
   return html`<div class="skeleton" style=${`height:${height}px`} aria-label=${t('common.loading')} role="status"></div>`;
 }

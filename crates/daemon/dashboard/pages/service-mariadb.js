@@ -1,43 +1,73 @@
-import { html, useState } from '/vendor/htm-preact-standalone.mjs';
+// Runtimes › MariaDB: the server, then Versions / Databases / my.ini (#/services/mariadb/<tab>).
+import { html, useState, useEffect } from '/vendor/htm-preact-standalone.mjs';
 import { t } from '../i18n.js';
 import { api, useApi } from '../api.js';
 import { mb } from '../format.js';
 import { act, showToast } from '../ui/feedback.js';
 import { confirmAction } from '../ui/dialog.js';
 import { Icon } from '../icons.js';
-import { SetRow, DefaultStar, RemoveButton, Tabs, Empty, Loading } from '../ui/controls.js';
+import { DefaultStar, RemoveButton, Tabs, Empty, Loading } from '../ui/controls.js';
 import { IniEditor } from '../ui/ini-editor.js';
 import { DatabasesPanel } from './mariadb-databases.js';
 
 const major = (v) => v.split('.').slice(0, 2).join('.');
+const TABS = ['versions', 'databases', 'ini'];
 
-/**
- * Below a version's row, as on the PHP page: the databases of its major, and
- * its my.ini (read by the server at start). `running`: this major is the server that runs now.
- */
-function VersionPanel({ version, running, port, startJob, onSaved }) {
-  const [tab, setTab] = useState('databases');
-  const m = major(version);
-  return html`<div class="version-panel">
-    <${Tabs} label=${t('services.details_of', { version })} value=${tab} onChange=${setTab}
-      tabs=${[{ id: 'databases', label: t('services.databases') }, { id: 'ini', label: 'my.ini' }]} />
-    ${tab === 'databases' && html`<${DatabasesPanel} major=${m} running=${running} port=${port} startJob=${startJob} />`}
-    ${tab === 'ini' && html`<div class="ini-editor">
-      <p class="small muted" style="margin: 0">${t('services.my_ini_note', { major: m })}</p>
-      <${IniEditor} path=${`/mariadb/${m}/ini`} label=${t('services.my_ini_label', { major: m })}
-        hint=${t('services.my_ini_hint', { major: m })} onSaved=${onSaved} />
-    </div>`}
-  </div>`;
+/** Releases to install, loaded on request (it asks mariadb.org). */
+function Available({ onInstall }) {
+  const [available, setAvailable] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const load = () => {
+    setBusy(true);
+    api('GET', '/mariadb/available').then(setAvailable, (e) => showToast(t('common.error', { message: e.message }), true)).finally(() => setBusy(false));
+  };
+  return html`<div class="sec"><h2>${t('php.available_short')}</h2><span class="small muted">${t('services.available_hint')}</span><span class="grow"></span>
+      ${available === null && html`<button class="btn sm" disabled=${busy} onClick=${load}>${busy && html`<span class="spin"><${Icon} name="rotate-cw" size=${13} /></span>`}${t('services.load_available')}</button>`}</div>
+    ${available !== null && html`<section class="card">
+      ${available.map((a) => html`<div class="setrow" key=${a.major}>
+        <span class="row-icon"><${Icon} name="database" /></span>
+        <span class="row-text"><b><span class="ver">${a.major}</span>${a.lts && html` <span class="badge">${t('services.lts')}</span>`}${a.eol_passed && html` <span class="badge warn">${t('services.eol_passed')}</span>`}</b>
+          <span>${a.eol ? t('services.supported_until', { date: a.eol }) : ''}</span></span>
+        ${a.installed
+          ? html`<span class="status"><${Icon} name="check" size=${13} />${t('common.installed')}</span>`
+          : html`<button class="btn sm" onClick=${() => onInstall(a.major, load)}><${Icon} name="download" size=${13} />${t('common.install')}</button>`}
+      </div>`)}
+    </section>`}`;
 }
 
-/** Services › MariaDB: the server, installed versions (with their my.ini) and versions to install. */
-export function MariaDb({ startJob }) {
+export function MariaDb({ startJob, route = [] }) {
   const [{ data, error }, reload] = useApi('/mariadb', 3000);
-  const [available, setAvailable] = useState(null);
-  const [open, setOpen] = useState(null);
-  if (!data) return html`<div class="page-head"><h1>${t('services.mariadb')}</h1></div><${Loading} error=${error} />`;
-  const loadAvailable = () => api('GET', '/mariadb/available').then(setAvailable, (e) => showToast(t('common.error', { message: e.message }), true));
-  const install = (version) => api('POST', '/mariadb/install', { version }).then((r) => startJob(r.job, () => { reload(); loadAvailable(); }), (e) => showToast(e.message, true));
+  const [dbCount, setDbCount] = useState(null);
+  const tab = TABS.includes(route[2]) ? route[2] : 'versions';
+  const running = data?.running;
+  // Databases and my.ini are those of the active major; another major's show once it is made active.
+  const current = data?.installed.length ? data.active ?? major(data.installed[0]) : null;
+  // For the count on the Databases tab (once per major and server); the panel updates it after each change.
+  useEffect(() => {
+    if (!current) return;
+    api('GET', `/mariadb/${current}/databases`).then((r) => setDbCount(r.databases.length), () => setDbCount(null));
+  }, [current, running?.version]);
+  const head = html`<div class="page-head">
+    <div class="grow"><h1 class="row-flex">MariaDB${data?.installed.length > 0 && (running
+        ? html`<span class="badge ok"><span class="dot ok"></span>${t('common.running')}</span>`
+        : html`<span class="badge">${t('common.stopped')}</span>`)}</h1>
+      <p>${!data ? t('services.subtitle') : running
+        ? html`<span class="mono t2">${running.version}</span> ${t('services.on')} <span class="mono t2">127.0.0.1:${data.port}</span> · ${mb(running.memory_kb)} · ${t('services.starts_with')}`
+        : data.installed.length ? t('services.stopped_hint_long') : t('services.subtitle')}</p></div>
+    ${data?.installed.length > 0 && html`<div class="acts">
+      <button class="btn" disabled=${!running} title=${running ? t('site.mariadb_restart_hint') : ''} onClick=${() => act(api('POST', '/mariadb/restart'), reload)}><${Icon} name="rotate-cw" size=${15} />${t('site.restart')}</button>
+      ${running
+        ? html`<button class="btn" onClick=${() => act(api('POST', '/mariadb/stop'), reload)}><${Icon} name="square" size=${13} />${t('common.stop')}</button>`
+        : html`<button class="btn primary" onClick=${() => act(api('POST', '/mariadb/start'), reload)}><${Icon} name="play" size=${13} />${t('common.start')}</button>`}
+    </div>`}
+  </div>`;
+  if (!data) return html`${head}<${Loading} error=${error} />`;
+  const install = (version, after) => api('POST', '/mariadb/install', { version }).then((r) => startJob(r.job, () => { reload(); after?.(); }), (e) => showToast(e.message, true));
+  if (data.installed.length === 0) {
+    return html`${head}<section class="card"><${Empty} icon="database" title=${t('services.not_installed')}><p>${t('services.not_installed_hint')}</p></${Empty}></section>
+      <${Available} onInstall=${install} />`;
+  }
+
   const remove = async (v) => {
     // The databases of a major are only unused once its last release is gone.
     const last = !data.installed.some((o) => o !== v && major(o) === major(v));
@@ -50,53 +80,35 @@ export function MariaDb({ startJob }) {
     });
     if (answer) act(api('DELETE', `/mariadb/${v}`, { delete_data: answer.choice }), reload);
   };
-  const running = data.running;
-  return html`
-    <div class="page-head"><div class="grow"><h1>${t('services.mariadb')}</h1><p>${t('services.subtitle')}</p></div></div>
+  const go = (id) => location.replace(`#/services/mariadb${id === 'versions' ? '' : `/${id}`}`);
 
-    <section class="card">
-      <div class="card-head"><h2>${t('services.server')}</h2><span class="grow"></span>
-        ${data.installed.length > 0 && (running
-          ? html`<span class="pill ok"><span class="dot ok"></span>${t('common.running')}</span>`
-          : html`<span class="pill">${t('common.stopped')}</span>`)}</div>
-      ${data.installed.length === 0
-        ? html`<${Empty} icon="database" title=${t('services.not_installed')}>${t('services.not_installed_hint')}</${Empty}>`
-        : html`
-          <${SetRow} icon="database" title=${running ? `MariaDB ${running.version}` : t('services.mariadb')}
-            desc=${running ? `127.0.0.1:${data.port} · ${mb(running.memory_kb)}` : t('services.stopped_hint')}>
-            ${running
-              ? html`<button class="btn quiet sm" onClick=${() => act(api('POST', '/mariadb/stop'), reload)}>${t('common.stop')}</button>`
-              : html`<button class="btn primary sm" onClick=${() => act(api('POST', '/mariadb/start'), reload)}>${t('common.start')}</button>`}
-          </${SetRow}>
-          <${SetRow} icon="folder" title=${t('services.datadir')} desc=${data.data_dir ?? '—'} />`}
-    </section>
+  return html`${head}
+    <${Tabs} label=${t('services.sections')} value=${tab} onChange=${go}
+      tabs=${[{ id: 'versions', label: t('services.versions') }, { id: 'databases', label: t('services.databases'), count: dbCount }, { id: 'ini', label: 'my.ini' }]} />
 
-    ${data.installed.length > 0 && html`<section class="card">
-      <div class="card-head"><h2>${t('services.installed')}</h2></div>
-      ${data.installed.map((v) => html`<${SetRow} icon="database" title=${`MariaDB ${v}`}
-        desc=${data.active === major(v) ? t('services.active') : t('services.inactive')}>
-        <button class="btn quiet sm" aria-expanded=${open === v ? 'true' : 'false'} onClick=${() => setOpen(open === v ? null : v)}>
-          ${t('php.details')}<${Icon} name=${open === v ? 'chevron-down' : 'chevron-right'} size=${15} /></button>
-        <${DefaultStar} on=${data.active === major(v)} label=${t('services.use')} onLabel=${t('services.active')}
-          onClick=${() => act(api('PUT', '/mariadb/active', { version: major(v) }), reload)} />
-        <${RemoveButton} blocked=${data.active === major(v) ? t('services.remove_active') : ''} onClick=${() => remove(v)} />
-      </${SetRow}>
-      ${open === v && html`<${VersionPanel} version=${v} running=${!!running && major(running.version) === major(v)} port=${data.port} startJob=${startJob} onSaved=${reload} />`}`)}
-      <div class="card-foot"><span class="small muted">${t('services.switch_note')}</span></div>
-    </section>`}
+    ${tab === 'versions' && html`<section class="card clip">
+        <div class="card-head"><h2>${t('services.installed')}</h2><span class="sub">${t('services.switch_note')}</span></div>
+        <div class="scroll-x"><table class="table">
+          <tbody>${data.installed.map((v) => {
+            const active = data.active === major(v);
+            return html`<tr key=${v}>
+              <td class="fit"><${DefaultStar} on=${active} label=${t('services.use_version', { version: major(v) })} onLabel=${t('services.active')}
+                onClick=${() => act(api('PUT', '/mariadb/active', { version: major(v) }), reload)} /></td>
+              <td><span class="ver">${v}</span>${active && html` <span class="badge accent">${t('services.active_short')}</span>`}
+                ${data.releases.find((r) => r.version === v)?.lts && html` <span class="badge">${t('services.lts')}</span>`}
+                ${running && major(running.version) === major(v) && html` <span class="status" style="margin-left: 6px"><span class="dot ok"></span>${t('common.running')}</span>`}</td>
+              <td class="mono muted small">${active && data.data_dir ? data.data_dir : `data\\mariadb\\${major(v)}`}</td>
+              <td><div class="row-acts"><${RemoveButton} blocked=${active ? t('services.remove_active') : ''} onClick=${() => remove(v)} /></div></td>
+            </tr>`;
+          })}</tbody>
+        </table></div>
+      </section>
+      <${Available} onInstall=${install} />`}
 
-    <section class="card">
-      <div class="card-head"><h2>${t('services.available')}</h2><span class="grow"></span>
-        ${available === null && html`<button class="btn sm" onClick=${loadAvailable}>${t('services.load_available')}</button>`}</div>
-      ${available === null
-        ? html`<p class="small muted" style="margin: 0; padding: 0 22px 18px">${t('services.available_hint')}</p>`
-        : available.map((a) => html`<${SetRow} icon="download" title=${`MariaDB ${a.major}`}
-            desc=${a.eol ? t('services.eol', { date: a.eol }) : ''}>
-            ${a.lts && html`<span class="pill">${t('services.lts')}</span>`}
-            ${a.eol_passed && html`<span class="pill warn">${t('services.eol_passed')}</span>`}
-            ${a.installed
-              ? html`<span class="pill ok">${t('common.installed')}</span>`
-              : html`<button class="btn sm" onClick=${() => install(a.major)}>${t('common.install')}</button>`}
-          </${SetRow}>`)}
-    </section>`;
+    ${tab === 'databases' && html`<${DatabasesPanel} major=${current} running=${!!running && major(running.version) === current}
+      port=${data.port} startJob=${startJob} onCount=${setDbCount} />`}
+
+    ${tab === 'ini' && html`<div class="callout" style="margin: 0 0 12px"><${Icon} name="info" size=${15} /><span>${t('services.my_ini_note', { major: current })}</span></div>
+      <${IniEditor} key=${current} path=${`/mariadb/${current}/ini`} label=${t('services.my_ini_label', { major: current })}
+        hint=${t('services.my_ini_hint', { major: current })} onSaved=${reload} />`}`;
 }

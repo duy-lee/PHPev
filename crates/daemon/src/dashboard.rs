@@ -23,7 +23,7 @@ use hyper_util::rt::TokioIo;
 use phpev_core::api::{self, *};
 use phpev_core::config::Config;
 use phpev_core::net::Http;
-use phpev_core::{config, doctor, mariadb, ops, php, shim, sites, update, version};
+use phpev_core::{config, doctor, mariadb, ops, php, release_info, shim, sites, update, version};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use tokio::net::TcpListener;
@@ -311,9 +311,10 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
 
         // ---- sites
         (Method::GET, ["sites"]) => {
-            let counts = d.daemon.metrics.host_counts(600);
+            let activity = d.daemon.metrics.host_activity(600, 30);
+            let with_databases = query_param(req.uri(), "databases").as_deref() == Some("1");
             let l = layout.clone();
-            let mut list = blocking(move || site_list(&l)).await?;
+            let mut list = blocking(move || site_list(&l, with_databases)).await?;
             for site in &mut list {
                 // Metrics key requests by host, lower case and without the port.
                 let host = site
@@ -324,7 +325,10 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
                     .split([':', '/'])
                     .next()
                     .unwrap_or("");
-                site.requests_10m = counts.get(&host.to_ascii_lowercase()).copied().unwrap_or(0);
+                if let Some((total, trend)) = activity.get(&host.to_ascii_lowercase()) {
+                    site.requests_10m = *total;
+                    site.requests_trend = trend.clone();
+                }
             }
             ok(&list)
         }
@@ -611,10 +615,13 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
                     installed: installed
                         .iter()
                         .map(|v| {
+                            let pool = pools.iter().find(|p| &p.version == v);
                             Ok(PhpVersionInfo {
                                 version: v.clone(),
                                 default: default_version.as_deref() == Some(v.as_str()),
-                                workers: pools.iter().find(|p| &p.version == v).map_or(0, |p| p.workers.len()),
+                                workers: pool.map_or(0, |p| p.workers.len()),
+                                workers_memory_kb: pool
+                                    .map_or(0, |p| p.workers.iter().filter_map(|w| w.memory_kb).sum()),
                                 pinned_by: ops::sites_pinned_to(&l, v)?,
                             })
                         })
@@ -714,8 +721,13 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             let l = layout.clone();
             ok(&blocking(move || {
                 let config = Config::load(&l.config_file())?;
+                let installed = mariadb::installed(&l);
                 Ok(MariaDbInfo {
-                    installed: mariadb::installed(&l),
+                    releases: installed
+                        .iter()
+                        .filter_map(|v| release_info::load(&mariadb::version_dir(&l, v)))
+                        .collect(),
+                    installed,
                     data_dir: config
                         .mariadb
                         .as_deref()
@@ -847,6 +859,43 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             let name = blocking(move || mariadb::create_database(&l, &server.version, server.port, &r.name)).await?;
             message(tr("msg.database_created", &[("name", &name)]))
         }
+        (Method::POST, ["mariadb", "databases", name, "terminal"]) => {
+            let server = running_mariadb(d).await?;
+            if !mariadb::is_safe_db_name(name) {
+                return Err(ApiError(
+                    StatusCode::BAD_REQUEST,
+                    format!("unsupported database name `{name}`"),
+                ));
+            }
+            let (l, n) = (layout.clone(), name.to_string());
+            blocking(move || {
+                let exe = mariadb::version_dir(&l, &server.version).join(r"bin\mariadb.exe");
+                let port = format!("--port={}", server.port);
+                let before = crate::foreground::windows();
+                launch::open_console(
+                    &format!("MariaDB {n}"),
+                    &exe,
+                    &[
+                        "--no-defaults",
+                        "--user=root",
+                        "--host=127.0.0.1",
+                        &port,
+                        "--default-character-set=utf8mb4",
+                        &n,
+                    ],
+                )?;
+                crate::foreground::raise_new_window(before, None);
+                Ok(())
+            })
+            .await?;
+            message("opened")
+        }
+        (Method::POST, ["mariadb", "databases", name, "empty"]) => {
+            let server = running_mariadb(d).await?;
+            let (l, n) = (layout.clone(), name.to_string());
+            blocking(move || mariadb::empty_database(&l, &server.version, server.port, &n)).await?;
+            message(tr("msg.database_emptied", &[("name", &name)]))
+        }
         (Method::DELETE, ["mariadb", "databases", name]) => {
             let server = running_mariadb(d).await?;
             let (l, n) = (layout.clone(), name.to_string());
@@ -857,6 +906,15 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             let msg = d.daemon.db_start().await?;
             d.daemon.remember_db(true);
             message(msg)
+        }
+        (Method::POST, ["mariadb", "restart"]) => {
+            let Some(server) = d.daemon.status().await.mariadb else {
+                return Err(ApiError(StatusCode::CONFLICT, tr("msg.mariadb_not_running", &[])));
+            };
+            d.daemon.db_stop().await?;
+            d.daemon.db_start().await?;
+            d.daemon.remember_db(true);
+            message(tr("msg.mariadb_restarted", &[("version", &server.version)]))
         }
         (Method::POST, ["mariadb", "stop"]) => {
             let msg = d.daemon.db_stop().await?;
@@ -1002,6 +1060,15 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
         // Held open by every dashboard page: when it drops, PHPev has stopped
         // and the page closes its window (tray "Exit", `phpev stop`).
         (Method::GET, ["events"]) => Ok(events_stream()),
+        // The sidebar's power menu (the page asks first). Restart opens the dashboard again.
+        (Method::POST, ["daemon", "restart"]) => {
+            d.daemon.restart()?;
+            message(tr("msg.restarting", &[]))
+        }
+        (Method::POST, ["daemon", "stop"]) => {
+            d.daemon.stop_soon();
+            message(tr("msg.stopping", &[]))
+        }
 
         (Method::GET, ["metrics", "requests"]) => {
             let uri = req.uri();
@@ -1013,10 +1080,24 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             let include_static = query_param(uri, "static").as_deref() == Some("1");
             ok(&d.daemon.metrics.stats(window, host.as_deref(), include_static))
         }
+        (Method::GET, ["metrics", "recent"]) => {
+            let uri = req.uri();
+            let limit = query_param(uri, "limit")
+                .and_then(|n| n.parse().ok())
+                .unwrap_or(200usize)
+                .clamp(1, crate::metrics::CAPACITY);
+            let host = query_param(uri, "host").filter(|h| !h.is_empty());
+            let include_static = query_param(uri, "static").as_deref() == Some("1");
+            ok(&d.daemon.metrics.recent(host.as_deref(), include_static, limit))
+        }
         (Method::GET, ["metrics", "stream"]) => {
             let host = query_param(req.uri(), "host").filter(|h| !h.is_empty());
             let include_static = query_param(req.uri(), "static").as_deref() == Some("1");
-            Ok(metrics_stream(d.daemon.clone(), host, include_static))
+            let window = query_param(req.uri(), "window")
+                .and_then(|w| w.parse().ok())
+                .unwrap_or(60u32)
+                .clamp(10, 600);
+            Ok(metrics_stream(d.daemon.clone(), host, include_static, window))
         }
 
         // ---- logs (M9)
@@ -1310,14 +1391,14 @@ fn event<T: Serialize>(value: &T) -> Option<Bytes> {
 
 /// Live performance: request stats and per-process CPU/RAM every second, only
 /// while a client is connected (§14.4).
-fn metrics_stream(daemon: Arc<Daemon>, host: Option<String>, include_static: bool) -> Response<Body> {
+fn metrics_stream(daemon: Arc<Daemon>, host: Option<String>, include_static: bool, window: u32) -> Response<Body> {
     let (tx, rx) = mpsc::channel::<Bytes>(4);
     tokio::spawn(async move {
         let mut cpu = CpuSampler::default();
         let mut tick = tokio::time::interval(Duration::from_secs(1));
         loop {
             tick.tick().await;
-            let requests = daemon.metrics.stats(60, host.as_deref(), include_static);
+            let requests = daemon.metrics.stats(window, host.as_deref(), include_static);
             let processes = cpu.sample(&daemon).await;
             let Some(ev) = event(&LiveMetrics { requests, processes }) else {
                 return;
@@ -1511,9 +1592,18 @@ fn composer_info(layout: &phpev_core::layout::Layout) -> io::Result<ComposerInfo
     })
 }
 
-fn site_list(layout: &phpev_core::layout::Layout) -> io::Result<Vec<SiteInfo>> {
+fn site_list(layout: &phpev_core::layout::Layout, with_databases: bool) -> io::Result<Vec<SiteInfo>> {
     let config = Config::load(&layout.config_file())?;
-    sites::all(&config).iter().map(|s| site_info(layout, s)).collect()
+    sites::all(&config)
+        .iter()
+        .map(|s| {
+            let mut info = site_info(layout, s)?;
+            if with_databases {
+                info.databases = crate::site_page::database_names(&config, s);
+            }
+            Ok(info)
+        })
+        .collect()
 }
 
 fn site_info(layout: &phpev_core::layout::Layout, s: &sites::Site) -> io::Result<SiteInfo> {
@@ -1529,6 +1619,8 @@ fn site_info(layout: &phpev_core::layout::Layout, s: &sites::Site) -> io::Result
         secure: s.secure,
         framework: phpev_core::project::detect(&s.path),
         requests_10m: 0,
+        requests_trend: Vec::new(),
+        databases: Vec::new(),
     })
 }
 
@@ -1568,6 +1660,7 @@ mod tests {
             assert!(lookup(path).is_some(), "{path} is not embedded");
         }
         assert_eq!(lookup("/app.js").unwrap().1, "text/javascript; charset=utf-8");
+        assert_eq!(lookup("/vendor/inter/inter-latin.woff2").unwrap().1, "font/woff2");
         assert!(lookup("/nope.js").is_none());
     }
 

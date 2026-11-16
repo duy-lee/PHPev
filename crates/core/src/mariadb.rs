@@ -502,6 +502,41 @@ pub fn user_database(layout: &Layout, version: &str, port: u16, name: &str) -> i
 }
 
 /// Drops database `name` from the running server, with everything in it.
+/// Drops `name` and creates it again with the same character set and collation:
+/// empty, and the users' rights on it stay (they outlive the database).
+pub fn empty_database(layout: &Layout, version: &str, port: u16, name: &str) -> io::Result<()> {
+    if !is_safe_db_name(name) || is_system_db(name) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("`{name}` cannot be emptied here"),
+        ));
+    }
+    let rows = query(
+        layout,
+        version,
+        port,
+        &format!(
+            "SELECT DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = '{name}'"
+        ),
+    )?;
+    let Some([charset, collation]) = rows.first().map(Vec::as_slice) else {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("database `{name}` does not exist"),
+        ));
+    };
+    let plain = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_');
+    if !plain(charset) || !plain(collation) {
+        return Err(io::Error::other(format!("unexpected character set of `{name}`")));
+    }
+    exec_sql(
+        layout,
+        version,
+        port,
+        &format!("DROP DATABASE `{name}`; CREATE DATABASE `{name}` CHARACTER SET {charset} COLLATE {collation}"),
+    )
+}
+
 pub fn drop_database(layout: &Layout, version: &str, port: u16, name: &str) -> io::Result<()> {
     if !is_safe_db_name(name) || is_system_db(name) {
         return Err(io::Error::new(
@@ -681,6 +716,26 @@ mod tests {
 
         assert_eq!(user_database(&layout, &version, port, &created).unwrap(), created);
         assert!(user_database(&layout, &version, port, "mysql").is_err());
+
+        // Emptying removes the tables and keeps the database with its collation.
+        exec_sql(
+            &layout,
+            &version,
+            port,
+            &format!("ALTER DATABASE `{created}` COLLATE utf8mb4_bin; CREATE TABLE `{created}`.t (id INT)"),
+        )
+        .unwrap();
+        empty_database(&layout, &version, port, &created).unwrap();
+        let collation = query(
+            &layout,
+            &version,
+            port,
+            &format!("SELECT DEFAULT_COLLATION_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = '{created}'"),
+        )
+        .unwrap();
+        assert_eq!(collation, vec![vec!["utf8mb4_bin".to_owned()]]);
+        assert_eq!(tables(&layout, &version, port, &created).unwrap(), Some(Vec::new()));
+        assert!(empty_database(&layout, &version, port, "mysql").is_err());
 
         drop_database(&layout, &version, port, &created).unwrap();
         assert_eq!(

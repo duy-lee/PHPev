@@ -4,6 +4,8 @@ import { html, useState, useEffect } from '/vendor/htm-preact-standalone.mjs';
 import { t } from '../i18n.js';
 import { api } from '../api.js';
 import { showToast } from './feedback.js';
+import { Icon } from '../icons.js';
+import { Loading } from './controls.js';
 
 // A textarea reports `\n` line endings whatever the file uses.
 const lf = (text) => text.replace(/\r\n/g, '\n');
@@ -21,8 +23,8 @@ export function IniEditor({ path, label, hint, active = true, onSaved }) {
   useEffect(() => {
     if (active && !dirty) load();
   }, [active, path]);
-  if (!ini) return html`<span class="small muted">${t('common.loading')}</span>`;
-  if (ini.error) return html`<span class="pill danger">${t('common.error', { message: ini.error })}</span>`;
+  if (!ini) return html`<${Loading} height=${200} />`;
+  if (ini.error) return html`<span class="badge danger">${t('common.error', { message: ini.error })}</span>`;
   const save = async () => {
     if (!dirty || busy) return;
     setBusy(true);
@@ -45,11 +47,14 @@ export function IniEditor({ path, label, hint, active = true, onSaved }) {
     }
   };
   return html`<div class="ini-editor">
-    <textarea class="mono" spellcheck="false" aria-label=${label} value=${text}
+    <textarea class="code" spellcheck="false" aria-label=${label} aria-describedby="ini-hint" value=${text}
       onInput=${(e) => setText(e.target.value)} onKeyDown=${onKey}></textarea>
     <div class="row-flex">
-      <span class="small muted grow">${hint}</span>
-      <button class="btn quiet sm" disabled=${!dirty || busy} onClick=${() => setText(lf(ini.text))}>${t('php.ini_discard')}</button>
+      ${dirty
+        ? html`<span class="small warn-t row-flex" style="gap: 6px"><${Icon} name="circle-alert" size=${13} />${t('php.ini_unsaved')}</span>`
+        : html`<span class="small muted grow" id="ini-hint">${hint}</span>`}
+      <span class="grow"></span>
+      <button class="btn ghost sm" disabled=${!dirty || busy} onClick=${() => setText(lf(ini.text))}>${t('php.ini_discard')}</button>
       <button class="btn primary sm" disabled=${!dirty || busy} onClick=${save}>${busy ? t('php.ini_saving') : t('php.ini_save')}</button>
     </div>
   </div>`;

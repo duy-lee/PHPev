@@ -25,9 +25,9 @@ const ERROR_ACCESS_DENIED: i32 = 5;
 
 pub fn open_dashboard(restart: bool) -> ExitCode {
     let result = if restart {
-        wait_stopped().and_then(|()| run())
+        wait_stopped().and_then(|()| run(true))
     } else {
-        run()
+        run(false)
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -61,7 +61,9 @@ fn wait_stopped() -> io::Result<()> {
     Ok(())
 }
 
-fn run() -> io::Result<()> {
+/// Starts the daemon if needed and opens the dashboard. After a restart the same
+/// executable starts again (it may be a dev build); otherwise the installed one.
+fn run(restart: bool) -> io::Result<()> {
     let installed = |layout: &Layout| layout.shims().join(DAEMON_EXE).is_file() && layout.config_file().is_file();
     let mut layout = Layout::resolve()?;
     if !installed(&layout) {
@@ -83,7 +85,12 @@ fn run() -> io::Result<()> {
     }
 
     if !ipc::is_running() {
-        spawn(Command::new(layout.shims().join(DAEMON_EXE)))?;
+        let daemon = if restart {
+            std::env::current_exe()?
+        } else {
+            layout.shims().join(DAEMON_EXE)
+        };
+        spawn(Command::new(daemon))?;
         let deadline = Instant::now() + Duration::from_secs(15);
         while !ipc::is_running() {
             if Instant::now() > deadline {

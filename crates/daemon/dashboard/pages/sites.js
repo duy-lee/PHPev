@@ -1,16 +1,20 @@
+// Sites: the list of linked folders (#/sites), the breadcrumb switcher, the Link a folder dialog,
+// and what a site's row and page share (its mark, its ⋯ menu, unlink).
 import { html, useState, useEffect } from '/vendor/htm-preact-standalone.mjs';
 import { t } from '../i18n.js';
-import { api, res, useApi } from '../api.js';
-import { act, showToast } from '../ui/feedback.js';
-import { Dialog } from '../ui/dialog.js';
+import { api, res, useApi, refreshAll } from '../api.js';
+import { act, copy, showToast } from '../ui/feedback.js';
+import { Dialog, confirmAction } from '../ui/dialog.js';
 import { Icon } from '../icons.js';
-import { Empty, Loading } from '../ui/controls.js';
-import { prefs } from '../ui/prefs.js';
+import { Empty, Loading, MenuButton } from '../ui/controls.js';
 import { createStore } from '../ui/store.js';
 import { SiteDetail } from './site-detail.js';
 
-// Shared by the toolbar and the page.
-const ui = createStore({ listHidden: prefs.get('sitesListHidden') === '1', switcher: false, linking: false });
+// Shared by the breadcrumb, the menu and the page.
+const ui = createStore({ switcher: false, linking: false });
+
+/** Opens the Link a folder dialog, from any page. */
+export const startLinking = () => ui.set({ linking: true, switcher: false });
 
 const FRAMEWORKS = ['laravel', 'symfony', 'wordpress', 'static'];
 const fwClass = (site) => {
@@ -18,9 +22,16 @@ const fwClass = (site) => {
   return FRAMEWORKS.includes(name) ? name : 'php';
 };
 export const siteHref = (name, tab) => `#/sites/${encodeURIComponent(name)}${tab ? `/${tab}` : ''}`;
+const host = (url) => url.replace(/^https?:\/\//, '').replace(/\/$/, '');
 
-export function Mark({ site }) {
-  return html`<span class="mk ${fwClass(site)}" aria-hidden="true">${site.name.slice(0, 1).toUpperCase()}</span>`;
+export function Mark({ site, large = false }) {
+  return html`<span class="mk ${fwClass(site)} ${large ? 'lg' : ''}" aria-hidden="true">${site.name.slice(0, 1).toUpperCase()}</span>`;
+}
+
+/** A site in a table: its mark, name and address. */
+export function SiteCell({ site }) {
+  return html`<div class="cell-site"><${Mark} site=${site} />
+    <div><b>${site.name}</b><span>${site.secure && html`<${Icon} name="lock" size=${11} label=${t('sites.https')} />`}${host(site.url)}</span></div></div>`;
 }
 
 /** "Laravel · PHP 8.3" */
@@ -30,45 +41,65 @@ export function siteSummary(site) {
   return [site.framework.name, line && `PHP ${line}`].filter(Boolean).join(' · ');
 }
 
-function SiteRow({ site, current, onClick, role }) {
-  return html`<a href=${siteHref(site.name)} role=${role} class="site-item ${current ? 'on' : ''}" aria-current=${current ? 'page' : undefined}
-    onClick=${(e) => { e.preventDefault(); onClick?.(); location.replace(siteHref(site.name)); }}>
-    <${Mark} site=${site} />
-    <span class="grow"><b>${site.name}</b><span class="sub">${siteSummary(site)}</span></span>
-    ${site.secure && html`<${Icon} name="lock" size=${15} label=${t('sites.https')} />`}
-  </a>`;
+/** Asks, then unlinks `site`; `done` runs once it is gone. */
+export async function unlinkSite(site, done) {
+  const ok = await confirmAction({
+    title: t('sites.unlink_title', { name: site.name }),
+    body: t('common.confirm_unlink', { name: site.name }),
+    confirmLabel: t('sites.unlink'),
+    danger: true,
+  });
+  if (ok) act(api('DELETE', `/sites/${encodeURIComponent(site.name)}`), () => { refreshAll(); done?.(); });
 }
 
-export function SitesToolbar({ route }) {
+/** Opens the site's folder (`folder`), a terminal in it (`terminal`) or an editor on it. */
+export const openSite = (name, target) => act(api('POST', `/sites/${encodeURIComponent(name)}/open`, { target }));
+
+/** The ⋯ of a site (its row in Sites, its page); `onEdit` adds Edit site when given. */
+export function siteMenu(site, { onEdit, onUnlinked } = {}) {
+  return [
+    onEdit && { label: t('site.edit_menu'), icon: 'pencil', onClick: onEdit },
+    { label: t('sites.copy_address'), icon: 'copy', onClick: () => copy(site.url) },
+    { label: t('sites.open_folder_long'), icon: 'folder-open', onClick: () => openSite(site.name, 'folder') },
+    { label: t('sites.open_terminal_long'), icon: 'square-terminal', onClick: () => openSite(site.name, 'terminal') },
+    { label: t('sites.unlink_menu'), hint: t('site.unlink_hint'), icon: 'trash-2', danger: true, divider: true, onClick: () => unlinkSite(site, onUnlinked) },
+  ];
+}
+
+/** Breadcrumb after "Sites /": the current site, a button that switches to another one. */
+export function SitesCrumbs({ route }) {
   const state = ui.use();
   const [sites, setSites] = useState(null);
   const name = route[1];
   useEffect(() => {
     if (state.switcher) api('GET', '/sites').then(setSites, () => setSites([]));
   }, [state.switcher]);
-  const toggleList = () => {
-    prefs.set('sitesListHidden', state.listHidden ? '0' : '1');
-    ui.set({ listHidden: !state.listHidden });
-  };
-  const label = state.listHidden ? t('sites.show_list') : t('sites.hide_list');
-  return html`<div class="row-flex" style="position: relative; flex-wrap: nowrap">
-    <button class="icon-btn toggle" aria-label=${label} title=${label} aria-pressed=${state.listHidden ? 'false' : 'true'} onClick=${toggleList}>
-      <${Icon} name="collapse-left" size=${16} /></button>
-    <a href="#/sites" class="small muted" style="padding-left: 4px" onClick=${(e) => { e.preventDefault(); location.replace('#/sites'); }}>${t('nav.sites')}</a>
-    ${name && html`<span class="muted" aria-hidden="true">/</span>
-      <button class="crumb" aria-haspopup="menu" aria-expanded=${state.switcher ? 'true' : 'false'} onClick=${() => ui.set({ switcher: !state.switcher })}>
-        ${name}<${Icon} name="chevron-down" size=${15} /></button>`}
-    ${state.switcher && html`
-      <div style="position: fixed; inset: 0; z-index: 14" onClick=${() => ui.set({ switcher: false })}></div>
-      <div class="menu" role="menu" aria-label=${t('sites.switch')} style="left: 44px">
-        ${sites === null ? html`<div class="palette-empty">${t('common.loading')}</div>`
-          : sites.map((s) => html`<${SiteRow} site=${s} current=${s.name === name} role="menuitem" onClick=${() => ui.set({ switcher: false })} />`)}
-        <div style="border-top: 1px solid var(--hair); margin-top: 6px; padding-top: 6px">
-          <a href="#" role="menuitem" class="site-item" style="color: var(--accent); font-weight: 600"
-            onClick=${(e) => { e.preventDefault(); ui.set({ switcher: false, linking: true }); }}><${Icon} name="plus" size=${16} />${t('sites.link_title')}</a>
-        </div>
-      </div>`}
-  </div>`;
+  useEffect(() => {
+    if (!state.switcher) return;
+    const onKey = (e) => e.key === 'Escape' && ui.set({ switcher: false });
+    addEventListener('keydown', onKey);
+    return () => removeEventListener('keydown', onKey);
+  }, [state.switcher]);
+  const close = () => ui.set({ switcher: false });
+  if (!name) return html`<span class="cur">${t('nav.sites')}</span>`;
+  return html`<a href="#/sites" onClick=${(e) => { e.preventDefault(); location.replace('#/sites'); }}>${t('nav.sites')}</a>
+    <span class="sep" aria-hidden="true">/</span>
+    <span style="position: relative">
+      <button class="crumb-btn" aria-haspopup="menu" aria-expanded=${state.switcher ? 'true' : 'false'} title=${t('sites.switch')}
+        onClick=${() => ui.set({ switcher: !state.switcher })}>${name}<${Icon} name="chevrons-up-down" size=${14} /></button>
+      ${state.switcher && html`
+        <div class="menu-catch" onClick=${close}></div>
+        <div class="menu" role="menu" aria-label=${t('sites.switch')} style="position: absolute; top: 32px; left: 0">
+          ${sites === null ? html`<div class="mh">${t('common.loading')}</div>`
+            : sites.map((s) => html`<a href=${siteHref(s.name)} role="menuitem" class="mi" key=${s.name}
+              onClick=${(e) => { e.preventDefault(); close(); location.replace(siteHref(s.name)); }}>
+              <span class="tick">${s.name === name && html`<${Icon} name="check" size=${14} />`}</span>
+              <span class="grow"><span class="lab">${s.name}</span><span class="hint">${siteSummary(s)}</span></span></a>`)}
+          <hr />
+          <a href="#" role="menuitem" class="mi" onClick=${(e) => { e.preventDefault(); startLinking(); }}>
+            <${Icon} name="plus" size=${14} /><span class="lab">${t('sites.link_title')}</span></a>
+        </div>`}
+    </span>`;
 }
 
 export function LinkDialog({ onClose, onLinked }) {
@@ -78,43 +109,83 @@ export function LinkDialog({ onClose, onLinked }) {
   const link = () => act(api('POST', '/sites', { path: path.trim(), name: name.trim() || null, php: null }), () => { onLinked(); onClose(); });
   return html`<${Dialog} title=${t('sites.link_title')} onClose=${onClose}>
     <p>${t('sites.link_hint')}</p>
-    <div class="row-flex" style="flex-wrap: nowrap">
-      <label class="field grow"><${Icon} name="folder" size=${16} />
-        <input placeholder=${t('sites.link_path')} aria-label=${t('sites.link_path')} value=${path} onInput=${(e) => setPath(e.target.value)} /></label>
-      <button class="btn" onClick=${browse}>${t('php.browse')}</button>
+    <div class="form-field">
+      <label for="link-path">${t('sites.link_path')}</label>
+      <div class="row-flex" style="flex-wrap: nowrap">
+        <label class="field grow"><${Icon} name="folder" size=${14} />
+          <input id="link-path" value=${path} spellcheck="false" onInput=${(e) => setPath(e.target.value)} /></label>
+        <button class="btn" onClick=${browse}>${t('php.browse')}</button>
+      </div>
     </div>
-    <label class="field" style="margin-top: 10px"><input placeholder=${t('sites.link_name')} aria-label=${t('sites.link_name')} value=${name} onInput=${(e) => setName(e.target.value)} /></label>
+    <div class="form-field">
+      <label for="link-name">${t('sites.link_name')}</label>
+      <div class="field"><input id="link-name" value=${name} spellcheck="false" autocomplete="off" onInput=${(e) => setName(e.target.value)} /></div>
+    </div>
     <div class="dialog-actions">
-      <button class="btn quiet" onClick=${onClose}>${t('common.cancel')}</button>
+      <button class="btn" onClick=${onClose}>${t('common.cancel')}</button>
       <button class="btn primary" disabled=${!path.trim()} onClick=${link}>${t('sites.link_button')}</button>
     </div>
   </${Dialog}>`;
 }
 
-export function Sites({ route, startJob }) {
+/** The Link a folder dialog while it is open; the app renders it once, for every page. */
+export function LinkHost() {
   const state = ui.use();
-  const [{ data: sites, error }, reload] = useApi('/sites', 5000);
-  const linking = state.linking && html`<${LinkDialog} onClose=${() => ui.set({ linking: false })} onLinked=${reload} />`;
-  if (!sites) return html`<${Loading} error=${error} />`;
-  if (sites.length === 0) {
-    return html`<div class="page-head"><h1>${t('sites.title')}</h1></div>
-      <section class="card"><${Empty} icon="globe" title=${t('sites.empty_title')}>
-        <p style="margin: 0 0 14px">${t('sites.empty')}</p>
-        <button class="btn primary" onClick=${() => ui.set({ linking: true })}><${Icon} name="plus" size=${16} />${t('sites.link_title')}</button>
-      </${Empty}></section>${linking}`;
-  }
-  const name = sites.some((s) => s.name === route[1]) ? route[1] : sites[0].name;
-  // `#/sites` (from the menu) or a removed site: show the first one, with its name in the address
-  // so the breadcrumb and the tabs know it.
-  if (route[1] !== name) queueMicrotask(() => location.replace(siteHref(name, route[2])));
-  return html`<div class="site-layout">
-    <nav class="site-list ${state.listHidden ? 'hidden' : ''}" aria-label=${t('nav.sites')} inert=${state.listHidden}>
-      <div class="site-list-head">
-        <h2 class="section-title">${t('nav.sites')}</h2><span class="small muted">${sites.length}</span><span class="grow"></span>
-        <button class="icon-btn sm" aria-label=${t('sites.link_title')} title=${t('sites.link_title')} onClick=${() => ui.set({ linking: true })}><${Icon} name="plus" size=${15} /></button>
+  return state.linking && html`<${LinkDialog} onClose=${() => ui.set({ linking: false })} onLinked=${refreshAll} />`;
+}
+
+/** `#/sites`: every linked folder. */
+function SiteList({ sites, tld }) {
+  const [filter, setFilter] = useState('');
+  const q = filter.trim().toLowerCase();
+  const shown = sites.filter((s) => !q || s.name.includes(q) || s.path.toLowerCase().includes(q));
+  const open = (name) => location.replace(siteHref(name));
+  return html`<div class="page-head">
+      <div class="grow"><h1>${t('sites.title')}</h1><p>${t('sites.subtitle', { count: sites.length, tld })}</p></div>
+      <div class="acts">
+        <label class="field" style="width: 220px"><${Icon} name="search" size=${14} />
+          <input placeholder=${t('sites.filter')} aria-label=${t('sites.filter')} value=${filter} onInput=${(e) => setFilter(e.target.value)} /></label>
+        <button class="btn primary" onClick=${startLinking}><${Icon} name="plus" size=${15} />${t('sites.link_title')}</button>
       </div>
-      ${sites.map((s) => html`<${SiteRow} site=${s} current=${s.name === name} key=${s.name} />`)}
-    </nav>
-    <${SiteDetail} key=${name} name=${name} tab=${route[2] || 'overview'} sub=${route[3]} onChanged=${reload} startJob=${startJob} />
-  </div>${linking}`;
+    </div>
+    <section class="card clip"><div class="scroll-x"><table class="table">
+      <thead><tr><th>${t('home.col_site')}</th><th>${t('sites.framework')}</th><th>PHP</th><th>Composer</th><th>${t('sites.database')}</th>
+        <th class="num">${t('home.requests_10m')}</th><th class="fit"><span class="sr-only">${t('sites.actions')}</span></th></tr></thead>
+      <tbody>${shown.map((s) => {
+        const php = res(s.php);
+        return html`<tr class="click" key=${s.name} onClick=${(e) => !e.target.closest('button, a, .menu') && open(s.name)}>
+          <td><a href=${siteHref(s.name)} class="cell-link" onClick=${(e) => { e.preventDefault(); open(s.name); }}><${SiteCell} site=${s} /></a></td>
+          <td class="t2">${s.framework.version ? `${s.framework.name} ${s.framework.version}` : s.framework.name}</td>
+          <td>${php.ok
+            ? html`<span class="badge mono ${/^[57]\./.test(php.value) ? 'warn' : ''}">${php.value}</span>${s.php_pinned && html` <span class="small muted">${t('sites.pinned')}</span>`}`
+            : html`<span class="badge danger" title=${php.error}>${t('home.no_php')}</span>`}</td>
+          <td class="mono t2">${s.composer_pinned ?? html`<span class="muted">${t('site.default')}</span>`}</td>
+          <td class="mono t2">${s.databases?.length ? s.databases.join(', ') : html`<span class="muted">—</span>`}</td>
+          <td class="num ${s.requests_10m ? '' : 'muted'}">${s.requests_10m ? s.requests_10m.toLocaleString() : t('home.idle')}</td>
+          <td><${MenuButton} label=${t('sites.more_for', { name: s.name })} items=${siteMenu(s)} /></td>
+        </tr>`;
+      })}
+      ${shown.length === 0 && html`<tr><td colspan="6"><${Empty} icon="search" title=${t('sites.no_match')} /></td></tr>`}</tbody>
+    </table></div></section>`;
+}
+
+export function Sites({ route, startJob }) {
+  const [{ data: sites, error }, reload] = useApi('/sites?databases=1', 5000);
+  const [{ data: settings }] = useApi('/settings');
+  if (!sites) return html`<div class="page-head"><div class="grow"><h1>${t('sites.title')}</h1></div></div><${Loading} error=${error} />`;
+  if (sites.length === 0) {
+    return html`<div class="page-head"><div class="grow"><h1>${t('sites.title')}</h1><p>${t('sites.subtitle_empty')}</p></div></div>
+      <section class="card"><${Empty} icon="folder-open" title=${t('sites.empty_title')}>
+        <p>${t('sites.empty')}</p>
+        <button class="btn primary" onClick=${startLinking}><${Icon} name="plus" size=${15} />${t('sites.link_title')}</button>
+      </${Empty}></section>`;
+  }
+  if (!route[1]) return html`<${SiteList} sites=${sites} tld=${settings?.tld ?? ''} />`;
+  const site = sites.find((s) => s.name === route[1]);
+  if (!site) {
+    return html`<section class="card"><${Empty} icon="globe" title=${t('sites.not_found', { name: route[1] })}>
+      <a class="btn" href="#/sites" onClick=${(e) => { e.preventDefault(); location.replace('#/sites'); }}>${t('sites.back')}</a>
+    </${Empty}></section>`;
+  }
+  return html`<${SiteDetail} key=${site.name} name=${site.name} tab=${route[2] || 'overview'} sub=${route[3]} onChanged=${reload} startJob=${startJob} />`;
 }

@@ -28,6 +28,7 @@ pub mod process;
 pub mod procinfo;
 pub mod project;
 pub mod registry;
+pub mod release_info;
 pub mod selfinstall;
 pub mod shim;
 pub mod sites;

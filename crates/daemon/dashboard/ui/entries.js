@@ -42,10 +42,10 @@ function Entry({ entry, open, onToggle }) {
   // Every entry opens: a one-line PHP warning is cut short in the row and shows whole when opened.
   return html`<div class="entry ${open ? 'open' : ''}">
     <button class="entry-row" aria-expanded=${open ? 'true' : 'false'} onClick=${onToggle}>
-      <span class="pill ${TONE[entry.level] ?? ''}">${levelLabel(entry.level)}</span>
+      <span class="badge level ${TONE[entry.level] ?? ''}">${levelLabel(entry.level)}</span>
       <span class="entry-msg">${entry.message}</span>
-      <span class="entry-time mono">${entry.time}</span>
-      <span class="entry-chevron"><${Icon} name=${open ? 'chevron-down' : 'chevron-right'} size=${15} /></span>
+      <span class="entry-time">${entry.time}</span>
+      <span class="entry-chevron"><${Icon} name="chevron-right" size=${14} /></span>
     </button>
     ${open && more && html`<pre class="entry-detail">${entry.detail.join('\n')}</pre>`}
   </div>`;
@@ -88,29 +88,31 @@ export function LogEntries({ sources, initial }) {
   });
   const current = sources.find((s) => s.id === source);
 
-  return html`
-    <div class="row-flex">
+  return html`<section class="card clip entries">
+    <div class="tools">
       <label class="sr-only" for="entries-source">${t('logs.source')}</label>
       <${Select} id="entries-source" label=${t('logs.source')} value=${source} onChange=${setSource}
         options=${sources.map((s) => ({ value: s.id, label: s.label }))} />
       ${structured && html`<${Tabs} role="radiogroup" label=${t('logs.level')} value=${level} onChange=${setLevel} tabs=${[
         { id: 'all', label: t('logs.all') },
-        { id: 'errors', label: t('logs.errors', { count: errors }) },
-        { id: 'warnings', label: t('logs.warnings', { count: warnings }) },
+        { id: 'errors', label: t('logs.errors_short'), count: errors },
+        { id: 'warnings', label: t('logs.warnings_short'), count: warnings },
       ]} />`}
-      <label class="field grow" style="flex: 1 1 220px; border-radius: 999px"><${Icon} name="search" size=${16} />
+      <label class="field sm" style="flex: 0 1 240px"><${Icon} name="search" size=${13} />
         <input placeholder=${t('logs.search')} aria-label=${t('logs.search')} value=${filter} onInput=${(e) => setFilter(e.target.value)} /></label>
-      <span class="row-flex small" style="font-weight: 600"><${Switch} checked=${paused === null} label=${t('logs.follow')}
-        onChange=${(on) => setPaused(on ? null : entries)} />${t('logs.follow')}</span>
+      <span class="grow"></span>
+      <label class="row-flex small t2" style="gap: 6px; flex-wrap: nowrap">${paused === null && html`<span class="live"><span class="dot"></span></span>`}
+        <${Switch} checked=${paused === null} label=${t('logs.follow')} onChange=${(on) => setPaused(on ? null : entries)} />${t('logs.follow')}</label>
     </div>
-    ${current && html`<p class="mono small muted" style="margin: 0">${current.path}</p>`}
-    <section class="card entries">
-      ${shown.length === 0 && html`<${Empty} icon="logs" title=${all.length ? t('logs.no_match') : t('logs.empty')} />`}
-      ${structured
-        ? shown.slice(0, 300).map((x) => (x.level
-          ? html`<${Entry} key=${x.id} entry=${x} open=${open.has(x.id)} onToggle=${() => toggle(x.id)} />`
-          : html`<div class="entry"><pre class="entry-detail">${x.message}</pre></div>`))
-        : shown.length > 0 && html`<pre class="logview">${shown.slice().reverse().map((x) => x.message).join('\n')}</pre>`}
-      ${structured && shown.length > 300 && html`<div class="card-foot"><span class="small muted">${t('logs.showing', { count: 300, total: shown.length })}</span></div>`}
-    </section>`;
+    ${shown.length === 0 && html`<${Empty} icon="scroll-text" title=${all.length ? t('logs.no_match') : t('logs.empty')} />`}
+    ${structured
+      ? shown.slice(0, 300).map((x) => (x.level
+        ? html`<${Entry} key=${x.id} entry=${x} open=${open.has(x.id)} onToggle=${() => toggle(x.id)} />`
+        : html`<div class="entry"><pre class="entry-detail">${x.message}</pre></div>`))
+      : shown.length > 0 && html`<pre class="logview">${shown.slice().reverse().map((x) => x.message).join('\n')}</pre>`}
+    <div class="foot">
+      <span>${structured && shown.length > 300 ? t('logs.showing', { count: 300, total: shown.length }) : t('logs.count', { count: shown.length })}</span>
+      <span class="grow"></span>${current && html`<span class="mono ellipsis" title=${current.path}>${current.path}</span>`}
+    </div>
+  </section>`;
 }

@@ -1,21 +1,20 @@
-// A site's databases: the card on its Overview and the Database tab.
-// They are the ones its .env names (on PHPev's MariaDB) plus the ones added by hand.
+// A site's Database tab: the databases its .env names (on PHPev's MariaDB) plus the ones added by hand.
 import { html, useState, useEffect } from '/vendor/htm-preact-standalone.mjs';
 import { t, LANG } from '../i18n.js';
 import { api } from '../api.js';
 import { size } from '../format.js';
-import { act, showToast } from '../ui/feedback.js';
+import { act, copy, showToast } from '../ui/feedback.js';
 import { confirmAction, Dialog } from '../ui/dialog.js';
-import { copy, connectionUrl, importInto, exportFrom } from '../ui/db-actions.js';
+import { connectionUrl, importInto, exportFrom, dropDatabase, emptyDatabase } from '../ui/db-actions.js';
 import { Icon } from '../icons.js';
-import { Select, Tabs, SetRow, Empty, Loading } from '../ui/controls.js';
+import { Select, Tabs, Empty, Loading, MenuButton, CopyButton } from '../ui/controls.js';
 
-/** Up to this many databases get tabs (and a size on the Overview); more get a dropdown. */
-const MAX_TABS = 5;
+/** Up to this many databases get a segmented picker; more get a dropdown. */
+const MAX_SEGMENTS = 5;
 
 const enc = encodeURIComponent;
 
-/** What the server says about one database of the site; `null` until loaded (or when `database` is null). */
+/** What the server says about one database of the site; `null` until loaded. */
 function useSiteDatabase(siteName, database, reloadKey = 0) {
   const [state, setState] = useState(null);
   useEffect(() => {
@@ -66,15 +65,15 @@ function AddDatabase({ siteName, onClose, onAdded }) {
   return html`<${Dialog} title=${t('site.add_db_title')} onClose=${onClose}>
     <p>${t('site.add_db_body')}</p>
     ${!state && html`<${Loading} height=${44} />`}
-    ${state?.error && html`<span class="pill danger" role="alert">${t('common.error', { message: state.error })}</span>`}
+    ${state?.error && html`<span class="badge danger" role="alert">${t('common.error', { message: state.error })}</span>`}
     ${data && !data.running && html`<p class="callout warn" role="alert">${t('site.add_db_stopped')}</p>`}
     ${data?.running && options.length === 0 && html`<p class="callout">${t('site.add_db_none')}</p>`}
-    ${options.length > 0 && html`<div class="row-flex" style="gap: 12px">
-      <span class="small muted" id="add-db-label">${t('site.add_db_label')}</span>
+    ${options.length > 0 && html`<div class="form-field">
+      <label id="add-db-label">${t('site.add_db_label')}</label>
       <${Select} label=${t('site.add_db_label')} value=${pick} options=${options} onChange=${setPick} />
     </div>`}
     <div class="dialog-actions">
-      <button class="btn quiet" onClick=${onClose}>${t('common.cancel')}</button>
+      <button class="btn" onClick=${onClose}>${t('common.cancel')}</button>
       <button class="btn primary" disabled=${!pick || busy} onClick=${add}>${t('site.add_db_confirm')}</button>
     </div>
   </${Dialog}>`;
@@ -84,54 +83,52 @@ function AddDatabase({ siteName, onClose, onAdded }) {
 function AddButton({ siteName, onAdded, primary = false }) {
   const [open, setOpen] = useState(false);
   return html`<button class="btn ${primary ? 'primary' : ''} sm" onClick=${() => setOpen(true)}>
-      <${Icon} name="plus" size=${15} />${t('site.add_db')}</button>
+      <${Icon} name="plus" size=${13} />${t('site.add_db')}</button>
     ${open && html`<${AddDatabase} siteName=${siteName} onClose=${() => setOpen(false)} onAdded=${(name) => { setOpen(false); onAdded(name); }} />`}`;
 }
 
-function CardRow({ siteName, db, withSize, onOpen }) {
-  const info = useSiteDatabase(siteName, withSize ? db.database : null);
-  return html`<div class="setrow">
-    <span class="row-icon" style="background: var(--accent-soft); color: var(--accent)"><${Icon} name="database" /></span>
-    <span class="row-text"><b class="mono">${db.database}</b>${withSize && html`<span>${databaseDesc(info)}</span>`}</span>
-    <button class="btn quiet sm" aria-label=${`${t('site.open_db')} ${db.database}`} onClick=${() => onOpen(db.database)}>
-      ${t('site.open_db')}<${Icon} name="chevron-right" size=${15} /></button>
-  </div>`;
-}
-
-/** Overview: every database of the site, each leading to the Database tab. */
-export function DatabaseCard({ d, onOpen, onAdded }) {
-  const dbs = d.site_databases;
-  // A connection to another server, or a database taken off the tab, says nothing here.
-  const other = dbs.length === 0 && d.databases.find((x) => x.database && !x.local);
-  const status = d.mariadb_version
-    ? html`<span class="pill ok"><span class="dot ok"></span>MariaDB ${d.mariadb_version.split('.').slice(0, 2).join('.')}</span>`
-    : html`<span class="pill">${t('site.db_stopped')}</span>`;
-  return html`<section class="card">
-    <div class="card-head"><h2>${t('site.database')}</h2><span class="grow"></span>${dbs.length > 0 && status}</div>
-    ${dbs.length === 0 && html`<${SetRow} icon="database" title=${other ? other.database : t('site.db_none')}
-      desc=${other ? t('site.db_elsewhere', { connection: other.connection, host: other.host }) : t('site.db_none_hint')} />`}
-    ${dbs.map((db) => html`<${CardRow} key=${db.database} siteName=${d.site.name} db=${db} withSize=${dbs.length <= MAX_TABS} onOpen=${onOpen} />`)}
-    <div class="card-foot"><${AddButton} siteName=${d.site.name} onAdded=${onAdded} /></div>
+function Tables({ info }) {
+  const [filter, setFilter] = useState('');
+  const tables = info?.tables ?? [];
+  const q = filter.trim().toLowerCase();
+  const shown = tables.filter((x) => !q || x.name.toLowerCase().includes(q));
+  return html`<section class="card clip">
+    <div class="card-head"><h2>${t('site.tables')}</h2>${info?.tables && html`<span class="sub">${tables.length}</span>`}<span class="grow"></span>
+      ${tables.length > 8 && html`<label class="field sm" style="width: 180px"><${Icon} name="search" size=${13} />
+        <input placeholder=${t('site.filter_tables')} aria-label=${t('site.filter_tables')} value=${filter} onInput=${(e) => setFilter(e.target.value)} /></label>`}</div>
+    ${!info ? html`<div class="card-body"><${Loading} height=${120} /></div>`
+      : info.error ? html`<div class="card-body"><span class="badge danger">${info.error}</span></div>`
+      : tables.length === 0 ? html`<${Empty} icon="database" title=${databaseDesc(info)} />`
+      : html`<div class="scroll-x"><table class="table dense">
+        <thead><tr><th>${t('site.table')}</th><th class="num">${t('site.rows')}</th><th class="num">${t('site.size')}</th></tr></thead>
+        <tbody>${shown.map((x) => html`<tr key=${x.name}><td class="mono">${x.name}</td><td class="num mono t2">${x.rows.toLocaleString(LANG)}</td>
+          <td class="num mono muted">${size(x.bytes)}</td></tr>`)}
+          ${shown.length === 0 && html`<tr><td colspan="3" class="muted">${t('site.no_table_match')}</td></tr>`}</tbody>
+      </table></div>`}
   </section>`;
 }
 
-/** The database tab: switch between the site's databases, connect to, import, export, tables. */
+/** The database tab: switch between the site's databases, import, export, tables, connect from another app. */
 export function Database({ d, current, onPick, onChanged, startJob }) {
   const dbs = d.site_databases;
   const found = dbs.find((x) => x.database.toLowerCase() === (current ?? '').toLowerCase()) ?? dbs[0];
   const [version, setVersion] = useState(0);
-  const info = useSiteDatabase(d.site.name, found.database, version);
+  const info = useSiteDatabase(d.site.name, found?.database, version);
+  const refresh = () => setVersion((v) => v + 1);
+
+  if (!found) {
+    // A connection to another server says where it goes; otherwise there is nothing yet.
+    const other = d.databases.find((x) => x.database && !x.local);
+    return html`<section class="card"><${Empty} icon="database" title=${other ? other.database : t('site.db_none')}>
+      <p>${other ? t('site.db_elsewhere', { connection: other.connection, host: other.host }) : t('site.db_none_hint')}</p>
+      <${AddButton} siteName=${d.site.name} onAdded=${(name) => { onChanged(); onPick(name); }} />
+    </${Empty}></section>`;
+  }
+
   const port = String(info?.port ?? 3306);
   const url = connectionUrl(found.user, port, found.database);
   const base = `/sites/${enc(d.site.name)}/database`;
-  const rows = [
-    ['Host', '127.0.0.1'],
-    [t('site.port'), port],
-    [t('site.user'), found.user],
-    ['Database', found.database],
-    [t('site.connection'), url],
-    [t('site.terminal'), `mysql ${found.database}`],
-  ];
+  const fromEnv = d.databases.some((x) => x.local && x.database?.toLowerCase() === found.database.toLowerCase());
   const detach = async () => {
     const ok = await confirmAction({
       title: t('site.db_detach_title', { db: found.database }),
@@ -142,41 +139,57 @@ export function Database({ d, current, onPick, onChanged, startJob }) {
     const next = dbs.find((x) => x !== found);
     act(api('DELETE', `/sites/${enc(d.site.name)}/databases/${enc(found.database)}`), () => { onChanged(); if (next) onPick(next.database); });
   };
-  const choices = dbs.map((x) => ({ id: x.database, label: x.database }));
+  const menu = [
+    { label: t('site.copy_connection'), icon: 'link', onClick: () => copy(url) },
+    { label: t('site.db_terminal'), icon: 'square-terminal', disabled: !info?.exists, onClick: () => act(api('POST', `/mariadb/databases/${enc(found.database)}/terminal`)) },
+    { label: t('site.db_empty'), icon: 'eraser', disabled: !info?.exists || !info.tables?.length, onClick: () => emptyDatabase(found.database, refresh) },
+    { label: t('site.db_detach'), icon: 'x', hint: t('site.db_detach_hint'), divider: true, onClick: detach },
+    { label: t('services.db_drop_menu'), icon: 'trash-2', danger: true, disabled: !info?.exists,
+      onClick: () => dropDatabase(found.database, [d.site.name], () => { onChanged(); refresh(); }) },
+  ];
+  const rows = [
+    ['Host', '127.0.0.1'],
+    [t('site.port'), port],
+    [t('site.user'), found.user],
+    [t('site.password'), null],
+    ['Database', found.database],
+    [t('site.terminal'), `mysql ${found.database}`],
+  ];
 
   return html`
-    <div class="row-flex" style="gap: 12px">
-      ${dbs.length > MAX_TABS
+    <div class="row-flex">
+      <span class="small muted" id="site-db-label">${t('site.database')}</span>
+      ${dbs.length > MAX_SEGMENTS
         ? html`<${Select} label=${t('site.databases_of_site')} value=${found.database} onChange=${onPick}
             options=${dbs.map((x) => ({ value: x.database, label: x.database }))} />`
-        : html`<${Tabs} role="radiogroup" label=${t('site.databases_of_site')} value=${found.database} onChange=${onPick} tabs=${choices} />`}
+        : html`<${Tabs} role="radiogroup" label=${t('site.databases_of_site')} value=${found.database} onChange=${onPick}
+            tabs=${dbs.map((x) => ({ id: x.database, label: html`<span class="mono">${x.database}</span>` }))} />`}
       <span class="grow"></span>
       <${AddButton} siteName=${d.site.name} onAdded=${(name) => { onChanged(); onPick(name); }} />
     </div>
+    <section class="card"><div class="setrow">
+      <span class="row-icon"><${Icon} name="database" /></span>
+      <span class="row-text"><b class="mono">${found.database}</b><span>${databaseDesc(info)} · ${fromEnv ? t('site.db_from_env') : t('site.db_by_hand')}</span></span>
+      <button class="btn sm" disabled=${!info?.mariadb_running} onClick=${() => importInto(base, found.database, startJob, refresh)}>
+        <${Icon} name="upload" size=${13} />${t('site.import')}</button>
+      <button class="btn sm" disabled=${!info?.exists || info.tables.length === 0} title=${info?.exists && info.tables.length === 0 ? t('site.export_nothing') : undefined}
+        onClick=${() => exportFrom(base, found.database, startJob)}><${Icon} name="download" size=${13} />${t('site.export')}</button>
+      <${MenuButton} label=${t('site.db_more', { db: found.database })} items=${menu} />
+    </div></section>
     <div class="cols">
-    <div class="col-side"><section class="card" style="overflow: hidden">
-      <div class="card-head" style="padding-bottom: 10px"><h2>${t('site.connect')}</h2></div>
-      <p class="small muted" style="margin: 0; padding: 0 22px 10px">${t('site.connect_hint')}</p>
-      ${rows.map(([k, v]) => html`<div class="copyline"><span class="key">${k}</span><span class="val mono">${v}</span>
-        <button class="icon-btn ghost sm" aria-label=${`${t('common.copy')} ${k}`} title=${t('common.copy')} onClick=${() => copy(v)}><${Icon} name="copy" size=${15} /></button></div>`)}
-      <div class="copyline"><span class="key">${t('site.password')}</span><span class="val muted">${found.has_password ? t('site.password_set') : t('site.password_empty')}</span></div>
-      <div class="card-foot">
-        <button class="btn primary sm" disabled=${!info?.mariadb_running} onClick=${() => importInto(base, found.database, startJob, () => setVersion(version + 1))}>
-          <${Icon} name="upload" size=${15} />${t('site.import_sql')}</button>
-        <button class="btn sm" disabled=${!info?.exists} onClick=${() => exportFrom(base, found.database, startJob)}><${Icon} name="download" size=${15} />${t('site.export')}</button>
-        <span class="grow"></span>
-        <button class="btn link-danger sm" onClick=${detach}>${t('site.db_detach')}</button>
-      </div>
-    </section></div>
-    <div class="col-main"><section class="card" style="overflow: hidden">
-      <div class="card-head" style="padding-bottom: 6px"><h2>${t('site.tables')}</h2><span class="small muted">${databaseDesc(info)}</span></div>
-      ${!info ? html`<div style="padding: 0 22px 18px"><${Loading} height=${120} /></div>`
-        : info.error ? html`<div style="padding: 0 22px 18px"><span class="pill danger">${info.error}</span></div>`
-        : info.tables.length === 0 ? html`<${Empty} icon="database" title=${databaseDesc(info)} />`
-        : html`<div class="scroll-x"><table class="table">
-          <thead><tr><th>${t('site.table')}</th><th class="num">${t('site.rows')}</th><th class="num">${t('site.size')}</th></tr></thead>
-          <tbody>${info.tables.map((x) => html`<tr><td class="mono">${x.name}</td><td class="num">${x.rows.toLocaleString(LANG)}</td><td class="num">${size(x.bytes)}</td></tr>`)}</tbody>
-        </table></div>`}
-    </section></div>
-  </div>`;
+      <${Tables} info=${info} />
+      <section class="card">
+        <div class="card-head"><h2>${t('site.connection')}</h2></div>
+        <div class="kv">
+          ${rows.map(([k, v]) => html`<span class="k">${k}</span>
+            ${v === null
+              ? html`<span class="v muted">${found.has_password ? t('site.password_set') : t('site.password_empty')}</span><span class="a"></span>`
+              : html`<span class="v">${v}</span><span class="a"><${CopyButton} text=${v} label=${k} /></span>`}`)}
+        </div>
+        <div class="card-body" style="border-top: 1px solid var(--line)">
+          <p class="muted small" style="margin: 0 0 10px">${t('site.connect_hint')}</p>
+          <button class="btn sm" onClick=${() => copy(url)}><${Icon} name="link" size=${13} />${t('site.copy_connection')}</button>
+        </div>
+      </section>
+    </div>`;
 }

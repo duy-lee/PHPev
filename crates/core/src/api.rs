@@ -34,6 +34,12 @@ pub struct SiteInfo {
     /// PHP requests in the last 10 minutes (only filled by `GET /sites`).
     #[serde(default)]
     pub requests_10m: u64,
+    /// The same, in 30 steps of 20 seconds, oldest first (only filled by `GET /sites`).
+    #[serde(default)]
+    pub requests_trend: Vec<u32>,
+    /// PHPev databases of the site (only filled by `GET /sites?databases=1`: it reads project files).
+    #[serde(default)]
+    pub databases: Vec<String>,
 }
 
 /// Everything the site page shows (`GET /sites/<name>`).
@@ -264,6 +270,8 @@ pub struct PhpVersionInfo {
     pub default: bool,
     /// Running php-cgi workers.
     pub workers: usize,
+    /// Their private memory together.
+    pub workers_memory_kb: u64,
     /// Linked sites that lose their PHP if this version is removed.
     pub pinned_by: Vec<String>,
 }
@@ -325,6 +333,8 @@ pub struct IniFile {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MariaDbInfo {
     pub installed: Vec<String>,
+    /// What was saved at install time, for the installed versions that have it.
+    pub releases: Vec<crate::release_info::ReleaseInfo>,
     /// Active major from config (`11.4`).
     pub active: Option<String>,
     pub port: u16,
@@ -457,6 +467,23 @@ pub struct StatusCounts {
     pub s3xx: u32,
     pub s4xx: u32,
     pub s5xx: u32,
+}
+
+/// One request of the site's request list (`GET /metrics/recent`).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RequestEntry {
+    /// Unix time (ms) the response started.
+    pub at_ms: u64,
+    pub method: String,
+    /// Path without query string (the query is never kept).
+    pub path: String,
+    pub status: u16,
+    /// Time to the response headers.
+    pub ms: f64,
+    /// Body size, when the response announced it.
+    pub bytes: Option<u64>,
+    /// Served by PHP (false: a static file).
+    pub php: bool,
 }
 
 /// A route is a normalized path: `/users/42` → `/users/{n}`.

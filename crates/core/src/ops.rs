@@ -10,6 +10,7 @@ use crate::ca::{self, Ca};
 use crate::config::{self, Config, Site};
 use crate::layout::Layout;
 use crate::net::Http;
+use crate::release_info::{self, ReleaseInfo};
 use crate::{clock, composer, elevate, hosts, mariadb, php, sites, version};
 
 /// Receives progress from long operations.
@@ -41,6 +42,13 @@ fn not_found(msg: String) -> io::Error {
 
 // ---------------------------------------------------------------- PHP
 
+/// Saves what is known about a release just installed; the install stands even if this fails.
+fn save_release_info(dir: &Path, info: ReleaseInfo, r: &mut dyn Report) {
+    if let Err(e) = release_info::save(dir, &info) {
+        r.info(&format!("warning: could not save {}: {e}", release_info::FILE));
+    }
+}
+
 /// Installs PHP `wanted` (`8.4` or `8.4.27`) with VC++ runtime, CA bundle and
 /// php.ini; becomes the default if none is set. Returns the installed version.
 pub fn install_php(http: &Http, layout: &Layout, wanted: &str, r: &mut dyn Report) -> io::Result<String> {
@@ -55,10 +63,25 @@ pub fn install_php(http: &Http, layout: &Layout, wanted: &str, r: &mut dyn Repor
     }
     ensure_cacert(http, layout, r)?;
     match php::install(http, layout, release, &mut |d, t| r.progress(&release.zip, d, t))? {
-        Some(stats) => r.info(&format!(
-            "unpacked {} files, skipped {} not needed",
-            stats.files, stats.skipped
-        )),
+        Some(stats) => {
+            save_release_info(
+                &php::version_dir(layout, &release.version),
+                ReleaseInfo {
+                    version: release.version.clone(),
+                    installed: clock::today(),
+                    url: php::download_url(release),
+                    sha256: release.sha256.clone(),
+                    toolset: Some(release.toolset.clone()),
+                    archived: Some(release.archived),
+                    ..Default::default()
+                },
+                r,
+            );
+            r.info(&format!(
+                "unpacked {} files, skipped {} not needed",
+                stats.files, stats.skipped
+            ));
+        }
         None => r.info("already installed"),
     }
     if php::write_php_ini(layout, &release.version)? {
@@ -477,10 +500,25 @@ pub fn install_mariadb(http: &Http, layout: &Layout, wanted: &str, r: &mut dyn R
     r.info(&format!("MariaDB {}", release.version));
     let label = format!("mariadb-{}-winx64.zip", release.version);
     match mariadb::install(http, layout, &release, &mut |d, t| r.progress(&label, d, t))? {
-        Some(stats) => r.info(&format!(
-            "unpacked {} files, skipped {} not needed",
-            stats.files, stats.skipped
-        )),
+        Some(stats) => {
+            save_release_info(
+                &mariadb::version_dir(layout, &release.version),
+                ReleaseInfo {
+                    version: release.version.clone(),
+                    installed: clock::today(),
+                    url: release.url.clone(),
+                    sha256: release.sha256.clone(),
+                    lts: Some(info.is_lts()),
+                    eol: info.release_eol_date.clone(),
+                    ..Default::default()
+                },
+                r,
+            );
+            r.info(&format!(
+                "unpacked {} files, skipped {} not needed",
+                stats.files, stats.skipped
+            ));
+        }
         None => r.info("already installed"),
     }
     if mariadb::init_data_dir(layout, &release.version)? {
@@ -652,7 +690,20 @@ pub fn install_composer(http: &Http, layout: &Layout, wanted: Option<&str>, r: &
         r.info(&format!("Composer {found} is already installed"));
     } else {
         r.info(&format!("Composer {found}"));
-        composer::install_version(http, layout, &found, &mut |d, t| r.progress(composer::PHAR, d, t))?;
+        let sha256 = composer::install_version(http, layout, &found, &mut |d, t| r.progress(composer::PHAR, d, t))?;
+        save_release_info(
+            &composer::version_dir(layout, &found),
+            ReleaseInfo {
+                version: found.clone(),
+                installed: clock::today(),
+                url: composer::download_url(&found),
+                sha256,
+                lts: Some(composer::is_lts(&found)),
+                min_php: Some(composer::min_php(&found).to_owned()),
+                ..Default::default()
+            },
+            r,
+        );
     }
     let made_default = config::update(&layout.config_file(), |c| {
         let none = c.composer.is_none();

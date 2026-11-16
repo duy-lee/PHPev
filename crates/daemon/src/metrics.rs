@@ -3,7 +3,8 @@
 //! Two structures, both updated under one short lock per request:
 //! * per-second aggregates (count, status classes, latency histograms) for the
 //!   last 10 minutes — accurate at any request rate, O(1) per request;
-//! * a ring buffer of the last `CAPACITY` requests, only for "slowest routes".
+//! * a ring buffer of the last `CAPACITY` requests, for "slowest routes" and
+//!   the request list of a site.
 //!
 //! Statistics are computed when someone looks (the dashboard), never per request.
 
@@ -11,7 +12,7 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use phpev_core::api::{RequestStats, RouteStats, StatusCounts};
+use phpev_core::api::{RequestEntry, RequestStats, RouteStats, StatusCounts};
 
 /// Requests kept for route statistics (lost on daemon restart; decided 2026-10-23).
 pub const CAPACITY: usize = 2_000;
@@ -35,6 +36,8 @@ pub struct Record {
     pub path: String,
     pub status: u16,
     pub micros: u32,
+    /// Body size when the response announces it (`Content-Length` or a body of known length).
+    pub bytes: Option<u64>,
     pub php: bool,
 }
 
@@ -214,21 +217,46 @@ impl Metrics {
         inner.ring.push_back(r);
     }
 
-    /// PHP requests per host over the last `window` seconds (Home's site cards).
-    pub fn host_counts(&self, window: u32) -> HashMap<String, u64> {
-        let since = (now_ms() / 1000).saturating_sub(u64::from(window.clamp(1, KEEP_SECONDS as u32)));
+    /// The newest `limit` requests kept in memory, newest first, for one host or all.
+    pub fn recent(&self, host: Option<&str>, include_static: bool, limit: usize) -> Vec<RequestEntry> {
+        let inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        inner
+            .ring
+            .iter()
+            .rev()
+            .filter(|r| (include_static || r.php) && host.is_none_or(|h| r.host == h))
+            .take(limit)
+            .map(|r| RequestEntry {
+                at_ms: r.at_ms,
+                method: r.method.to_owned(),
+                path: r.path.clone(),
+                status: r.status,
+                ms: f64::from(r.micros) / 1000.0,
+                bytes: r.bytes,
+                php: r.php,
+            })
+            .collect()
+    }
+
+    /// PHP requests per host over the last `window` seconds (the site tables):
+    /// the total, and the same split into `buckets` counts, oldest first.
+    pub fn host_activity(&self, window: u32, buckets: usize) -> HashMap<String, (u64, Vec<u32>)> {
+        let window = u64::from(window.clamp(1, KEEP_SECONDS as u32));
+        let buckets = buckets.max(1);
+        let since = (now_ms() / 1000).saturating_sub(window);
         let inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         inner
             .by_host
             .iter()
             .map(|(host, series)| {
-                let count = series
-                    .0
-                    .iter()
-                    .filter(|s| s.sec >= since)
-                    .map(|s| u64::from(s.php.count))
-                    .sum();
-                (host.clone(), count)
+                let mut trend = vec![0u32; buckets];
+                let mut total = 0u64;
+                for s in series.0.iter().filter(|s| s.sec >= since) {
+                    let slot = (((s.sec - since) * buckets as u64) / window).min(buckets as u64 - 1) as usize;
+                    trend[slot] += s.php.count;
+                    total += u64::from(s.php.count);
+                }
+                (host.clone(), (total, trend))
             })
             .collect()
     }
@@ -389,8 +417,46 @@ mod tests {
             path: path.into(),
             status,
             micros: ms * 1000,
+            bytes: None,
             php,
         }
+    }
+
+    #[test]
+    fn host_activity_splits_the_window_into_buckets() {
+        let m = Metrics::default();
+        let now = now_ms();
+        m.record(rec(now - 590_000, "/old", 200, 1, true));
+        m.record(rec(now - 1_000, "/new", 200, 1, true));
+        m.record(rec(now - 1_000, "/new.css", 200, 1, false));
+        let (total, trend) = m.host_activity(600, 30)["a.localhost"].clone();
+        assert_eq!(total, 2);
+        assert_eq!(trend.len(), 30);
+        assert_eq!((trend[0], trend[29], trend.iter().sum::<u32>()), (1, 1, 2));
+    }
+
+    #[test]
+    fn recent_lists_the_newest_of_one_host_first() {
+        let m = Metrics::default();
+        let now = now_ms();
+        m.record(rec(now - 3000, "/a", 200, 5, true));
+        m.record(rec(now - 2000, "/style.css", 200, 1, false));
+        m.record(Record {
+            host: "b.localhost".into(),
+            ..rec(now - 1500, "/b", 500, 9, true)
+        });
+        m.record(Record {
+            bytes: Some(512),
+            ..rec(now - 1000, "/c", 404, 2, true)
+        });
+        let paths = |v: Vec<RequestEntry>| v.into_iter().map(|e| e.path).collect::<Vec<_>>();
+        assert_eq!(
+            paths(m.recent(Some("a.localhost"), true, 10)),
+            ["/c", "/style.css", "/a"]
+        );
+        assert_eq!(paths(m.recent(Some("a.localhost"), false, 10)), ["/c", "/a"]);
+        assert_eq!(paths(m.recent(None, false, 2)), ["/c", "/b"]);
+        assert_eq!(m.recent(Some("a.localhost"), true, 1)[0].bytes, Some(512));
     }
 
     fn close(actual: Option<f64>, expected: f64) -> bool {
