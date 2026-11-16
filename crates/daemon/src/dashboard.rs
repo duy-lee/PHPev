@@ -859,6 +859,37 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             let name = blocking(move || mariadb::create_database(&l, &server.version, server.port, &r.name)).await?;
             message(tr("msg.database_created", &[("name", &name)]))
         }
+        (Method::POST, ["mariadb", "databases", name, "terminal"]) => {
+            let server = running_mariadb(d).await?;
+            if !mariadb::is_safe_db_name(name) {
+                return Err(ApiError(
+                    StatusCode::BAD_REQUEST,
+                    format!("unsupported database name `{name}`"),
+                ));
+            }
+            let (l, n) = (layout.clone(), name.to_string());
+            blocking(move || {
+                let exe = mariadb::version_dir(&l, &server.version).join(r"bin\mariadb.exe");
+                let port = format!("--port={}", server.port);
+                let before = crate::foreground::windows();
+                launch::open_console(
+                    &format!("MariaDB {n}"),
+                    &exe,
+                    &[
+                        "--no-defaults",
+                        "--user=root",
+                        "--host=127.0.0.1",
+                        &port,
+                        "--default-character-set=utf8mb4",
+                        &n,
+                    ],
+                )?;
+                crate::foreground::raise_new_window(before, None);
+                Ok(())
+            })
+            .await?;
+            message("opened")
+        }
         (Method::DELETE, ["mariadb", "databases", name]) => {
             let server = running_mariadb(d).await?;
             let (l, n) = (layout.clone(), name.to_string());

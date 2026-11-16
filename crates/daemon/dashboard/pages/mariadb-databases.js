@@ -3,7 +3,7 @@ import { html, useState, useEffect } from '/vendor/htm-preact-standalone.mjs';
 import { t } from '../i18n.js';
 import { api } from '../api.js';
 import { size } from '../format.js';
-import { copy, showToast } from '../ui/feedback.js';
+import { act, copy, showToast } from '../ui/feedback.js';
 import { connectionUrl, importInto, exportFrom, dropDatabase } from '../ui/db-actions.js';
 import { Icon } from '../icons.js';
 import { Empty, Loading, MenuButton, SiteLinks } from '../ui/controls.js';
@@ -53,7 +53,7 @@ export function DatabasesPanel({ major, running, port, startJob, onCount }) {
   const soon = t('site.db_soon');
   const menu = (db) => [
     { label: t('site.copy_connection'), icon: 'link', disabled: !running, title: stopped, onClick: () => copy(connectionUrl('root', port, db.name)) },
-    { label: t('site.db_terminal'), icon: 'square-terminal', disabled: true, title: soon },
+    { label: t('site.db_terminal'), icon: 'square-terminal', disabled: !running, title: stopped, onClick: () => act(api('POST', `/mariadb/databases/${encodeURIComponent(db.name)}/terminal`)) },
     { label: t('site.db_empty'), icon: 'eraser', disabled: true, title: soon },
     { label: t('services.db_drop_menu'), icon: 'trash-2', danger: true, divider: true, disabled: !running, title: running ? '' : t('services.db_switch_to_manage'),
       onClick: () => dropDatabase(db.name, db.used_by, load) },

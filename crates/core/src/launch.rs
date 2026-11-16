@@ -129,6 +129,25 @@ pub fn open_terminal(dir: &Path) -> io::Result<()> {
     }
 }
 
+/// Runs console program `exe` with `args` in a window of its own (Windows
+/// Terminal when it is the default terminal). `start` gives the program a real
+/// console; the title and arguments must be plain words, as cmd reads them.
+pub fn open_console(title: &str, exe: &Path, args: &[&str]) -> io::Result<()> {
+    const SPECIAL: [char; 8] = ['"', '%', '&', '|', '<', '>', '^', '!'];
+    let exe_text = exe.display().to_string();
+    if title.contains(SPECIAL)
+        || args.iter().any(|a| a.contains(SPECIAL) || a.contains(' '))
+        || exe_text.contains(['"', '%'])
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "unsupported characters for a console",
+        ));
+    }
+    let line = format!("/c start \"{title}\" \"{exe_text}\" {}", args.join(" "));
+    spawn(Command::new(system32("cmd.exe")).raw_arg(line), CREATE_NO_WINDOW)
+}
+
 fn windows_dir() -> PathBuf {
     PathBuf::from(std::env::var_os("SystemRoot").unwrap_or_else(|| r"C:\Windows".into()))
 }

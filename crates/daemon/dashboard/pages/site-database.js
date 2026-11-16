@@ -142,7 +142,7 @@ export function Database({ d, current, onPick, onChanged, startJob }) {
   const soon = t('site.db_soon');
   const menu = [
     { label: t('site.copy_connection'), icon: 'link', onClick: () => copy(url) },
-    { label: t('site.db_terminal'), icon: 'square-terminal', disabled: true, title: soon },
+    { label: t('site.db_terminal'), icon: 'square-terminal', disabled: !info?.exists, onClick: () => act(api('POST', `/mariadb/databases/${enc(found.database)}/terminal`)) },
     { label: t('site.db_empty'), icon: 'eraser', disabled: true, title: soon },
     { label: t('site.db_detach'), icon: 'x', hint: t('site.db_detach_hint'), divider: true, onClick: detach },
     { label: t('services.db_drop_menu'), icon: 'trash-2', danger: true, disabled: !info?.exists,
