@@ -455,15 +455,10 @@ impl Daemon {
 
     /// Stops PHPev and starts it again (new ports), reopening the dashboard.
     /// A helper process waits for this one to exit; the reply that asked for
-    /// the restart goes out first.
+    /// the restart goes out first. The same executable starts again, so a
+    /// restart never switches to another copy (an installed one, a dev build).
     pub(crate) fn restart(&self) -> io::Result<()> {
-        let installed = self.layout.shims().join("phpev-daemon.exe");
-        let exe = if installed.is_file() {
-            installed
-        } else {
-            std::env::current_exe()?
-        };
-        let mut cmd = std::process::Command::new(exe);
+        let mut cmd = std::process::Command::new(std::env::current_exe()?);
         cmd.arg(launcher::RESTART_ARG);
         launcher::spawn(cmd)?;
         log_info!("restarting");
