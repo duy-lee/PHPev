@@ -45,6 +45,18 @@ export async function dropDatabase(name, usedBy, done) {
   if (ok) act(api('DELETE', `/mariadb/databases/${encodeURIComponent(name)}`), done);
 }
 
+/** Empties a database of PHPev's MariaDB (dropped and created again) once its name is typed. */
+export async function emptyDatabase(name, done) {
+  const ok = await confirmAction({
+    title: t('services.db_empty_title', { name }),
+    body: t('services.db_empty_body', { name }),
+    confirmLabel: t('services.db_empty'),
+    danger: true,
+    confirmWord: name,
+  });
+  if (ok) act(api('POST', `/mariadb/databases/${encodeURIComponent(name)}/empty`), done);
+}
+
 /** Asks where to save, then follows the export. */
 export function exportFrom(base, database, startJob) {
   api('POST', `${base}/export`, { name: database })

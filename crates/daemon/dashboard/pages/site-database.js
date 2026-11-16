@@ -5,7 +5,7 @@ import { api } from '../api.js';
 import { size } from '../format.js';
 import { act, copy, showToast } from '../ui/feedback.js';
 import { confirmAction, Dialog } from '../ui/dialog.js';
-import { connectionUrl, importInto, exportFrom, dropDatabase } from '../ui/db-actions.js';
+import { connectionUrl, importInto, exportFrom, dropDatabase, emptyDatabase } from '../ui/db-actions.js';
 import { Icon } from '../icons.js';
 import { Select, Tabs, Empty, Loading, MenuButton, CopyButton } from '../ui/controls.js';
 
@@ -139,11 +139,10 @@ export function Database({ d, current, onPick, onChanged, startJob }) {
     const next = dbs.find((x) => x !== found);
     act(api('DELETE', `/sites/${enc(d.site.name)}/databases/${enc(found.database)}`), () => { onChanged(); if (next) onPick(next.database); });
   };
-  const soon = t('site.db_soon');
   const menu = [
     { label: t('site.copy_connection'), icon: 'link', onClick: () => copy(url) },
     { label: t('site.db_terminal'), icon: 'square-terminal', disabled: !info?.exists, onClick: () => act(api('POST', `/mariadb/databases/${enc(found.database)}/terminal`)) },
-    { label: t('site.db_empty'), icon: 'eraser', disabled: true, title: soon },
+    { label: t('site.db_empty'), icon: 'eraser', disabled: !info?.exists || !info.tables?.length, onClick: () => emptyDatabase(found.database, refresh) },
     { label: t('site.db_detach'), icon: 'x', hint: t('site.db_detach_hint'), divider: true, onClick: detach },
     { label: t('services.db_drop_menu'), icon: 'trash-2', danger: true, disabled: !info?.exists,
       onClick: () => dropDatabase(found.database, [d.site.name], () => { onChanged(); refresh(); }) },

@@ -890,6 +890,12 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             .await?;
             message("opened")
         }
+        (Method::POST, ["mariadb", "databases", name, "empty"]) => {
+            let server = running_mariadb(d).await?;
+            let (l, n) = (layout.clone(), name.to_string());
+            blocking(move || mariadb::empty_database(&l, &server.version, server.port, &n)).await?;
+            message(tr("msg.database_emptied", &[("name", &name)]))
+        }
         (Method::DELETE, ["mariadb", "databases", name]) => {
             let server = running_mariadb(d).await?;
             let (l, n) = (layout.clone(), name.to_string());
