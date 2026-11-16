@@ -55,7 +55,7 @@ export function MariaDb({ startJob, route = [] }) {
         ? html`<span class="mono t2">${running.version}</span> ${t('services.on')} <span class="mono t2">127.0.0.1:${data.port}</span> · ${mb(running.memory_kb)} · ${t('services.starts_with')}`
         : data.installed.length ? t('services.stopped_hint_long') : t('services.subtitle')}</p></div>
     ${data?.installed.length > 0 && html`<div class="acts">
-      <button class="btn" disabled title=${t('site.mariadb_restart_soon_here')}><${Icon} name="rotate-cw" size=${15} />${t('site.restart')}</button>
+      <button class="btn" disabled=${!running} title=${running ? t('site.mariadb_restart_hint') : ''} onClick=${() => act(api('POST', '/mariadb/restart'), reload)}><${Icon} name="rotate-cw" size=${15} />${t('site.restart')}</button>
       ${running
         ? html`<button class="btn" onClick=${() => act(api('POST', '/mariadb/stop'), reload)}><${Icon} name="square" size=${13} />${t('common.stop')}</button>`
         : html`<button class="btn primary" onClick=${() => act(api('POST', '/mariadb/start'), reload)}><${Icon} name="play" size=${13} />${t('common.start')}</button>`}

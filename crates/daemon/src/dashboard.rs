@@ -870,6 +870,15 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             d.daemon.remember_db(true);
             message(msg)
         }
+        (Method::POST, ["mariadb", "restart"]) => {
+            let Some(server) = d.daemon.status().await.mariadb else {
+                return Err(ApiError(StatusCode::CONFLICT, tr("msg.mariadb_not_running", &[])));
+            };
+            d.daemon.db_stop().await?;
+            d.daemon.db_start().await?;
+            d.daemon.remember_db(true);
+            message(tr("msg.mariadb_restarted", &[("version", &server.version)]))
+        }
         (Method::POST, ["mariadb", "stop"]) => {
             let msg = d.daemon.db_stop().await?;
             d.daemon.remember_db(false);

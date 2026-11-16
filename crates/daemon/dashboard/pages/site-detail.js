@@ -1,7 +1,7 @@
 // The page of one site: header, then Overview / Requests / Logs / Database.
 import { html, useState, useEffect } from '/vendor/htm-preact-standalone.mjs';
 import { t, LANG } from '../i18n.js';
-import { api, res, useApi } from '../api.js';
+import { api, res, useApi, refreshAll } from '../api.js';
 import { mb, fmtMs, size } from '../format.js';
 import { act, showToast } from '../ui/feedback.js';
 import { confirmAction } from '../ui/dialog.js';
@@ -133,7 +133,7 @@ function MariaDbRow({ d, onOpenDb }) {
           onClick=${(e) => { e.preventDefault(); onOpenDb(n); }}>${n}</a>`)}`} · ${t('site.mariadb_shared')}</span></span>
     <span class="status"><span class="dot ${running ? 'ok' : ''}"></span>${running ? t('common.running') : t('common.stopped')}</span>
     ${running
-      ? html`<button class="btn sm" disabled title=${t('site.mariadb_restart_soon')}><${Icon} name="rotate-cw" size=${13} />${t('site.restart')}</button>`
+      ? html`<button class="btn sm" title=${t('site.mariadb_restart_hint')} onClick=${() => act(api('POST', '/mariadb/restart'), refreshAll)}><${Icon} name="rotate-cw" size=${13} />${t('site.restart')}</button>`
       : html`<a class="btn sm" href="#/services/mariadb" onClick=${go('#/services/mariadb')}>${t('site.manage')}</a>`}
   </div>`;
 }
