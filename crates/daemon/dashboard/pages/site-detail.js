@@ -2,12 +2,11 @@
 import { html, useState, useEffect } from '/vendor/htm-preact-standalone.mjs';
 import { t, LANG } from '../i18n.js';
 import { api, res, useApi } from '../api.js';
-import { mb, fmtMs } from '../format.js';
+import { mb, fmtMs, size } from '../format.js';
 import { act, showToast } from '../ui/feedback.js';
 import { confirmAction } from '../ui/dialog.js';
 import { Icon } from '../icons.js';
 import { Switch, Select, Tabs, SetRow, Empty, Loading, MenuButton, AreaChart, CopyButton } from '../ui/controls.js';
-import { Chart } from '../ui/chart.js';
 import { LogEntries, parse as parseEntries, TONE, levelLabel } from '../ui/entries.js';
 import { Mark, siteHref, siteMenu, openSite } from './sites.js';
 import { prefs } from '../ui/prefs.js';
@@ -273,32 +272,45 @@ function EditorButton({ siteName, onFallback }) {
   </div>`;
 }
 
+/** How many of the newest requests the list asks for (the daemon keeps 2000 for all sites). */
+const REQUEST_LIMIT = 200;
+const statusTone = (st) => (st >= 500 ? 'danger-t' : st >= 400 ? 'warn-t' : st >= 300 ? 't2' : 'ok-t');
+const statusClass = { all: () => true, '4xx': (st) => st >= 400 && st < 500, '5xx': (st) => st >= 500 };
+
+/** The site's newest requests, from the daemon's memory (lost on restart). */
 function Requests({ siteHost }) {
-  const [{ data: r }] = useTraffic(siteHost, 2000);
-  if (!r) return html`<${Loading} />`;
-  const x = r.per_second.map((_, i) => i - r.per_second.length + 1);
-  return html`
-    <div class="stats">
-      <div class="stat"><div class="k"><${Icon} name="activity" size=${14} />${t('site.requests_10_min')}</div><div class="v">${r.total.toLocaleString(LANG)}</div></div>
-      <div class="stat"><div class="k">${t('perf.median')}</div><div class="v">${fmtMs(r.p50_ms)}</div></div>
-      <div class="stat"><div class="k">p95 · p99</div><div class="v">${fmtMs(r.p95_ms)}<small>${fmtMs(r.p99_ms)}</small></div></div>
-      <div class="stat"><div class="k">${t('site.status_codes')}</div><div class="v text">
-        <span class="badge ok">2xx ${r.status.s2xx}</span><span class="badge">3xx ${r.status.s3xx}</span>
-        <span class="badge warn">4xx ${r.status.s4xx}</span><span class="badge danger">5xx ${r.status.s5xx}</span></div></div>
+  const [klass, setKlass] = useState('all');
+  const [path, setPath] = useState('');
+  const [withStatic, setWithStatic] = useState(true);
+  const [{ data, error }] = useApi(`/metrics/recent?host=${encodeURIComponent(siteHost)}&static=${withStatic ? 1 : 0}&limit=${REQUEST_LIMIT}`, 2000);
+  if (!data) return html`<${Loading} error=${error} />`;
+  const count = (k) => data.filter((r) => statusClass[k](r.status)).length;
+  const needle = path.trim().toLowerCase();
+  const rows = data.filter((r) => statusClass[klass](r.status) && (!needle || r.path.toLowerCase().includes(needle)));
+  const time = (ms) => new Date(ms).toLocaleTimeString(LANG, { hour12: false });
+  return html`<section class="card clip">
+    <div class="tools">
+      <${Tabs} role="radiogroup" label=${t('site.req_status')} value=${klass} onChange=${setKlass}
+        tabs=${[{ id: 'all', label: t('logs.all'), count: data.length }, { id: '4xx', label: '4xx', count: count('4xx') }, { id: '5xx', label: '5xx', count: count('5xx') }]} />
+      <label class="field sm" style="width: 240px"><${Icon} name="search" size=${13} />
+        <input placeholder=${t('site.req_filter')} aria-label=${t('site.req_filter')} value=${path} spellcheck="false" onInput=${(e) => setPath(e.target.value)} /></label>
+      <span class="grow"></span><span class="live"><span class="dot"></span>${t('site.req_live')}</span>
+      <label class="row-flex small t2" style="gap: 6px; flex-wrap: nowrap">
+        <${Switch} checked=${withStatic} label=${t('perf.include_static')} onChange=${setWithStatic} />${t('perf.static_short')}</label>
     </div>
-    <div class="charts">
-      <${Chart} title=${t('perf.rps')} labels=${['req/s']} data=${[x, r.per_second]} />
-      <${Chart} title=${t('perf.latency')} labels=${[t('perf.p50'), t('perf.p95')]} data=${[x, r.p50_per_second, r.p95_per_second]} />
-    </div>
-    <section class="card clip">
-      <div class="card-head"><h2>${t('perf.slowest')}</h2><span class="grow"></span>
-        <a class="btn ghost sm" href="#/performance" onClick=${go('#/performance')}>${t('site.open_performance')}</a></div>
-      ${r.slowest.length === 0 ? html`<${Empty} icon="activity" title=${t('site.no_requests')} />` : html`<div class="scroll-x"><table class="table dense">
-        <thead><tr><th>${t('perf.route')}</th><th class="num">${t('perf.count')}</th><th class="num">${t('perf.avg')}</th><th class="num">p95</th><th class="num">${t('perf.max')}</th></tr></thead>
-        <tbody>${r.slowest.map((s) => html`<tr><td><span class="badge mono" style="margin-right: 8px">${s.method}</span><span class="mono">${s.route}</span></td>
-          <td class="num">${s.count}</td><td class="num">${fmtMs(s.avg_ms)}</td><td class="num">${fmtMs(s.p95_ms)}</td><td class="num">${fmtMs(s.max_ms)}</td></tr>`)}</tbody>
-      </table></div>`}
-    </section>`;
+    ${rows.length === 0 ? html`<${Empty} icon="activity" title=${data.length ? t('logs.no_match') : t('site.req_none')} />` : html`<div class="scroll-x"><table class="table dense">
+      <thead><tr><th>${t('site.req_time')}</th><th>${t('site.req_method')}</th><th>${t('site.req_path')}</th><th>${t('site.req_status')}</th>
+        <th class="num">${t('site.req_duration')}</th><th class="num">${t('site.size')}</th></tr></thead>
+      <tbody>${rows.map((r) => html`<tr>
+        <td class="mono muted">${time(r.at_ms)}</td><td class="mono t2">${r.method}</td>
+        <td class="mono" style="max-width: 420px; overflow: hidden; text-overflow: ellipsis" title=${r.path}>${r.path}</td>
+        <td class="mono ${statusTone(r.status)}">${r.status}</td>
+        <td class="num mono ${r.ms > 300 ? 'warn-t' : ''}">${fmtMs(r.ms)}</td>
+        <td class="num mono muted">${r.bytes ? size(r.bytes) : '—'}</td></tr>`)}</tbody>
+    </table></div>`}
+    <div class="foot"><span>${t('site.req_in_memory', { count: data.length })}</span><span class="grow"></span>
+      <a class="link" href="#/performance" onClick=${go('#/performance')}>${t('site.open_performance')}</a></div>
+  </section>`;
 }
 
 export function SiteDetail({ name, tab, sub, onChanged, startJob }) {

@@ -463,6 +463,23 @@ pub struct StatusCounts {
     pub s5xx: u32,
 }
 
+/// One request of the site's request list (`GET /metrics/recent`).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RequestEntry {
+    /// Unix time (ms) the response started.
+    pub at_ms: u64,
+    pub method: String,
+    /// Path without query string (the query is never kept).
+    pub path: String,
+    pub status: u16,
+    /// Time to the response headers.
+    pub ms: f64,
+    /// Body size, when the response announced it.
+    pub bytes: Option<u64>,
+    /// Served by PHP (false: a static file).
+    pub php: bool,
+}
+
 /// A route is a normalized path: `/users/42` → `/users/{n}`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RouteStats {

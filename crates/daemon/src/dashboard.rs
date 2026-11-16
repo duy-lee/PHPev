@@ -1021,6 +1021,16 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             let include_static = query_param(uri, "static").as_deref() == Some("1");
             ok(&d.daemon.metrics.stats(window, host.as_deref(), include_static))
         }
+        (Method::GET, ["metrics", "recent"]) => {
+            let uri = req.uri();
+            let limit = query_param(uri, "limit")
+                .and_then(|n| n.parse().ok())
+                .unwrap_or(200usize)
+                .clamp(1, crate::metrics::CAPACITY);
+            let host = query_param(uri, "host").filter(|h| !h.is_empty());
+            let include_static = query_param(uri, "static").as_deref() == Some("1");
+            ok(&d.daemon.metrics.recent(host.as_deref(), include_static, limit))
+        }
         (Method::GET, ["metrics", "stream"]) => {
             let host = query_param(req.uri(), "host").filter(|h| !h.is_empty());
             let include_static = query_param(req.uri(), "static").as_deref() == Some("1");

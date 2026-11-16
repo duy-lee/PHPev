@@ -177,6 +177,7 @@ pub async fn listen(
                                 path,
                                 status: res.status().as_u16(),
                                 micros: started.elapsed().as_micros().min(u128::from(u32::MAX)) as u32,
+                                bytes: response_bytes(&res),
                                 php: res.extensions().get::<ServedByPhp>().is_some(),
                             });
                             Ok::<_, Infallible>(res)
@@ -202,6 +203,14 @@ pub async fn listen(
         });
     }
     Ok(bound)
+}
+
+/// Body size if known before it is sent (no counting of streamed bodies).
+fn response_bytes(res: &Response<Body>) -> Option<u64> {
+    res.headers()
+        .get(header::CONTENT_LENGTH)
+        .and_then(|v| v.to_str().ok()?.parse().ok())
+        .or_else(|| hyper::body::Body::size_hint(res.body()).exact())
 }
 
 async fn handle(router: &Router, req: Request<Incoming>, remote: SocketAddr, https: bool, port: u16) -> Response<Body> {
