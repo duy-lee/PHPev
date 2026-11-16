@@ -134,31 +134,59 @@ pub fn list() -> io::Result<ExitCode> {
     let all = sites::all(&config);
     if all.is_empty() {
         println!("No sites. Run `phpev link` inside a project.");
+        return Ok(ExitCode::SUCCESS);
     }
-    let port = if config.ports.http == 80 {
-        String::new()
-    } else {
-        format!(":{}", config.ports.http)
-    };
+    let port = |n: u16, default: u16| if n == default { String::new() } else { format!(":{n}") };
+    let mut rows = vec![["NAME", "URL", "PHP", "COMPOSER", "DEFENDER", "FOLDER"]
+        .map(String::from)
+        .to_vec()];
     for s in &all {
-        let php = match shim::resolve(layout.root(), &s.path) {
-            Ok(r) => format!("PHP {}", r.version),
-            Err(_) => "PHP ?".to_owned(),
+        let url = if s.secure {
+            format!("https://{}{}", s.host(&config.tld), port(config.ports.https, 443))
+        } else {
+            format!("http://{}{}", s.host(&config.tld), port(config.ports.http, 80))
         };
-        let composer = s
-            .composer
-            .as_ref()
-            .map(|c| format!("  Composer {c}"))
-            .unwrap_or_default();
-        let excluded = config.is_defender_excluded(&s.path);
-        let defender = if excluded { "  (Defender exclusion)" } else { "" };
-        println!(
-            "http://{}{port}  {php}{composer}  {}{defender}",
-            s.host(&config.tld),
-            s.path.display()
-        );
+        let php = shim::resolve(layout.root(), &s.path).map_or_else(|_| "?".to_owned(), |r| r.version);
+        let composer = s.composer.clone().unwrap_or_else(|| "default".to_owned());
+        let defender = if config.is_defender_excluded(&s.path) {
+            "excluded"
+        } else {
+            "-"
+        };
+        rows.push(vec![
+            s.name.clone(),
+            url,
+            php,
+            composer,
+            defender.to_owned(),
+            s.path.display().to_string(),
+        ]);
     }
+    print!("{}", table(&rows));
     Ok(ExitCode::SUCCESS)
+}
+
+/// Lays `rows` out in columns two spaces apart, each as wide as its longest cell; the last
+/// column is not padded, so a long folder does not push trailing spaces.
+fn table(rows: &[Vec<String>]) -> String {
+    let columns = rows.first().map_or(0, Vec::len);
+    let widths: Vec<usize> = (0..columns)
+        .map(|c| rows.iter().map(|r| r[c].chars().count()).max().unwrap_or(0))
+        .collect();
+    let mut out = String::new();
+    for row in rows {
+        let mut line = String::new();
+        for (c, cell) in row.iter().enumerate() {
+            if c + 1 < columns {
+                line.push_str(&format!("{cell:<w$}  ", w = widths[c]));
+            } else {
+                line.push_str(cell);
+            }
+        }
+        out.push_str(line.trim_end());
+        out.push('\n');
+    }
+    out
 }
 
 /// Writes every current site into the hosts file (127.0.0.1 and ::1) through UAC.
@@ -191,4 +219,23 @@ pub(crate) fn write_hosts(config: &Config, include: bool) -> io::Result<()> {
     let n = ops::write_hosts(config, include)?;
     println!("Hosts file updated ({n} sites).");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn table_lines_up_columns() {
+        let rows = [
+            ["NAME", "PHP", "FOLDER"],
+            ["shop", "8.4.27", r"C:\code\shop"],
+            ["blog-site", "7.4", r"C:\b"],
+        ]
+        .map(|r| r.map(String::from).to_vec());
+        assert_eq!(
+            table(&rows),
+            "NAME       PHP     FOLDER\nshop       8.4.27  C:\\code\\shop\nblog-site  7.4     C:\\b\n"
+        );
+    }
 }
