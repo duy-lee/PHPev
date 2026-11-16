@@ -327,6 +327,8 @@ pub struct IniFile {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MariaDbInfo {
     pub installed: Vec<String>,
+    /// What was saved at install time, for the installed versions that have it.
+    pub releases: Vec<crate::release_info::ReleaseInfo>,
     /// Active major from config (`11.4`).
     pub active: Option<String>,
     pub port: u16,

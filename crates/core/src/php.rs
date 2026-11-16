@@ -190,6 +190,12 @@ pub fn version_dir(layout: &Layout, version: &str) -> PathBuf {
     layout.php_dir().join(version)
 }
 
+/// Where `release`'s zip is downloaded from.
+pub fn download_url(release: &Release) -> String {
+    let base = if release.archived { ARCHIVE_BASE } else { DOWNLOAD_BASE };
+    format!("{base}{}", release.zip)
+}
+
 /// Downloads and unpacks `release`. Returns `None` if it was already installed.
 pub fn install(http: &Http, layout: &Layout, release: &Release, progress: Progress<'_>) -> io::Result<Option<Stats>> {
     let dir = version_dir(layout, &release.version);
@@ -198,9 +204,7 @@ pub fn install(http: &Http, layout: &Layout, release: &Release, progress: Progre
     }
     std::fs::create_dir_all(layout.downloads_dir())?;
     let zip = layout.downloads_dir().join(&release.zip);
-    let base = if release.archived { ARCHIVE_BASE } else { DOWNLOAD_BASE };
-    let url = format!("{base}{}", release.zip);
-    net::fetch_verified(http, &url, &zip, &release.sha256, progress)?;
+    net::fetch_verified(http, &download_url(release), &zip, &release.sha256, progress)?;
 
     let mut stats = Stats::default();
     extract::install_atomically(&dir, |tmp| {

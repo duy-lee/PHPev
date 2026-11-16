@@ -95,6 +95,7 @@ export function MariaDb({ startJob, route = [] }) {
               <td class="fit"><${DefaultStar} on=${active} label=${t('services.use_version', { version: major(v) })} onLabel=${t('services.active')}
                 onClick=${() => act(api('PUT', '/mariadb/active', { version: major(v) }), reload)} /></td>
               <td><span class="ver">${v}</span>${active && html` <span class="badge accent">${t('services.active_short')}</span>`}
+                ${data.releases.find((r) => r.version === v)?.lts && html` <span class="badge">${t('services.lts')}</span>`}
                 ${running && major(running.version) === major(v) && html` <span class="status" style="margin-left: 6px"><span class="dot ok"></span>${t('common.running')}</span>`}</td>
               <td class="mono muted small">${active && data.data_dir ? data.data_dir : `data\\mariadb\\${major(v)}`}</td>
               <td><div class="row-acts"><${RemoveButton} blocked=${active ? t('services.remove_active') : ''} onClick=${() => remove(v)} /></div></td>

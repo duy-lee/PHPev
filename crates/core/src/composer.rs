@@ -137,10 +137,24 @@ pub fn phar_version(phar: &Path) -> Option<String> {
     is_stable(v).then(|| v.to_owned())
 }
 
-/// Downloads Composer `version` (exact, e.g. `2.8.12`).
-pub fn install_version(http: &Http, layout: &Layout, version: &str, progress: Progress<'_>) -> io::Result<()> {
-    let url = format!("https://getcomposer.org/download/{version}/composer.phar");
-    download(http, &url, &version_dir(layout, version).join(PHAR), progress)
+/// Where Composer `version`'s phar is downloaded from.
+pub fn download_url(version: &str) -> String {
+    format!("https://getcomposer.org/download/{version}/composer.phar")
+}
+
+/// The 2.2 line is Composer's long-term support release.
+pub fn is_lts(version: &str) -> bool {
+    line_of(version) == OLDEST_LINE
+}
+
+/// Downloads Composer `version` (exact, e.g. `2.8.12`). Returns the SHA-256 it was checked against.
+pub fn install_version(http: &Http, layout: &Layout, version: &str, progress: Progress<'_>) -> io::Result<String> {
+    download(
+        http,
+        &download_url(version),
+        &version_dir(layout, version).join(PHAR),
+        progress,
+    )
 }
 
 #[derive(Deserialize)]
@@ -189,7 +203,7 @@ pub fn line_of(v: &str) -> String {
     v.split('.').take(2).collect::<Vec<_>>().join(".")
 }
 
-fn download(http: &Http, url: &str, dest: &Path, progress: Progress<'_>) -> io::Result<()> {
+fn download(http: &Http, url: &str, dest: &Path, progress: Progress<'_>) -> io::Result<String> {
     let sha = http.get_text(&format!("{url}.sha256sum"))?;
     let sha = net::parse_checksum_file(&sha)
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "unexpected composer.phar.sha256sum format"))?
@@ -199,7 +213,8 @@ fn download(http: &Http, url: &str, dest: &Path, progress: Progress<'_>) -> io::
     }
     // `download` writes to a `.part` file and renames on success, so a failed
     // download leaves nothing behind.
-    http.download(url, dest, Some(&sha), progress)
+    http.download(url, dest, Some(&sha), progress)?;
+    Ok(sha)
 }
 
 #[cfg(test)]

@@ -23,7 +23,7 @@ use hyper_util::rt::TokioIo;
 use phpev_core::api::{self, *};
 use phpev_core::config::Config;
 use phpev_core::net::Http;
-use phpev_core::{config, doctor, mariadb, ops, php, shim, sites, update, version};
+use phpev_core::{config, doctor, mariadb, ops, php, release_info, shim, sites, update, version};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use tokio::net::TcpListener;
@@ -717,8 +717,13 @@ async fn route(d: &Dashboard, req: Request<Incoming>, path: &str) -> Result<Resp
             let l = layout.clone();
             ok(&blocking(move || {
                 let config = Config::load(&l.config_file())?;
+                let installed = mariadb::installed(&l);
                 Ok(MariaDbInfo {
-                    installed: mariadb::installed(&l),
+                    releases: installed
+                        .iter()
+                        .filter_map(|v| release_info::load(&mariadb::version_dir(&l, v)))
+                        .collect(),
+                    installed,
                     data_dir: config
                         .mariadb
                         .as_deref()
