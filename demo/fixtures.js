@@ -1,7 +1,7 @@
 // Sample answers of API v1 for the dashboard demo, shaped after crates/core/src/api.rs.
 // Fictional sites and folders; nothing here comes from a real machine.
 
-const VERSION = '1.0.0-rc.1';
+const VERSION = '1.0.0';
 const HOME = 'C:\\Users\\dev\\AppData\\Local\\PHPev';
 const MARIADB = '11.4.8';
 const MARIADB_PORT = 3306;
@@ -103,7 +103,7 @@ const LARAVEL_LOG = [
 ];
 
 const DAEMON_LOG = [
-  '2025-11-14 14:19:58 INFO  phpev 1.0.0-rc.1 started; dashboard on 127.0.0.1:7600',
+  '2025-11-14 14:19:58 INFO  phpev 1.0.0 started; dashboard on 127.0.0.1:7600',
   '2025-11-14 14:20:00 INFO  mariadb 11.4.8 ready for connections on 127.0.0.1:3306',
   '2025-11-14 14:24:59 INFO  pool php 8.2.29: worker 11544 started (1 of 4)',
   '2025-11-14 14:27:11 INFO  router: certificate for shop.test renewed (valid until 2026-02-12)',

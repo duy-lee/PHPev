@@ -2,18 +2,28 @@
 
 All notable changes to PHPev are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
-[Semantic Versioning](https://semver.org/). Until 1.0, minor versions may contain breaking changes.
+[Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
 ### Added
 
-- **Databases of each MariaDB version**: **Details** under an installed MariaDB (Services ›
-  MariaDB) opens a **Databases** tab with every database, its tables and size, and the sites that
-  use it. On the running version you can create a database or drop one (after typing its name;
-  the dialog names the sites that would break). Other versions are listed too, read from their
-  data folder with estimated sizes; switch to a version to change its databases. The server's own
-  databases (`mysql`, `sys`, `test`…) are never shown.
+- **Requests of a site**: the site's **Requests** tab lists its latest requests live (time,
+  method, path, status, duration, size), with *All* / *4xx* / *5xx*, a path filter and a switch
+  for static files. PHPev keeps the last 2,000 requests in memory only, nothing is written to disk.
+- **Restart and stop PHPev from the dashboard**: the menu at the bottom of the sidebar opens the
+  logs, restarts PHPev or stops it, after asking.
+- **Restart MariaDB** from Runtimes › MariaDB and from a site's page.
+- **Empty a database**: deletes every table, view and stored routine of a database and keeps the
+  database itself (with its charset and collation), so the sites keep connecting to it. You type
+  its name to confirm. In the ⋯ menu of a database, on a site's Database tab and under Runtimes ›
+  MariaDB › Databases.
+- **Open a database in a terminal**: the same ⋯ menu opens `mysql` connected to the database in a
+  new window.
+- **Databases of MariaDB**: Runtimes › MariaDB › **Databases** lists every database of the active
+  version with its tables, size and the sites that use it. Create a database there, or drop one
+  after typing its name (the dialog names the sites that would break). The server's own databases
+  (`mysql`, `sys`, `test`…) are never shown.
 - **Databases by hand on a site**: the Database tab (and the Database card on the site's
   Overview) now lists every database of the site, and **Add database** attaches any database that
   exists on PHPev's MariaDB, for example the per-customer ones a project picks at run time and
@@ -29,10 +39,13 @@ All notable changes to PHPev are documented here. The format follows
   `phpev docroot [folder|--auto]` do the same from a terminal. Only the name changes: PHP and
   Composer versions, HTTPS and databases stay, the old address stops working, and settings inside
   the project that name it (such as `APP_URL`) are left for you to update.
-- **Edit my.ini in the dashboard**: **Details** under an installed MariaDB (Services › MariaDB)
-  opens its *my.ini*, for server settings such as `sql_mode`. MariaDB now reads the `my.ini` of
-  its data folder at start. Saving keeps the previous file as `my.ini.bak` and restarts MariaDB,
-  and puts the previous file back if MariaDB does not start with the new one.
+- **Edit my.ini in the dashboard**: Runtimes › MariaDB › **my.ini** edits the `my.ini` of the
+  active version, for server settings such as `sql_mode`. MariaDB now reads the `my.ini` of its
+  data folder at start. Saving keeps the previous file as `my.ini.bak` and restarts MariaDB, and
+  puts the previous file back if MariaDB does not start with the new one.
+- **Edit php.ini in the dashboard**: **Details** under a PHP version (Runtimes › PHP) has two
+  tabs, *Extensions* and *php.ini*. Saving checks the file with that PHP first and refuses one it
+  rejects, keeps the previous file as `php.ini.bak`, and restarts the version's workers.
 - **`.htaccess` rewrite rules**: `RewriteEngine`, `RewriteBase`, `RewriteCond` and `RewriteRule`
   in the document root and its sub-folders work as with Apache's mod_rewrite, so plain-PHP
   projects written for Apache keep their URLs, images and styles. With active rules, a missing
@@ -42,17 +55,29 @@ All notable changes to PHPev are documented here. The format follows
   on another, whatever their PHP versions. Picked versions are downloaded once and shared;
   `phpev composer list|remove|unpin|which` manage them. A version too new for the site's PHP is
   refused.
-- **Services page per service**: Services now lists each service as a card with its own page.
-  MariaDB keeps its controls; the new **Composer** page installs and removes Composer versions,
-  makes one the default and shows which sites use each one.
-- **Default Composer**: `phpev composer use <version>` (or ★ under Services › Composer) picks the
-  Composer that sites without their own version run, like the default PHP.
-- **Edit php.ini in the dashboard**: **Details** under a PHP version now has two tabs,
-  *Extensions* and *php.ini*. Saving checks the file with that PHP first and refuses one it
-  rejects, keeps the previous file as `php.ini.bak`, and restarts the version's workers.
+- **Default Composer**: `phpev composer use <version>` (or ★ under Runtimes › Composer) picks the
+  Composer that sites without their own version run, like the default PHP. Runtimes › Composer
+  also installs and removes versions and shows which sites use each one.
+- **Memory of PHP workers**: Runtimes › PHP shows the RAM of each version's workers next to their
+  number.
+- **Release facts**: PHP, MariaDB and Composer installed from now on keep a `phpev-release.json`
+  next to them with where they were downloaded from, their SHA-256, the install date and facts
+  such as LTS and end of life. Installed MariaDB versions show their LTS badge from it; versions
+  installed before this release have no such file and show none.
+- **Activity at a glance**: Home shows the requests of each site over the last 10 minutes, and
+  the Sites table the databases of each site. Performance can look back 1, 5 or 10 minutes and
+  remembers the choice.
 
 ### Changed
 
+- **Dashboard redesigned** since 1.0.0-rc.1: a compact look in light and dark, with the Inter font
+  and icons throughout. The sidebar groups Home, Sites (with the list of sites), Runtimes (PHP,
+  MariaDB, Composer), Monitor (Performance, Logs) and Settings, and folds into a rail of icons;
+  the top bar shows where you are and switches between sites. MariaDB has the tabs *Versions*,
+  *Databases* and *my.ini*; Settings has a side menu. The Services page is gone: MariaDB and
+  Composer are under Runtimes.
+- **`phpev sites` prints a table**: name, address, PHP, Composer, Defender exclusion and folder.
+  A site with HTTPS shows its `https://` address.
 - **Parked folders are gone**: `phpev park` / `unpark`, the *Parked folders* card in Settings and
   the `parked` key of `config.toml` no longer exist; every site is a project you `link` (or
   `import`). A folder that was only parked is not a site any more: run `phpev link` in it.
@@ -61,8 +86,8 @@ All notable changes to PHPev are documented here. The format follows
   sites on PHP before 7.2.5 that ran it. A Composer too new for a site's PHP is now refused with a
   message instead of being swapped for 2.2. `phpev composer self-update` installs the newest
   version and makes it the default; `composer self-update` itself is refused.
-- The default PHP and MariaDB are marked and picked with a star, and versions are removed with a
-  trash button, the same on the PHP, MariaDB and Composer pages.
+- The default PHP, MariaDB and Composer are marked and picked with a star, and versions are
+  removed with a trash button, the same on the PHP, MariaDB and Composer pages.
 - The PHP and Composer versions of a site, and the appearance, language and code editor in
   Settings, are picked from a dropdown instead of a row of buttons, which stays tidy with many
   versions.
