@@ -8,718 +8,120 @@
 
 **A fast, lightweight, open-source local PHP & Laravel environment for Windows.**
 
-Install PHP, Composer and MariaDB in seconds, switch versions per project, and get a
-`http://<project>.localhost` domain (with optional HTTPS) for every folder, all from a
-small set of native executables with no admin rights needed for day-to-day use.
-
-[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
-![Platform: Windows 10/11 x64](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20x64-0078D6.svg)
-![Written in Rust](https://img.shields.io/badge/written%20in-Rust-orange.svg)
-[![CI](https://github.com/duy-lee/PHPev/actions/workflows/ci.yml/badge.svg)](https://github.com/duy-lee/PHPev/actions/workflows/ci.yml)
-![Status: pre-release](https://img.shields.io/badge/status-pre--release-yellow.svg)
-
-English · [Tiếng Việt](README.vi.md)
+English · [Tiếng Việt](README.vi.md) · [Dashboard demo](https://duy-lee.github.io/PHPev/)
 
 </div>
 
----
-
-## Table of contents
-
-- [Why PHPev](#why-phpev)
-- [Features](#features)
-- [Requirements](#requirements)
-- [Installation](#installation)
-- [Quick start](#quick-start)
-- [Usage](#usage)
-  - [Sites and domains](#sites-and-domains)
-  - [Importing an existing project](#importing-an-existing-project)
-  - [PHP versions](#php-versions)
-  - [MariaDB](#mariadb)
-  - [Composer](#composer)
-  - [HTTPS](#https)
-  - [Dashboard and tray icon](#dashboard-and-tray-icon)
-  - [Background service](#background-service)
-- [Command reference](#command-reference)
-- [Configuration](#configuration)
-- [How it works](#how-it-works)
-- [Performance](#performance)
-- [Security](#security)
-- [Troubleshooting](#troubleshooting)
-- [Uninstalling](#uninstalling)
-- [Building from source](#building-from-source)
-- [Roadmap](#roadmap)
-- [Contributing](#contributing)
-- [License](#license)
-- [Acknowledgements](#acknowledgements)
-
----
-
-## Why PHPev
-
-Tools like [Laravel Herd](https://herd.laravel.com/windows) made local PHP development on Windows
-pleasant, but they are closed source. XAMPP-style bundles ship one fixed PHP version and a full
-Apache stack. PHPev aims for the Herd experience with three priorities:
-
-- **Open source.** Dual-licensed MIT / Apache-2.0. Read it, fork it, ship it.
-- **Light.** The background service uses about **2 MB of RAM** when idle. There is no Electron,
-  no WebView2 and no bundled web server: the HTTP router is part of the service.
-- **Fast.** The built-in router serves PHP through a pool of `php-cgi` workers with FastCGI
-  keep-alive. In our benchmarks it matches or beats nginx + php-cgi (see [Performance](#performance)).
+PHPev installs PHP, MariaDB and Composer, gives every project folder an address such as
+`http://shop.localhost`, and lets each project use its own PHP version. Everything is done from the
+`phpev` command or the dashboard, without admin rights for daily use.
 
 ## Features
 
-- **One command to make a project run.** `phpev import` detects Laravel or plain PHP, picks the
-  PHP version from `composer.json`, enables missing extensions, runs `composer install`, creates
-  `.env`, creates the database and gives the project a domain.
-- **Several PHP versions side by side** (7.0 – 8.5, official builds from windows.php.net, or a PHP
-  folder you already have), chosen
-  per project with `.php-version`, per site, or globally. `php` and `composer` in any terminal
-  automatically use the right version for the current folder.
-- **MariaDB** (10.6 – 13.0, official builds), one data directory per major version, started on
-  demand and restored after a reboot.
-- **Composer** installed and kept up to date, run with the project's PHP version.
-- **Automatic domains**: `link` a project and it becomes `http://<name>.localhost`; rename it or
-  pick the folder it serves later. No hosts file edits and no admin rights for `.localhost`.
-- **HTTPS per site** with a local certificate authority that is limited to local TLDs.
-- **Dashboard** in its own window, light or dark, in English or Vietnamese: a page per site
-  (PHP version, HTTPS, extensions, logs, database import and export, health checks with Fix
-  buttons, open in your editor), PHP versions and extensions, services, **live performance charts**
-  (requests/s, p50/p95/p99 latency, slowest routes, CPU/RAM per process), **live logs** and
-  Settings (ports, TLD, disk use and more).
-- **Tray icon** to open the dashboard and sites, start/stop MariaDB and quit; it also tells you
-  when a new PHPev release is out.
-- **Safe by default**: every download is verified by SHA-256, admin rights are asked only for
-  optional features, and actions with side effects ask before they run.
+- **Sites**: link a folder and it is served at `http://<name>.localhost` (or another TLD such as
+  `.test`). Rename a site, pick the folder it serves, turn HTTPS on per site. Apache
+  `.htaccess` rewrite rules work.
+- **Import a project**: `phpev import` picks the PHP version from `composer.json`, enables missing
+  extensions, runs `composer install`, creates `.env` and the database, and links the folder.
+- **PHP**: several versions side by side (7.0 and later, official builds), or a PHP folder you
+  already have. A site uses `.php-version`, its own pinned version or the default. `php` and
+  `composer` in any terminal run the right version for the current folder. Toggle extensions and
+  edit `php.ini` from the dashboard.
+- **MariaDB**: several versions, each with its own databases; start, stop, restart, switch.
+  Create, import, export, empty and drop databases; edit `my.ini`. `mysql` and `mysqldump` in any
+  terminal connect to it.
+- **Composer**: several versions side by side, one default, another one per site if needed.
+- **HTTPS**: a local certificate authority, limited to local names, trusted for your user only.
+- **Dashboard** (its own window, light or dark, English or Vietnamese):
+  - **Home**: what runs, what needs attention, your sites.
+  - **Sites**: a page per site with *Overview* (PHP, Composer, HTTPS, document root, extensions,
+    health checks with Fix buttons), *Requests* (the latest requests), *Logs* and *Database*.
+  - **Runtimes**: PHP, MariaDB (versions, databases, `my.ini`) and Composer.
+  - **Monitor**: live performance (requests, latency, slowest routes, CPU and RAM per process) and
+    live logs of PHPev, PHP, MariaDB and Laravel.
+  - **Settings**: start at sign-in, tray icon, theme, language, editor, TLD, ports, HTTPS,
+    Windows (Defender, hosts file, checks), storage, about.
+  - `Ctrl K` finds a site or a page.
+- **Tray icon**: open the dashboard or a site, start or stop MariaDB, exit.
 
 ## Requirements
 
-| | |
-|---|---|
-| OS | Windows 10 (1809 or later) or Windows 11, x64 |
-| Disk | ~90 MB per PHP version, ~60 MB per MariaDB version (plus your databases) |
-| Internet | To download PHP, MariaDB and Composer the first time, and one update check a day (can be turned off) |
-| Admin rights | Not needed for normal use (see [Security](#security) for the optional exceptions) |
-| Free ports | 80 and 443 (sites), 3306 (MariaDB), 7600 (dashboard); all configurable |
-
-Nothing has to be installed beforehand: the executables are built with a static C runtime, and
-PHPev installs the Visual C++ runtime that PHP needs if it is missing. Microsoft Edge (preinstalled
-on Windows) is used for the dashboard window when available, with a profile of its own; otherwise
-your default browser opens.
+- Windows 10 (1809 or later) or Windows 11, x64.
+- Free ports 80 and 443 (sites), 3306 (MariaDB) and 7600 (dashboard); all can be changed.
+- Internet to download PHP, MariaDB and Composer.
 
 ## Installation
 
-> **Not code-signed yet.** Windows may show *"Windows protected your PC"* for files from the
-> release: choose **More info → Run anyway**. You can check a download against `SHA256SUMS.txt`
-> from the same release with `Get-FileHash <file>`.
+Download from [Releases](https://github.com/duy-lee/PHPev/releases):
 
-### With the installer (recommended)
+- **Installer** (`phpev-<version>-setup.exe`): run it, choose the program folder and the PHPev data
+  folder (default `%USERPROFILE%\.phpev`). PHPev then appears in the Start menu.
+- **Zip** (`phpev-<version>-windows-x64.zip`): extract it, then run `.\phpev.exe setup` in that
+  folder. It copies PHPev into `%USERPROFILE%\.phpev` and adds it to your PATH.
 
-1. Download `phpev-<version>-setup.exe` from [Releases](https://github.com/duy-lee/PHPev/releases)
-   and run it.
-2. Choose **Install for me only** (no admin rights needed) or **Install for all users**.
-3. Pick the program folder and the **PHPev data folder**, where PHP, MariaDB, your databases and
-   settings live (default `%USERPROFILE%\.phpev`; use a path without spaces or accented
-   characters). Tick **Start PHPev when I sign in to Windows** if you like.
-
-PHPev then shows up in the Start menu (it opens the dashboard) and in **Settings → Apps**. Open a
-new terminal and check everything with `phpev doctor`.
-
-With **Install for all users**, every Windows user gets their own PHPev data folder, created the
-first time they open PHPev from the Start menu.
-
-### With the zip
-
-1. Download `phpev-<version>-windows-x64.zip`, right-click it → **Properties** → tick
-   **Unblock**, and extract it anywhere (for example your Downloads folder).
-2. Open a terminal in that folder and run:
-
-   ```powershell
-   .\phpev.exe setup
-   ```
-
-   `setup` creates the PHPev home (`%USERPROFILE%\.phpev`), copies the executables into
-   `%USERPROFILE%\.phpev\shims`, adds that single folder to your **user** PATH and checks the
-   machine. The extracted folder is no longer needed afterwards.
-3. **Open a new terminal** so it picks up the new PATH, then check everything:
-
-   ```powershell
-   phpev doctor
-   ```
-
-> If your Windows user name contains non-ASCII characters (for example `Mê Ga Lô Đôn`), PHP cannot
-> load its `php.ini` from that path. `setup` detects this and suggests `C:\PHPev` as the home;
-> you can also choose one yourself with `phpev setup --home D:\PHPev` (a new or empty folder).
+Open a new terminal and run `phpev doctor` to check the machine. The files are not code-signed:
+if Windows shows *"Windows protected your PC"*, choose **More info → Run anyway**.
 
 ## Quick start
 
 ```powershell
-# Install a PHP version (the first one becomes the default)
-phpev php install 8.4
-
-# Make an existing project run end to end
-cd C:\code\my-laravel-app
-phpev import
-
-# Open the dashboard
+phpev php install 8.4      # the first version installed becomes the default
+cd C:\code\my-app
+phpev import               # or: phpev link
 phpev dashboard
 ```
 
-`http://my-laravel-app.localhost` now serves the app. The background service starts by itself
-the first time a command needs it.
+`http://my-app.localhost` now serves the project.
 
-## Usage
-
-### Sites and domains
-
-PHPev serves sites through its own router on ports 80/443. A site's document root is its
-`public` folder if it has `public/index.php` (Laravel, Symfony, …), otherwise the project folder;
-`phpev docroot` (or the site page) picks another one.
-
-```powershell
-cd C:\code\shop
-phpev link                  # this folder becomes shop.localhost
-phpev link store --php 8.3  # ...as store.localhost, pinned to PHP 8.3
-phpev rename store         # shop.localhost becomes store.localhost
-phpev docroot web/dist      # serve this folder of the project instead
-phpev docroot --auto        # ...or let PHPev pick it again
-phpev unlink
-
-phpev sites                 # list sites with URL, PHP version and folder
-```
-
-Site names are derived from folder names: lower case, accents removed and other characters
-replaced with `-` (`Dự án Mới` → `du-an-moi`).
-
-**Why `.localhost`?** Browsers, `curl` and PHP's curl extension (Laravel `Http::`, Guzzle) resolve
-`*.localhost` to 127.0.0.1 by themselves, so no hosts file entry and no admin rights are needed.
-Windows' own resolver does not, so code that uses PHP streams (`file_get_contents`,
-Symfony HttpClient's native transport) or PowerShell cannot reach `*.localhost`. In that case,
-write the sites into the hosts file once (one UAC prompt):
-
-```powershell
-phpev hosts sync
-```
-
-You can also use another TLD, such as `.test`. The hosts file is then updated automatically
-whenever sites change:
-
-```powershell
-phpev tld test       # sites become http://<name>.test
-phpev tld localhost  # back to the default (PHPev's hosts entries are removed)
-```
-
-**`.htaccess` rewrite rules.** Projects written for Apache keep their URLs: the router reads the
-`RewriteEngine`, `RewriteBase`, `RewriteCond` and `RewriteRule` lines of `.htaccess` files in the
-document root and its sub-folders, as mod_rewrite does (the deepest `.htaccess` decides, rules run
-again after an internal rewrite, `REQUEST_URI` stays the one the browser sent). Supported flags:
-`L`, `END`, `R`, `NC`, `OR`, `QSA`, `QSD`, `F`, `G`, `S`, `E`. When a site has active rules, a
-missing file is a 404 instead of going to `index.php`. Lines PHPev cannot use (`RewriteMap`, an
-unknown flag, a pattern with backreferences) are skipped and written to `logs\daemon.log`.
-`php_value` and `php_flag` lines are ignored: put those settings in a `.user.ini` file in the
-document root, which PHP reads itself.
-
-### Importing an existing project
-
-```powershell
-cd C:\code\my-app
-phpev import                 # asks before every step that changes something
-phpev import --yes           # accept every step (database migrations excluded)
-phpev import --yes --migrate # ...and run `php artisan migrate`
-```
-
-`import` runs these steps and is safe to run again:
-
-1. **Detect** Laravel (`artisan` + `laravel/framework`), a Composer project, or a plain PHP folder.
-2. **PHP**: use `.php-version` if present, otherwise the highest version that satisfies
-   `require.php` (and `config.platform.php`). It offers to install one if none fits.
-3. **Extensions**: compare the `ext-*` requirements of `composer.json`/`composer.lock` with
-   the PHP build and offer to enable the missing ones. PECL-only extensions (redis, imagick, …)
-   are reported.
-4. **Composer**: install Composer if needed and run `composer install` with the chosen PHP.
-5. **Domain**: link the project as `<folder>.localhost` (or `--name`).
-6. **`.env`** (Laravel): create it from `.env.example` with `APP_URL`, the MariaDB connection
-   and a fresh `APP_KEY`. An existing `.env` is **never modified**; mismatches are only reported.
-7. **Database**: create the SQLite file, or install/start MariaDB and create the database.
-8. **Front-end**: remind you to run `npm install && npm run build` if assets are not built.
-
-The chosen PHP version is stored in PHPev's config, so no file is added to your repository.
-
-Optionally, `import` can add a Microsoft Defender exclusion for the project folder, which makes
-Composer and Artisan faster. Malware written into that folder would then not be scanned on write,
-so it is **off by default**, always asked, and never enabled by `--yes`. Use
-`--defender-exclude` to enable it without the question.
-
-### PHP versions
-
-```powershell
-phpev php list --available   # installed and downloadable versions
-phpev php install 8.3        # latest 8.3.x  (or an exact version: 8.3.36)
-phpev php install 7.1        # end-of-life lines 7.0 – 7.3: their final release (7.1.33)
-phpev php add C:\php\7.1     # add a PHP folder you already have
-phpev php use 8.4            # default version outside projects
-phpev php remove 7.1.33      # remove a version (not the default one)
-phpev php which              # which PHP `php` runs here, and why
-phpev php ini 8.4            # path of that version's php.ini
-```
-
-`php` and `composer` in any terminal are small shims that pick the version in this order:
-
-1. a `.php-version` file in the current folder or the nearest parent (`8.4`, `8.4.27`, `php-8.4`);
-2. the site that contains the current folder (`phpev link --php`, or the version chosen by `import`);
-3. the default version.
-
-Child processes inherit the choice, so `php artisan serve`, queue workers and Composer scripts run
-on the same version. Set `PHPEV_SHIM_DEBUG=1` to print the decision.
-
-Each version has its own `php.ini` generated by PHPev, with OPcache enabled and a CA bundle
-configured so HTTPS requests from PHP work out of the box. On the dashboard's PHP page,
-**Details** under a version has two tabs: *Extensions* to toggle them, and *php.ini* to edit the
-file. Saving checks it with that PHP first (a file PHP rejects is not saved), keeps the previous
-one as `php.ini.bak` and restarts the version's workers. Editing the file directly works too.
-
-PHP 7.0 – 7.3 are no longer supported upstream and get no security fixes; use them only for old
-projects. They come from the windows.php.net archive, which publishes no checksums, so PHPev only
-installs the final release of each line, whose SHA-256 is pinned in PHPev.
-
-`phpev php add <folder>` (or **Add a PHP you already have** on the dashboard's PHP page, with a
-folder picker) takes a 64-bit PHP build with `php.exe` and `php-cgi.exe`, for example one from
-XAMPP or Laragon. PHPev copies it into its home and writes its own `php.ini`; the build's original
-`php.ini` is kept next to it as `php.ini.orig`, and the source folder is not changed.
-
-### MariaDB
-
-```powershell
-phpev db list --available
-phpev db install 11.4   # latest 11.4.x
-phpev db start          # remembered: MariaDB starts again with PHPev
-phpev db stop
-phpev db use 10.11      # switch versions; each major keeps its own databases
-phpev db remove 10.11   # remove a version (not the active one); asks whether to delete its databases
-```
-
-MariaDB listens on `127.0.0.1:3306` with user `root` and **no password**: it is meant for local
-development only and is not reachable from other machines.
-
-Each major reads `data\mariadb\<major>\my.ini` at start, for server settings such as `sql_mode`
-(MariaDB is strict by default, which old code written for MySQL 5.6 may not expect). Edit it on the
-dashboard under **Services › MariaDB**, **Details** of an installed version, tab *my.ini*: saving keeps the previous file as `my.ini.bak` and
-restarts MariaDB, and puts the previous file back if MariaDB does not start with the new one. The
-settings apply to every site on that MariaDB. PHPev always sets the data folder, port,
-`bind-address`, `log-error`, `max_allowed_packet` and `innodb_log_file_size` itself.
-
-`mysql`, `mysqldump`, `mariadb` and `mariadb-dump` in any terminal run the client of the active
-MariaDB, already connected to it as `root` (your own `-u`, `-h` or `-P` take precedence; `-p` just
-asks for the empty password):
-
-```powershell
-mysql -e "CREATE DATABASE shop"
-cmd /c "mysql shop < dump.sql"       # import (PowerShell has no `<`; in cmd: mysql shop < dump.sql)
-mysql shop -e "source C:/path/dump.sql"   # the same, without cmd
-mysqldump shop > shop.sql            # export
-```
-
-### Composer
-
-Composer versions are installed side by side and shared by the sites. One of them is the
-default; a site runs the default unless you pick another version for it.
-
-```powershell
-phpev composer install               # the newest Composer (the first one installed becomes the default)
-phpev composer install 2.2           # another version, e.g. for PHP before 7.2.5
-phpev composer use 2.8               # make 2.8.x the default; installs it if needed
-phpev composer self-update           # install the newest Composer and make it the default
-phpev composer list --available      # installed and downloadable versions
-phpev composer remove 2.8.12         # once no site uses it (and it is not the default)
-
-phpev composer pin 2.2               # the site of the current folder runs 2.2.x
-phpev composer pin 2.8 --site shop   # another site
-phpev link --composer 2.8            # pin while linking
-phpev composer unpin                 # back to the default
-phpev composer which                 # which Composer runs here, and why
-composer --version                   # runs with the PHP and Composer of the current folder
-```
-
-`composer` in a terminal follows the folder: inside a site it runs the site's PHP and Composer
-(also in sub-folders), elsewhere the default PHP and the default Composer. Composer 2.3 and later
-need PHP 7.2.5: a version too new for the PHP is refused with a message, never swapped for another,
-so pick 2.2 for sites on older PHP. `composer self-update` is refused too, because each version is
-shared: use `phpev composer self-update`. In the dashboard, pick a site's version on its page under
-**Composer**, and install, remove or make a version the default (★) under **Services › Composer**.
-
-Upgrading from 1.0.0-rc.1 moves the old `composer.phar` and `composer-2.2.phar` into versions,
-makes the newest the default and pins 2.2 for the sites on PHP before 7.2.5 that ran it.
-
-### HTTPS
-
-```powershell
-cd C:\code\shop
-phpev secure          # https://shop.localhost; http:// redirects to it
-phpev unsecure
-phpev ca status
-phpev ca uninstall    # remove the CA from Windows and PHP, delete its key, disable HTTPS everywhere
-```
-
-The first `phpev secure` creates a local certificate authority and adds it to the **current
-user's** trusted root store (Windows shows one confirmation). The CA carries *name constraints*:
-it can only issue certificates for `localhost`, `test`, `local` and your configured TLD, so even
-a leaked key could not be used to impersonate a real website. Site certificates are created in
-memory on demand. The CA is also added to the CA bundle used by PHP.
-
-### Dashboard and tray icon
-
-```powershell
-phpev dashboard             # open in its own app window (Microsoft Edge)
-phpev dashboard --browser   # open in a normal browser tab instead
-phpev tray off              # hide the tray icon (phpev tray on to show it again)
-```
-
-The dashboard runs on `http://127.0.0.1:7600` and has these pages:
-
-| Page | What you can do |
-|---|---|
-| **Home** | What runs and what needs attention, your sites, services and memory; three getting-started steps on a fresh install |
-| **Sites** | A page per site: *Overview* (PHP version, HTTPS, Composer, extensions, workers, health with Fix buttons, unlink), *Requests*, *Logs* and *Database* (connection details, tables, import and export of `.sql`). Open the site, its folder, a terminal or your editor |
-| **PHP** | Install versions (with progress) or add a PHP folder, set the default, enable/disable extensions, edit `php.ini`, restart workers |
-| **Services** | A card and a page per service: *MariaDB* (start/stop, switch or install versions, edit `my.ini`) and *Composer* (install or remove versions, make one the default with ★, see which sites use them) |
-| **Performance** | Live requests/s, p50/p95 latency, latency histogram, status codes, slowest routes, CPU/RAM of each process, per site, with or without static files |
-| **Logs** | Follow the PHPev, PHP, MariaDB and Laravel (`storage/logs/*.log`) logs live, with a filter |
-| **Settings** | Start at sign-in, tray icon, theme, language, update check, code editor; TLD; ports; HTTPS; Defender, hosts file and checks; disk use and clean-up; about |
-
-`Ctrl K` finds a site, a page or a service. The menu and the site list can be collapsed; the dashboard
-remembers it.
-
-Performance data is kept in memory only (the last 10 minutes of per-second aggregates and the last
-2,000 requests). Query strings are never stored, and IDs in URLs are grouped (`/users/42` →
-`/users/{n}`).
-
-**The window** uses an Edge profile of its own (`cache\dashboard` in the PHPev folder) without
-extensions, sync or a GPU process, so it takes about 120 MB and does not make your own Edge
-heavier. Links in it open in your default browser.
-
-**Language:** English or Vietnamese, following the Windows display language unless you pick one in
-Settings. The `phpev` command stays in English.
-
-**Updates:** once a day PHPev asks GitHub whether a newer release exists (nothing about your
-computer is sent) and shows it on Home and in the tray, with *Skip this version*. Turn it off in
-Settings or with `check_updates = false` under `[ui]` in `config.toml`.
-
-The **tray icon** opens the dashboard with a left click. The right-click menu has *Open dashboard*,
-*Update available* (when there is one), *Sites*, *Start/Stop MariaDB*, *Start with Windows* and
-*Exit PHPev*. The dashboard window closes by itself when PHPev stops.
-
-### Background service
-
-`phpev-daemon.exe` runs the router, the PHP workers, MariaDB and the dashboard. It starts
-automatically when a command needs it, and keeps running when you close the terminal.
-
-```powershell
-phpev status         # what is running, with ports, PIDs and RAM
-phpev start
-phpev stop           # stop everything (MariaDB shuts down cleanly)
-phpev autostart on   # start at Windows log in (no admin needed)
-phpev autostart off
-```
-
-PHP workers start on the first request: 2 workers per PHP version, growing to 8 under load,
-shrinking back after 60 seconds idle, and stopping after 10 minutes without traffic. Crashed processes are restarted with backoff. All child
-processes are tied to the service, so none are left behind if it is killed, and MariaDB is shut
-down cleanly when Windows logs off or shuts down.
-
-## Command reference
+## Commands
 
 | Command | Description |
 |---|---|
-| `phpev setup [--home DIR]` | Create the PHPev home, install the shims on PATH, check the machine |
-| `phpev doctor [--fix-path] [--defender-exclude]` | Check for problems (PATH order, ports, runtime, CA, …) |
-| `phpev php list\|install\|add\|remove\|use\|ini\|which\|warm` | Manage PHP versions |
-| `phpev db list\|install\|remove\|start\|stop\|use` | Manage MariaDB |
-| `phpev composer install\|use\|self-update\|list\|remove` | Manage Composer versions and the default |
-| `phpev composer pin <version>\|unpin [--site <name>]` | Pick the Composer version of a site |
-| `phpev start\|stop\|status` | Control the background service |
-| `phpev autostart on\|off` | Start the service at log in |
+| `phpev setup [--home DIR]` | Create the PHPev home, put it on PATH, check the machine |
+| `phpev doctor [--fix-path] [--defender-exclude]` | Check for problems (PATH, ports, certificates, …) |
+| `phpev php list\|install\|add\|remove\|use\|ini\|which\|warm` | PHP versions |
+| `phpev db list\|install\|remove\|start\|stop\|use` | MariaDB versions |
+| `phpev composer install\|use\|self-update\|list\|remove\|pin\|unpin\|which` | Composer versions |
+| `phpev link [NAME] [--php VER]` / `phpev unlink [NAME]` | Serve the current folder / stop serving it |
+| `phpev rename <NEW>` | Give a site another name |
+| `phpev docroot [FOLDER] [--auto]` | Show or pick the folder a site serves |
+| `phpev sites` | List the sites |
+| `phpev import [DIR] [--yes] [--migrate]` | Make an existing project run |
+| `phpev secure [NAME]` / `phpev unsecure [NAME]` | HTTPS for a site |
+| `phpev ca status\|uninstall` | The local certificate authority |
+| `phpev tld [TLD]` | Show or change the TLD (default `localhost`) |
+| `phpev hosts sync` | Write the sites into the Windows hosts file |
+| `phpev start\|stop\|status` | The background service |
+| `phpev autostart on\|off` | Start PHPev when you sign in |
 | `phpev dashboard [--browser]` | Open the dashboard |
 | `phpev tray on\|off` | Show or hide the tray icon |
-| `phpev link [NAME] [--php VER]` / `unlink [NAME]` | Serve one folder |
-| `phpev rename <NEW> [--site NAME]` | Give a site another name |
-| `phpev docroot [FOLDER] [--auto] [--site NAME]` | Show or pick the folder a site serves |
-| `phpev sites` | List sites |
-| `phpev import [DIR] [--name N] [--yes] [--migrate] [--defender-exclude]` | Make an existing project run |
-| `phpev secure [NAME]` / `unsecure [NAME]` | HTTPS for a site |
-| `phpev ca status\|uninstall` | Manage the local certificate authority |
-| `phpev tld [TLD]` | Show or change the TLD (default `localhost`) |
-| `phpev hosts sync` | Write all sites into the Windows hosts file |
-| `phpev uninstall [--purge] [--yes]` | Remove PHPev from this computer (asks whether to keep your databases) |
+| `phpev uninstall [--purge]` | Remove PHPev (asks whether to keep your databases) |
 
-Run `phpev <command> --help` for every option.
+`phpev <command> --help` shows every option.
 
-## Configuration
+## Good to know
 
-Settings live in `%USERPROFILE%\.phpev\config.toml`. The CLI and the dashboard update it for you,
-but it is plain TOML and safe to edit by hand. Site changes apply on the next request; port
-changes made by hand apply after `phpev stop` and `phpev start` (from the dashboard's Settings,
-PHPev restarts by itself).
-
-```toml
-php = "8.4"           # default PHP version
-mariadb = "11.4"      # active MariaDB major version
-tld = "localhost"
-# tray = false        # hide the tray icon
-
-[ports]
-http = 80
-https = 443
-mariadb = 3306
-dashboard = 7600
-
-[ui]                  # dashboard choices; all optional
-theme = "dark"        # light | dark (default: follow Windows)
-language = "vi"       # en | vi (default: follow Windows)
-check_updates = false # default: on
-editor = "vscode"     # used by "Open in editor"
-
-[[sites]]
-name = "shop"
-path = 'C:\code\shop'
-php = "8.3"           # optional: pin a PHP version
-secure = true         # optional: HTTPS
-```
-
-Environment variables:
-
-| Variable | Effect |
-|---|---|
-| `PHPEV_HOME` | Use another home directory (set by `phpev setup --home`) |
-| `PHPEV_SHIM_DEBUG=1` | Make the `php`/`composer` shims print which version they chose and why |
-| `PHPEV_NO_METRICS=1` | Disable request metrics in the service (used for benchmarking) |
-
-Files and folders:
-
-```
-%USERPROFILE%\.phpev\
-├── shims\          the only folder on PATH: php.exe, composer.exe, mysql.exe, …, phpev*.exe
-├── bin\            php\<version>\, mariadb\<version>\, composer\, cacert.pem
-├── data\mariadb\   databases, one folder per major version
-├── certs\          local certificate authority
-├── logs\           daemon.log, php-<version>.log, mariadb-<version>.err
-├── state.json      what to restore at start, and the last update check
-├── cache\          downloads, and the dashboard window's Edge profile
-└── config.toml
-```
-
-## How it works
-
-```
-                 ┌──────────────────────── phpev-daemon.exe (≈2 MB RAM idle) ─────────────────────────┐
- browser ──80/443──▶ HTTP/HTTPS router ── static files                                                 │
-                 │        │                                                                            │
-                 │        └── FastCGI (keep-alive) ──▶ php-cgi pool per PHP version (2–8 workers)      │
-                 │                                                                                     │
- dashboard ─7600─▶ API v1 (JSON + SSE) ── metrics, logs, jobs        MariaDB (supervised)              │
- tray icon ──────▶ hidden window (also handles Windows shutdown)                                       │
-                 └──────────────▲──────────────────────────────────────────────────────────────────────┘
-                                │ named pipe
- terminal: phpev.exe ───────────┘        php.exe / composer.exe shims ──▶ real php.exe of the right version
-```
-
-- **`phpev.exe`**: the command line. It talks to the service over a per-user named pipe.
-- **`phpev-daemon.exe`**: the background service, a Rust/tokio process with the router (hyper,
-  rustls), process supervision, the dashboard and the tray icon. All children run in a
-  kill-on-close Job Object.
-- **`php.exe` / `composer.exe`**: tiny shims that choose the PHP version and start the real one.
-  `mysql.exe` / `mysqldump.exe` (and `mariadb.exe` / `mariadb-dump.exe`) are the same shim, starting
-  the client of the active MariaDB.
-- **`phpev-elevate.exe`**: a helper that runs the few admin-only operations behind one UAC prompt.
-
-The dashboard is a small Preact app embedded in the service binary. It uses only the documented
-API (`/api/v1`), so another front end could replace it.
-
-## Performance
-
-Measured on the development machine (Windows 11, PHP 8.4, 8 PHP workers, 8 concurrent connections):
-
-| Scenario | PHPev | nginx 1.30 + php-cgi |
-|---|---|---|
-| `ping.php`, sequential, median time to first byte | 1.4 ms | 1.3 ms |
-| Laravel welcome page, sequential, median TTFB | 42.0 ms | 43.1 ms |
-| `ping.php`, 8 connections | 5,700–6,900 req/s, 0 errors | 4,400–7,600 req/s, 32–57 errors, requests stuck for 60 s |
-
-Other figures: background service idle RAM **~2 MB** (private working set, as shown by Task
-Manager); dashboard live charts cost **0.07 %** CPU while open; recording request metrics costs
-less than our measurement noise; the `php` shim adds about one process start (~11 ms) per call;
-opening the dashboard from the tray takes about **0.6 s**.
-
-These are single-machine numbers. Please open an issue with yours.
-
-## Security
-
-- **Everything listens on loopback only** (`127.0.0.1` / `::1`).
-- **Dashboard**: a new random token on every service start, exchanged for an `HttpOnly`,
-  `SameSite=Strict` cookie. It checks `Host` and `Origin`, requires JSON for changes (CSRF) and
-  sends a strict Content-Security-Policy. There is no web shell: the dashboard can only call the
-fixed set of API actions.
-- **Downloads** (PHP, MariaDB, Composer) come from the official sources and are verified by
-  SHA-256 before they are used.
-- **Network**: besides those downloads, PHPev makes one request a day to the GitHub releases API
-  to look for a new version; it sends no identifier and can be turned off.
-- **Admin rights** are requested (one UAC prompt each) only for optional actions: writing the hosts
-  file, Defender exclusions, putting the shims before another PHP on the system PATH, and installing
-  the Visual C++ runtime.
-- **The local CA** is limited by name constraints to local TLDs and trusted for the current user only.
-- **MariaDB** uses `root` without a password and is only reachable from this machine. Do not
-  use PHPev to host anything on a network.
-
-Found a vulnerability? Please report it privately through
-[GitHub Security Advisories](https://github.com/duy-lee/PHPev/security/advisories/new) rather than a public issue.
-
-## Troubleshooting
-
-**`php -v` shows another PHP (XAMPP, Laragon, …).**
-Windows puts the *system* PATH before the *user* PATH, so a PHP on the system PATH wins.
-`phpev doctor` shows which one. Fix it with `phpev doctor --fix-path`, which puts PHPev first
-(admin), or remove the old PHP from the system PATH. Then open a new terminal.
-Note that `where php` behaves differently in `cmd` (it is `where.exe`) and in PowerShell (where it
-is an alias of `Where-Object`; use `where.exe php`).
-
-**Port 80, 443 or 3306 is busy.**
-`phpev status` and `phpev doctor` show which program holds the port (often XAMPP's Apache or MySQL,
-IIS or Skype). Stop it, or change the port in `[ports]` in `config.toml`.
-
-**`file_get_contents('http://app.localhost')` fails inside PHP.**
-Windows does not resolve `*.localhost`; run `phpev hosts sync` once.
-
-**The browser warns about the certificate.**
-Run `phpev ca status`. If the CA is not trusted, run `phpev secure` again, then restart the browser.
-Firefox uses its own store: enable `security.enterprise_roots.enabled` in `about:config`.
-
-**Composer or Artisan is slow.**
-Real-time antivirus scanning is the usual cause. `phpev doctor --defender-exclude` excludes the
-PHPev home, and `phpev import --defender-exclude` excludes a project. A
-[Dev Drive](https://learn.microsoft.com/windows/dev-drive/) is a safer alternative for your code.
-
-**Something else.**
-Look at `%USERPROFILE%\.phpev\logs\daemon.log` or the dashboard's Logs page, then
-[open an issue](https://github.com/duy-lee/PHPev/issues) with the output of `phpev doctor` and `phpev status`.
-
-## Uninstalling
-
-Installed with `setup.exe`: uninstall **PHPev** in **Settings → Apps** (or run `phpev uninstall`,
-which opens the same uninstaller). It asks whether to delete your databases and settings too;
-the default is to keep them.
-
-Installed from the zip:
-
-```powershell
-phpev uninstall           # asks whether to delete your databases and config.toml (default: keep)
-phpev uninstall --purge   # deletes them too
-phpev uninstall --yes     # no questions; keeps them
-```
-
-`uninstall` shows what it will do and asks before changing anything. It stops PHPev and MariaDB,
-turns off start at log in, removes the PHPev certificate authority and PHPev's entry in your PATH,
-and deletes what PHPev put in its home. If PHPev changed admin-level settings (hosts file entries,
-the system PATH, Microsoft Defender exclusions for the home or your projects), it removes them after
-a single UAC prompt. Your project folders are never touched.
-
-Kept databases (`data\`) and `config.toml` stay in the PHPev home, so installing PHPev again picks
-them up. Deleting them asks you to type `delete` first.
+- **Which PHP runs:** a `.php-version` file in the folder or a parent, then the site's pinned
+  version, then the default. `phpev php which` tells you why.
+- **`.localhost` and PHP:** browsers and curl find `*.localhost` by themselves, but PHP functions
+  such as `file_get_contents` do not. Run `phpev hosts sync` once, or use `phpev tld test`.
+- **MariaDB** listens on `127.0.0.1:3306`, user `root`, no password: for local development only.
+- **Settings** live in `%USERPROFILE%\.phpev\config.toml`; logs in `%USERPROFILE%\.phpev\logs`.
+- **Another PHP (XAMPP, Laragon) answers `php -v`:** it is on the system PATH before PHPev.
+  `phpev doctor --fix-path` puts PHPev first.
+- **A port is busy:** `phpev doctor` shows which program uses it; change the port in Settings.
 
 ## Building from source
 
-Requirements: [Rust](https://rustup.rs/) (stable) and the Visual Studio 2022 Build Tools with the
-*Desktop development with C++* workload (MSVC linker, Windows SDK and `rc.exe`).
+Needs [Rust](https://rustup.rs/) (stable) and the Visual Studio 2022 Build Tools (*Desktop
+development with C++*).
 
 ```powershell
-git clone https://github.com/duy-lee/PHPev.git
-cd PHPev
 cargo build --release
 .\target\release\phpev.exe setup
 ```
 
-Release builds link the C runtime statically (see `.cargo/config.toml`), so they run on a clean
-Windows machine.
+Without Visual Studio, use the GNU toolchain with [WinLibs](https://winlibs.com/) on PATH:
+`cargo +stable-x86_64-pc-windows-gnu build --release`.
 
-Without Visual Studio you can build with the GNU toolchain and
-[WinLibs](https://winlibs.com/) MinGW-w64 (MSVCRT) on PATH:
-
-```powershell
-rustup toolchain install stable-x86_64-pc-windows-gnu
-winget install BrechtSanders.WinLibs.POSIX.MSVCRT
-cargo +stable-x86_64-pc-windows-gnu build --release
-```
-
-Project layout:
-
-| Crate | Output | Purpose |
-|---|---|---|
-| `crates/core` | library | Config, downloads, PHP/MariaDB/Composer, sites, CA, API types, shared operations |
-| `crates/cli` | `phpev.exe` | Command line |
-| `crates/daemon` | `phpev-daemon.exe` | Background service, router, dashboard (`crates/daemon/dashboard`), tray |
-| `crates/shim` | `phpev-shim.exe` | Installed as `php.exe` and `composer.exe` |
-| `crates/elevate` | `phpev-elevate.exe` | Admin-only operations |
-
-The installer is built from `installer/phpev.iss` with [Inno Setup](https://jrsoftware.org/isinfo.php)
-6 or later, after a release build: `ISCC.exe /DAppVersion=0.1.2 installer\phpev.iss` (output in `dist\`).
-
-Checks run before every commit:
-
-```powershell
-cargo fmt --check
-cargo clippy --all-targets -- -D warnings
-cargo test
-```
-
-## Roadmap
-
-Phase 1 (everything above) is complete. Planned next:
-
-- [x] Continuous integration and release builds
-- [x] Windows installer (`setup.exe`), listed in Settings → Apps
-- [ ] Code-signed releases, `winget` and Scoop packages
-- [ ] Xdebug on/off per PHP version
-- [x] `.htaccess` rewrite rules (mod_rewrite subset)
-- [ ] Optional nginx or Apache backend per site (for the rest of `.htaccess` and nginx rewrite rules)
-- [ ] More services: mail catcher, Redis, queue workers, Node.js version management
-
-Ideas and votes are welcome in [issues](https://github.com/duy-lee/PHPev/issues).
-
-## Contributing
-
-Contributions are welcome, from bug reports to code.
-
-1. Open an issue first for larger changes, so we can agree on the approach.
-2. Fork the repository and create a branch.
-3. Keep the checks in [Building from source](#building-from-source) green, and add tests for new logic.
-4. Open a pull request that describes what changed and how you tested it.
-
-PHPev cares about staying small and fast: please mention the RAM, size or latency impact of a
-change when it might have one.
-
-## License
-
-PHPev is dual-licensed under either of
-
-- [MIT License](LICENSE-MIT)
-- [Apache License, Version 2.0](LICENSE-APACHE)
-
-at your option.
-
-Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in
-the work by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any
-additional terms or conditions.
-
-PHP, MariaDB and Composer are downloaded from their official sources at run time and remain under
-their own licenses. The dashboard bundles [Preact](https://preactjs.com/) and
-[htm](https://github.com/developit/htm) (MIT) and [uPlot](https://github.com/leeoniya/uPlot) (MIT);
-their licenses are in `crates/daemon/dashboard/vendor/`.
-
-## Acknowledgements
-
-- [Laravel Herd](https://herd.laravel.com/) and [Laravel Valet](https://laravel.com/docs/valet), for
-  showing how pleasant local PHP development can be.
-- [hyper](https://hyper.rs/), [tokio](https://tokio.rs/), [rustls](https://github.com/rustls/rustls)
-  and [rcgen](https://github.com/rustls/rcgen), which the service is built on.
-- [windows.php.net](https://windows.php.net/), [MariaDB Foundation](https://mariadb.org/) and
-  [Composer](https://getcomposer.org/) for their official Windows builds and download APIs.
-
-PHPev is not affiliated with Laravel, PHP, MariaDB or Microsoft.
+The dashboard demo (sample data, no PHPev needed) runs with `node demo/serve.mjs`.

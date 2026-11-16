@@ -1,0 +1,52 @@
+name: Pages
+
+# The dashboard demo on GitHub Pages: the real dashboard files with sample data
+# instead of the daemon (demo/build.mjs). Nothing here builds or changes PHPev itself.
+# Needs Settings › Pages › Source: GitHub Actions.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'crates/daemon/dashboard/**'
+      - 'crates/daemon/build.rs'
+      - 'assets/**'
+      - 'demo/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build the demo
+        run: node demo/build.mjs _site
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

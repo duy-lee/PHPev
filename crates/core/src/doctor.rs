@@ -1,6 +1,6 @@
 //! Environment health checks shared by `phpev setup` and `phpev doctor`.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::config::Config;
 use crate::env_path::{self, Scope};
@@ -332,8 +332,47 @@ fn port_check(layout: &Layout, name: &str, port: u16) -> Check {
     }
 }
 
-/// True if `pid` runs an executable from the PHPev home (daemon, MariaDB, php-cgi).
+/// True if `pid` runs PHPev: an executable from the PHPev home (daemon, MariaDB, php-cgi),
+/// or the daemon next to the running PHPev program (a build run from elsewhere, such as
+/// `target\release`, which is not in the home).
 fn is_phpev_process(layout: &Layout, pid: u32) -> bool {
+    let Some(exe) = crate::procinfo::exe_path(pid) else {
+        return false;
+    };
     let root = layout.root().to_string_lossy().to_ascii_lowercase();
-    crate::procinfo::exe_path(pid).is_some_and(|exe| exe.to_string_lossy().to_ascii_lowercase().starts_with(&root))
+    exe.to_string_lossy().to_ascii_lowercase().starts_with(&root)
+        || std::env::current_exe().is_ok_and(|me| is_sibling_daemon(&exe, &me))
+}
+
+/// True if `exe` is `phpev-daemon.exe` in the same folder as `me` (case does not matter).
+fn is_sibling_daemon(exe: &Path, me: &Path) -> bool {
+    let folder = |p: &Path| p.parent().map(|d| d.to_string_lossy().to_ascii_lowercase());
+    exe.file_name()
+        .is_some_and(|n| n.eq_ignore_ascii_case("phpev-daemon.exe"))
+        && folder(exe).is_some()
+        && folder(exe) == folder(me)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_daemon_next_to_phpev_counts_as_phpev() {
+        let me = Path::new(r"C:\code\PHPev\target\release\phpev.exe");
+        assert!(is_sibling_daemon(
+            Path::new(r"C:\code\PHPev\target\release\phpev-daemon.exe"),
+            me
+        ));
+        assert!(is_sibling_daemon(
+            Path::new(r"c:\Code\phpev\TARGET\release\PHPEV-DAEMON.EXE"),
+            me
+        ));
+        // Another program in the same folder, or the daemon of another folder, does not.
+        assert!(!is_sibling_daemon(
+            Path::new(r"C:\code\PHPev\target\release\httpd.exe"),
+            me
+        ));
+        assert!(!is_sibling_daemon(Path::new(r"C:\xampp\phpev-daemon.exe"), me));
+    }
 }
