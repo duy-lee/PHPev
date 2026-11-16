@@ -6,7 +6,7 @@ import { mb } from '../format.js';
 import { act, showToast } from '../ui/feedback.js';
 import { confirmAction } from '../ui/dialog.js';
 import { Icon } from '../icons.js';
-import { DefaultStar, RemoveButton, Tabs, Select, Empty, Loading } from '../ui/controls.js';
+import { DefaultStar, RemoveButton, Tabs, Empty, Loading } from '../ui/controls.js';
 import { IniEditor } from '../ui/ini-editor.js';
 import { DatabasesPanel } from './mariadb-databases.js';
 
@@ -37,7 +37,6 @@ function Available({ onInstall }) {
 
 export function MariaDb({ startJob, route = [] }) {
   const [{ data, error }, reload] = useApi('/mariadb', 3000);
-  const [picked, setPicked] = useState(null);
   const tab = TABS.includes(route[2]) ? route[2] : 'versions';
   const running = data?.running;
   const head = html`<div class="page-head">
@@ -73,11 +72,8 @@ export function MariaDb({ startJob, route = [] }) {
     });
     if (answer) act(api('DELETE', `/mariadb/${v}`, { delete_data: answer.choice }), reload);
   };
-  // Databases and my.ini belong to one major: the active one unless another is picked.
-  const majors = [...new Set(data.installed.map(major))];
-  const current = majors.includes(picked) ? picked : data.active ?? majors[0];
-  const picker = majors.length > 1 && html`<${Select} label=${t('services.version_of')} value=${current} onChange=${setPicked}
-    options=${majors.map((m) => ({ value: m, label: `MariaDB ${m}`, hint: m === data.active ? t('services.active') : '' }))} />`;
+  // Databases and my.ini are those of the active major; another major's show once it is made active.
+  const current = data.active ?? major(data.installed[0]);
   const go = (id) => location.replace(`#/services/mariadb${id === 'versions' ? '' : `/${id}`}`);
 
   return html`${head}
@@ -103,9 +99,9 @@ export function MariaDb({ startJob, route = [] }) {
       <${Available} onInstall=${install} />`}
 
     ${tab === 'databases' && html`<${DatabasesPanel} major=${current} running=${!!running && major(running.version) === current}
-      port=${data.port} startJob=${startJob} picker=${picker} />`}
+      port=${data.port} startJob=${startJob} />`}
 
-    ${tab === 'ini' && html`<div class="row-flex">${picker}<div class="callout grow" style="margin: 0"><${Icon} name="info" size=${15} /><span>${t('services.my_ini_note', { major: current })}</span></div></div>
+    ${tab === 'ini' && html`<div class="callout" style="margin: 0 0 12px"><${Icon} name="info" size=${15} /><span>${t('services.my_ini_note', { major: current })}</span></div>
       <${IniEditor} key=${current} path=${`/mariadb/${current}/ini`} label=${t('services.my_ini_label', { major: current })}
         hint=${t('services.my_ini_hint', { major: current })} onSaved=${reload} />`}`;
 }

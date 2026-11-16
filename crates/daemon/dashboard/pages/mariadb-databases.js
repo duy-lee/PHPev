@@ -17,7 +17,7 @@ const VALID_NAME = /^[A-Za-z0-9_$-]{1,64}$/;
 const FILTER_FROM = 8;
 
 /** Databases of one installed major. `running`: it is the server that runs now (the only one SQL can reach). */
-export function DatabasesPanel({ major, running, port, startJob, picker }) {
+export function DatabasesPanel({ major, running, port, startJob }) {
   const [state, setState] = useState(null);
   const [name, setName] = useState('');
   const [filter, setFilter] = useState('');
@@ -60,7 +60,6 @@ export function DatabasesPanel({ major, running, port, startJob, picker }) {
   const shown = all.filter((db) => db.name.includes(filter.trim().toLowerCase()));
   return html`<section class="card clip">
     <div class="tools">
-      ${picker}
       <form class="row-flex" style="gap: 8px" onSubmit=${create}>
         <label class="field sm" style="width: 220px" title=${running ? '' : t('services.db_switch_to_manage')}><${Icon} name="plus" size=${13} />
           <input placeholder=${t('services.db_new_placeholder')} aria-label=${t('services.db_new')} aria-describedby=${`db-hint-${major}`}

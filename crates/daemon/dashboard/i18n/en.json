@@ -89,7 +89,6 @@
   "services.active": "Active version",
   "services.active_short": "active",
   "services.use_version": "Use MariaDB {version}",
-  "services.version_of": "MariaDB version",
   "services.installed": "Installed",
   "services.not_installed": "MariaDB is not installed.",
   "services.load_available": "Show versions to install",

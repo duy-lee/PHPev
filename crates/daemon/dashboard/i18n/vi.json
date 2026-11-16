@@ -89,7 +89,6 @@
   "services.active": "Phiên bản đang dùng",
   "services.active_short": "đang dùng",
   "services.use_version": "Dùng MariaDB {version}",
-  "services.version_of": "Phiên bản MariaDB",
   "services.installed": "Đã cài",
   "services.not_installed": "Chưa cài MariaDB.",
   "services.load_available": "Xem các phiên bản có thể cài",
